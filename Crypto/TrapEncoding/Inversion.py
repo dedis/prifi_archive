@@ -7,11 +7,11 @@ from Crypto.Random import random
 from bitstring import Bits, BitArray
 
 class InversionEncoder(TrapEncoder.TrapEncoder):
-    
+
     def __init__(self, trap_bit_gen, background_stream_gen, key,
                  hashAlg=SHA1Hash):
         """ Calls the parent constructor, and also creates the cipher to use
-        
+
         key (_RSAobj) -- an RSA key for use in encoding/decoding. The output
           chunk_size is determined based on the length of the key.
         """
@@ -24,12 +24,12 @@ class InversionEncoder(TrapEncoder.TrapEncoder):
         # hash output size.
         self.input_chunks_size = 8 * \
             (int(key.size() / 8) - 2 - 2 * (hashAlg.digest_size))
-    
+
     def encode(self, input_text):
         index = len(self.trap_bits)
         chunks = self.chunk(Bits(bytes(input_text, "utf_8")))
         return (index, self.__encode_chunks(chunks))
-    
+
     def decode(self, cipherchunks, index):
         plain_chunks = self.__decode_chunks(cipherchunks)
         joined = BitArray().join(plain_chunks)
@@ -39,7 +39,7 @@ class InversionEncoder(TrapEncoder.TrapEncoder):
     def __encode_chunks(self, chunks):
         """ Takes the chunked input and returns a list of encoded chunks.
             Updates self.background and self.trap_bits.
-            
+
             The encoded chunks are either 0 followed by the Bits representation
             of a PKCS1_OAEP-encrypted chunk with length equal to the RSA key's,
             or 1 followed by the bitwise negation of such a chunk.
@@ -56,7 +56,7 @@ class InversionEncoder(TrapEncoder.TrapEncoder):
             else:
                 new_chunks += [~candidate]
         return new_chunks
-    
+
     def __decode_chunks(self, chunks):
         """ Takes encoded input and returns the decoded chunks (i.e., the
             input to __encode_chunks).
@@ -88,4 +88,4 @@ if __name__ == '__main__':
     IE = InversionEncoder(trap_bit_gen, back_gen, key)
     TrapTests.correctness(IE)
     TrapTests.vary_message_size(IE, 128, 16 * 1024)
-    
+

@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 
 class TrapEncoder:
     """ Interface for classes that take data and encode them around trap bits.
-    
+
     Attributes:
       chunk_size (int): The number of bits per chunk to have in the output.
         Note that this must be equal to the size of the chunks yielded by
@@ -15,7 +15,7 @@ class TrapEncoder:
         this encoder has already used (needed for verification)
       trap_bits (list of int): The trap bits that correspond to blocks this
         encoder has already used (needed for verification)
-    
+
     Subclasses should implement encode_chunks and decode_chunks.
 
     """
@@ -40,7 +40,7 @@ class TrapEncoder:
 
     @abstractmethod
     def decode(self, cipherchunks, index):
-        """ Takes a list of Bits objects (cipherchunks) 
+        """ Takes a list of Bits objects (cipherchunks)
             and returns the plaintext.
             index is the beginning of the portion of the cypherstream used,
             if needed.
@@ -48,13 +48,10 @@ class TrapEncoder:
         return
 
     def verify(self, output_chunks, index):
-        """ Checks output_chunks against self.background and self.trap_bits, 
+        """ Checks output_chunks against self.background and self.trap_bits,
             starting at index, to make sure none of the trap bits are flipped.
             True if all trap bits are correct, false otherwise.
             """
-        return self.__verify_chunks(output_chunks, index)
-    
-    def __verify_chunks(self, output_chunks, index):
         rounds = 0
         finger = index
         for chunk in output_chunks:
@@ -70,5 +67,4 @@ class TrapEncoder:
                 return False
             else:
                 finger += 1
-                continue
         return True

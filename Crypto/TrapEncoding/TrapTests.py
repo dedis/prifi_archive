@@ -19,7 +19,7 @@ def encode_decode(TE, message):
     (index, cipherchunks) = TE.encode(message)
     if TE.verify(cipherchunks, index) == False:
         print("[x] Failed encoding: Problem with trap bits for {0}"
-              .format(message)) 
+              .format(message))
         return False
     new_text = TE.decode(cipherchunks, index)
     if new_text != message:
