@@ -7,6 +7,7 @@ III.  Trustee / Relay Interaction
 IV.   Client / Relay Interaction
 V.    Relay / Relay Interaction
 VI.   Client / Relay Interaction
+VII.  Configurations
 VII. Terms
 E.    Tasks
 
@@ -274,10 +275,116 @@ VI.   Client / Relay Interaction
 ===============================================================================
 
 ===============================================================================
-VII.  Terms
+VII.  Configuration
+===============================================================================
+Each Dissent deployment has several configurable layers: system, session,
+post-shuffle and interval.
+
+=====================
+System Configuration
+=====================
+
+System configuration consists of the identities and keys of the set of possible
+trustees, relays, and clients. It also contains the IP addresses for relays and
+trustees. An identity is the sha-256 hash of a member's public key and used to
+reference the member independent of their IP address.  The configuration file
+also contains a version, to be included in certain messages, to ensure that two
+Dissent software components are compatible and a group-id for similar reasons.
+
+{
+  "version" : int,
+  "group-id" : int,
+  "relays" : {
+    { "id" : identity, "key" : key, "ip" : ip },
+    ...
+  },
+  "servers" : {
+    { "id" : identity, "key" : key, "ip" : ip },
+    ...
+  },
+  "clients" : {
+    { "id" : identity, "ip" : ip},
+    ...
+  }
+}
+
+======================
+Session Configuration
+======================
+
+The session configuration includes the group-id listed within the system
+configuration and consists of the participants for the upcoming session and a
+DH key for each and a unique session nonce or id. The session configuration
+also has a set of signatures, one for each trustee, attesting to the
+correctness of the session configuration file.
+
+{
+  "group-id" : int,
+  "session-id" : int,
+  "relays" : {
+    { "id" : identity, "dhkey" : dhkey },
+    ...
+  },
+  "servers" : {
+    { "id" : identity, "dhkey" : dhkey },
+    ...
+  },
+  "clients" : {
+    { "id" : identity, "dhkey" : dhkey },
+    ...
+  },
+  "signatures" : {
+    { "id" : identity, "sign" : signature },
+    ...
+  }
+}
+
+===========================
+Post-Shuffle Configuration
+===========================
+
+The post shuffle configuration consists of anonymous DH keys in a fixed order
+representing the order fo the communication slots during exchanges. This too
+includes the signature from all trustees.
+
+{
+  "group-id" : int,
+  "session-id" : int,
+  "slots" : {
+    dhkey0,
+    ...
+  },
+  "signatures" : {
+    { "id" : identity, "sign" : signature },
+    ...
+  }
+}
+
+=======================
+Interval Configuration
+=======================
+
+At each interval, trustees will announce the set of online clients and a list
+of new DH keys for generating trap bits.
+
+{
+  "group-id" : int,
+  "session-id" : int,
+  "trapkeys" : {
+    dhkey0,
+    ...
+  },
+  "signatures" : {
+    { "id" : identity, "sign" : signature },
+    ...
+  }
+}
+
+===============================================================================
+VIII.  Terms
 ===============================================================================
 Clients - users of the service
-Relays - data plane server 
+Relays - data plane server
 Trustees - control plane server
 Interval - the online and active set of clients
 
@@ -296,4 +403,4 @@ E.   Tasks
 - Socks server / proxy
 - HTTP server / instant messanger
 - Session bootstrap (Core Dissent Design Doc)
-- Configuration format for session and interval 
+- Configuration format for session and interval
