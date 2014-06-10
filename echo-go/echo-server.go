@@ -1,15 +1,26 @@
 package main
 
 import (
-    "fmt"
+    "encoding/json"
     "net/http"
 )
 
+type Echo struct {
+    Text string `json:"text"`
+}
+    
 func handler(w http.ResponseWriter, r *http.Request) {
-    fmt.Fprintf(w, "%s", r.PostFormValue("echo"))
+    decoder := json.NewDecoder(r.Body)
+    var echo Echo
+    err := decoder.Decode(&echo)
+    if err != nil {
+        panic("malformed post data")
+    }
+    encoder := json.NewEncoder(w)
+    encoder.Encode(echo)
 }
 
 func main() {
-    http.HandleFunc("/", handler)
+    http.HandleFunc("/echo", handler)
     http.ListenAndServe(":8080", nil)
 }
