@@ -2,9 +2,8 @@ package dissent
 
 import "crypto/aes"
 import "crypto/cipher"
+import "crypto/sha256"
 import "math/big"
-
-//import "fmt"
 
 const (
   CellLength = 1024
@@ -38,10 +37,13 @@ func GenerateNode(key *PrivateKey, keys []*PublicKey) *Node {
   return node
 }
 
-func (node *Node) GenerateCiphertext(cell int) []byte {
+func (node *Node) GenerateCiphertext(cell int64) []byte {
   ciphertext := make([]byte, CellLength)
   for i := 0; i < len(node.Secrets); i += 1 {
-    seed := node.Secrets[i].Bytes()[0:16]
+    hash := sha256.New()
+    hash.Write(node.Secrets[i].Bytes())
+    hash.Write(big.NewInt(cell).Bytes())
+    seed := hash.Sum(nil)[0:16]
 
     block, err := aes.NewCipher(seed)
     if err != nil {

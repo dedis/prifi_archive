@@ -4,7 +4,7 @@ import "math/big"
 import "testing"
 
 func TestDCnet(*testing.T) {
-  count := 100
+  count := 10
   dhkeys := make([]*PrivateKey, count)
   pkeys := make([]*PublicKey, count)
   params := GetParameters()
