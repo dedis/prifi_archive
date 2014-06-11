@@ -5,27 +5,34 @@ before transmitting it anonymously via DC-nets.
 
 Trap-encoding logically consists of the following abstract procedures:
 
-- `TrapInit` (on trustees): At the start of a session (after the shuffle), each
+Trustees
+---
+- `SessionInit`: At the start of a session (after the shuffle), each
     trustee runs TrapInit to form a Diffie-Hellman secret between itself and
     each anonymous slot-owner key that emerged from the shuffle.
-- `TrapSched` (on trustees): During the setup stage for each interval, each
-    trustee runs the TrapSetup procedure once for unique owner-key for whom one
-    or more cells are scheduled during the interval.
-- `TrapEncode` (on clients): the owner of a given cell (any client who holds the
-    private key corresponding to the cell's public owner-key) can optionally run
-    the TrapEncode procedure to transmit useful data in the cell's transmission
-    slot.
-- `TrapDecode` (on relay): once the relay collects the clients' DC-net
-    ciphertexts for a given cell from each of the clients online in this
-    interval, and combines them with the trustees' DC-net ciphertexts for that
-    cell, the relay uses TrapDecode to extract the cell's cleartext content.
-- `TrapCheck` (on trustees): after an interval has completed, the relay sends
-    the trustees (perhaps in the background) a transcript of the results of all
+- `Check`: after an interval has completed, the relay sends the trustees
+    (perhaps in the background) a transcript of the results of all
     communication during the interval, and the trustees run TrapCheck on each
     cell to ensure that no trap-bits were flipped (indicating DC-nets
     disruption).
 
-`TrapInit(SID,Kt,[K'o]) -> ([M])`
+Clients
+---
+- `SessionInit`: The private key corresponding to the slot owned by this client
+    is stored
+- `IntervalInit`: The shared secrets, noise generator, and trap bit position
+    generator are established.
+- `EncodeCell`: the owner of a given cell can optionally run the `EncodeCell`
+    procedure to transmit useful data in the cell's transmission slot.
+
+Relay
+---
+- `TrapDecode`: once the relay collects the clients' DC-net
+    ciphertexts for a given cell from each of the clients online in this
+    interval, and combines them with the trustees' DC-net ciphertexts for that
+    cell, the relay uses TrapDecode to extract the cell's cleartext content.
+
+`Trap.Trustee.SessionInit(SID,Kt,[K'o]) -> (SM, [Commits])`
 ---
 Runs on trustee after a shuffle, to compute shared secrets between trustees and
 slot owners.
@@ -41,177 +48,91 @@ slot owners.
 - `[Commits]`: a list of commitments to trap-encoding secrets, one for each
     owner `o` in the same order as shuffle output.
 
-### pseudocode:
-- For each `K'o` in the owner-keys in the shuffle output:
-	- Use Diffie-Hellman to compute a shared master secret `Mo = K'o^Kt`
-	- Compute `HMAC_Mo{SID,"TrapInit"}` to yield shared secret for trap-encoding
-    - Use this hash to pick a pseudorandom secret suitable for the system's
-        discrete-log group
-	- Save this pseudorandom secret So in trustee's internal map `MT`, indexed
-        by `K'o`
-    - Compute commitment `g^So` and include that in outputs, to be published in
-        session initiation info for accountability.
-
-`TrapSched(SID,SM,Sched) -> ([Noise])`:
+`Trap.Client.SessionInit(Ko) -> ()`
 ---
-Runs on trustee at the beginning of each interval, just after scheduling, to
-produce per-interval temporary trap secrets and trap-noise to be XORed into each
-cell's payload.
+Runs on client at the beginning of a session. Initializes this client's slot
+owner private key.
 
 ### inputs:
-- `SID`: session ID of this session
-- `SM`: map of trap-encoding secrets indexed by `K'o`, produced in `TrapInit`
-- `Sched`: the transmission schedule for the upcoming interval - a list of cells
-    to be transmitted in this interval, including for each scheduled cell:
-	- `Cell`: cell number, unique within the session identified by `SID`
-    - `K'o`: public key of anonymous owner of this cell (who gets to transmit in
-        this cell)
-    - `Wordsize`: number of bits per codeword for this cell: a power of two from
-        between 2 and 64.  (There will be one trap bit per codeword.)
-    - `Length`: number of codewords comprising this cell.  (Total number of bits
-        is length * wordsize.)
+- `Ko`: The slot owner private key
 
-### outputs:
-- `[Noise]`: a list of data buffers, one per cell, containing the trap-noise
-    generated for each cell, to be XORed into trustee's DC-nets stream for cell.
-
-### pseudocode:
-- Find `FirstCell`, the cell number of first cell comprising this interval
-    (simply the Cell number from the first cell in the transmission schedule).
-- create initially empty map `RM`: `K -> R` mapping public owner-keys `K` to
-    pseudorandom stream generators `R`
-- for each cell descriptor `(Cell,K'o,Wordsize,Length)` in the transmission
-    schedule Sched, in sequence:
-	- If there have been previous cells owned by `K'o` in this interval, find
-        existing pseudorandom stream `R <- RM[K'o]`.  If not:
-        - Lookup `So`, the long-term owner/trustee shared trap-secret in `SM`
-            shared with owner `K'o`
-		- Choose pseudorandom well-known unique generator `h =
-            H{SID,FirstCell,"TrapSched"}` for this interval
-		- Compute `h^So`, the per-interval secret between this trustee t and
-            owner `K'o`
-		- Use `h^So` to seed a new pseudorandom stream generator `R`, and
-            store `R` in `RM[K'o]` for reuse in future cells in this interval.
-	- Pull `Length*Wordsize` bits from `R`, padded up to the next byte boundary,
-        to form the `Noise` for this cell.
-
-`TrapEncode(SID,[K't],SchedInfo,Payload) -> (EncodedPayload)`
+`Trap.Client.IntervalInit([Sto]) -> ([Tt],T,N,R)`
 ---
-Runs on client that owns next cell, whose scheduling info is `SchedInfo =
-(Cell,K'o,Wordsize,Length)`.  Client owns private key Ko corresponding to `K'o`.
+Runs on client at the beginning of an interval to establish the Noise and trap
+bit position generators for this interval.
+Note that the seed of each pseudorandom generator produced is based on a unique
+identifier for this interval. This means that as long as the same pair of
+generators is passed to `EncodeCell` for each cell of this interval, and as long
+as cells are always processed in order, it is unnecessary to additionally keep
+track of an index to the current cell.
 
 ### inputs:
-- `SID`: session ID
-- `[K't]`: list of public keys of all trustees
-- `SchedInfo`: scheduling info slot for this cell, a tuple of
-    `(Cell,K'o,Wordsize,Length)`
-- `Payload`: buffer containing `Wordsize*Length` bits of cleartext data to
-    be trap-encoded
+- `[Sto]`: List of per-session shared secrets for trap encoding, established at
+    the DC-nets layer. `Sto` is the interval shared secret between trustee `t`
+    and slot owner `o`.
 
 ### outputs:
-- `EncodedPayload`: trap-encoded payload for this cell to be XORed into DC-nets
-    stream for this cell.
+- `[Tt]`: a list of per-interval trap-secrets shared between this slot owner
+    and each trustee `t`. `Tt = h^Sto`, where `h` is a pseudorandom generator
+    seeded with `H{SID, FirstCell, "IntervalInit"}`
+- `T`: The composite trap-secret for this interval, a hash of `H{T1,...,Tn}`
+    for all `Ti` in `[Tt]`
+- `N`: A pseudorandom generator seeded with `H{T, "Noise"}`; used to generate
+    noise for this interval
+- `R`: A pseudorandom generator seeded with `H{T, "Position"}`; used to generate
+    trap bit positions for this interval
 
-### pseudocode:
-- For each trustee `t`:
-	- if not already computed in this session:
-		- use Diffie-Hellman to compute long-term shared secret `K't^Ko` between
-            us (owner) and trustee `t`.  Memoize.
-        - compute `HMAC_Mo{SID,"TrapInit"}` to yield per-session shared secret
-            for trap-encoding.
-        - from this compute the pseudorandom per-session shared secret `So`.
-            Memoize for rest of session.
-	- if not already computed in this interval:
-		- compute the well-known pseudorandom generator `h =
-            H{SID,FirstCell,"TrapSched"}` for this interval.
-		- compute per-interval trap-secret shared with trustee `t`, `Tt = h^So`.
-- if not already computed in this interval:
-    - Compute composite trap-secret `T = H{T1,...,Tn}`, a hash of the
-        per-interval trap-secrets shared with each trustee.
-	- Use this composite trap-secret and `"Noise"` to seed a new pseudorandom
-        stream generator `R`. Memoize for rest of interval.
-    - Seed another pseudorandom stream generator `R'` with `T` and `"Trap"`.
-        Memoize for rest of interval.
-- pull `Length` bytes from `R` to form the `TrapMap` for this cell, one byte
-    per payload codeword.
-- pull `Length * Wordsize` from `R'` to form `Noise` for this cell.
-- mask all but the low 1 through 5 bits in each `TrapMap` byte, to select which
-    of the 2 through 64 bits of each codeword will be the trap bit.
-- Initialize a `Header` of `Length` 0-bits
-- for each `codeword`:
-    - pull the next (`Wordsize`) bits from input `Payload`
-	- compare the trap bit for payload `codeword` with corresponding trap bit in
-        `Noise` codeword.  If NOT equal:
-		- invert all `Wordsize` bits of this `codeword`.
-        - set the corresponding bit of the `Header` to 1
-	- Append this `codeword` to `EncodedPayload`.
-- After all of `Payload` has been processed, output `Header` (padded to the
-    nearest byte) prepended to
-    `EncodedPayload`
+`Trap.Client.EncodeCell(Payload,N,R,Wordsize) -> ([Chunk_i],[Inv_i])`
+---
+Runs on a client each time it wants to put data in a cell
 
-`TrapDecode(Co,Wordsize,Length) -> (DecodedPayload)`:
+### inputs:
+- `Payload`: A message to encode
+- `N`: The noise generator from `Trap.Client.IntervalInit`
+- `R`: The position generator from `Trap.Client.IntervalInit`
+- `Wordsize`: The number of bits per output chunk. One in every `Wordsize` bits
+    is a trap bit.
+### outputs
+- `[Chunk_i]`: A list of encoded chunks of the payload. If `p` is the `i`th
+    number between 0 and `Wordsize` generated by `R`, then the `p`th bit of
+    `Chunk_i` must be equal to the `p`th bit of the `i`th `Wordsize`-bit chunk
+    produced by `N`.
+- `[Inv_i]`: A list of bits. `Inv_i` is 1 if and only if `Chunk_i` had to be
+    inverted to get the trap bit to match the noise chunk in that position.
+
+`Trap.Relay.Decode([Chunk_i],[Inv_i]) -> (DecodedPayload)`:
 ---
 Runs on relay once all ciphertext from clients and trustees has been collected
 for this cell.
 
 ### inputs:
-- `Co`: The encoded contents of this cell (owned by `o`). This is the result of
-    xoring all clients' and trustees' ciphertext.
-- `Wordsize`: The number of bits per chunk, where each chunk contains one trap
-    bit
-- `Length`: The number of chunks in this cell's payload
+- `[Chunk_i]`: A list of encoded chunks of the payload (the output of
+    `EncodeCell`)
+- `[Inv_i]`: The list of inversion bits from `EncodeCell`
 
 ### outputs:
 - `DecodedPayload`: The original payload for this cell (the `Payload` argument
-    to `TrapEncode`)
+    to `EncodeCell`). Generated by inverting the elements of `[Chunk_i]` that
+    correspond to 1-bits in `[Inv_i]` and concatenating the results.
 
-### pseudocode:
-- Separate out the first `Length` bits (padded to the nearest byte) and
-    interpret as the `Header`.
-- Allocate `Length*Wordsize` bits for `DecodedPayload` (padded to the nearest
-    byte
-- For each `Wordsize` bit `codeword` in the rest of `Co`:
-    - If the corresponding bit in `Heaader` is 1, copy the bitwise negation of
-        `codeword` to the next `Wordsize` bits of `DecodedPayload`
-    - Otherwise, copy `codeword` to the next `Wordsize` bits of
-        `DecodedPayload`.
-- Output `DecodedPayload`.
-
-`TrapCheck(SID,SM',[Cc],[Sched_o]) -> (ok, Other)`:
+`Trap.Trustee.Check(h,[To],[([Chunk_ci]|[Inv_ci])]) -> (ok, Other)`:
 ---
 Runs on all trustees after the end of an interval, after all trap-encoding
 secrets have been revealed
 
 ### inputs:
-- `SID`: session ID
+- `h`: The well known hash for this interval (`H{SID, FirstCell,
+    "IntervalInit"`)
 - `[To]'`: List of composite per-interval trap secrets for each slot owner `o`.
     `To` is `H{To1,...,Ton}`, where `Toj` is the per-interval trap encoding
     secret between `o` and trustee `j`.
-- `[Cc]`: The encoded cleartext in each cell
-- `[Sched_o]`: List of the scheduling information for each cell. Each list
-    element is a tuple of `(Cell | K'o | Wordsize | Length)`.
+- `[([Chunk_ci]|[Inv_ci])]`: The encoded cleartext in each cell `c` (with
+    `[Chunk_ci]` and `[Inv_ci]` as defined in `EncodeCell`)
 
 ### outputs:
-- `ok`: a boolean indicating whether or not all trap bits were correct
+- `ok`: a boolean indicating whether or not all trap bits were correct.
+    Generated by re-computing the pseudorandom generators `N` and `R` from
+    `IntervalInit`, and re-generating the noise and trap bit positions to
+    compare to the encoded chunks transmitted.
 - `Other`: Any other information necessary for starting the blame process
     (TODO)
-
-### pseudocode:
-- compute the well-known pseudorandom generator
-    `h = H{SID, FirstCell, "TrapSched"}` for this interval
-- For each cell `c` owned by slow-owner `o`:
-    - If not already computed in this interval:
-        - Use `To` and `"Noise`" to seed a new pseudorandom stream generator
-            `Ro`. Memoize for the rest of the interval.
-        - Use `To` and `"Trap`" to seed a new pseudorandom stream generator
-            `Ro'`. Memoize for the rest of the interval.
-    - Pull `Length` bytes from `Ro'` to form the `TrapMap` for this cell, as in
-        `TrapEncode`, and mask similarly.
-    - Pull `Length * Wordsize` bytes from `Ro` to form the `Noise` for this
-        cell.
-    - Ignore the `Header` bits of `Cc`. For each chunk of `Wordsize` bits in the
-        rest of `Cc`:
-        - Assert that the trap bit for this chunk is equal to the trap bit in
-            the corresponding chunk of `Noise`. If not equal, set `ok` to
-            false and/or enter `blame`.
-- If all trap bits were correct, set `ok` to true
