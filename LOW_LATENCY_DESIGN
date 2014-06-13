@@ -84,6 +84,25 @@ correct output of the DC-net, each client signs the output of the previous
 round and transmits it to the relay with its ciphertext, the relay accumulates
 these signatures and transmits them to all clients along with the cleartext.
 
+Alternatively, we can introduce a verifiable DC-net (Verdict) slot for each
+active symmetric DC-net slot. At the beginning of each interval, each trustee i
+produces a DH key, t_j, and shares the public keys, T_j, as well as the sum of
+the shared secrets with the clients computed using the well-known anonymous DH
+keys, C_j, such that s_j = SUM(C_j^t_i, j). Upon receiving the public DH keys
+from trustees, clients compute their shared secrets with the trustees. In
+exchange k, a verdict slot will be encrypted with a generator, g_k, derived
+from the hash of the cleartext from exchange k-1.  Specifically, client j
+computes a verdict element x_j = g_k^-(SUM(T_j*c_j, i)). If client j owns the
+slot, he can multiply in a message, m: x_j = m * x_j.  This then becomes his
+ciphertext for that slot. The relay computes each trustee j's ciphertext,
+g_k^s_j. Upon receiving all these ciphertext, the relay multiples the client
+ciphertexts and trustee ciphertexts. If g_k is the same for all, all values
+cancel out revealing the message m.  The message m contains a seed used to
+encrypt the symmetric DC-net ciphertext in the same exchange. In addition to
+transmitting x_j, clients transmit a proof of knowledge, proving that either
+they own the DH key associated with the slot or their m = 1, or a null
+encryption.
+
 ======================
 Preventing Disruption
 ======================
