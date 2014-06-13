@@ -87,16 +87,21 @@ these signatures and transmits them to all clients along with the cleartext.
 Alternatively, we can introduce a verifiable DC-net (Verdict) slot for each
 active symmetric DC-net slot. At the beginning of each interval, each trustee i
 produces a DH key, t_j, and shares the public keys, T_j, as well as the sum of
-the shared secrets with the clients computed using the well-known anonymous DH
-keys, C_j, such that s_j = SUM(C_j^t_i, j). Upon receiving the public DH keys
-from trustees, clients compute their shared secrets with the trustees. In
-exchange k, a verdict slot will be encrypted with a generator, g_k, derived
+the shared secrets with the clients computed using each client j's well-known
+public DH key, C_j, and the slot's well-known DH key, A, such that s_j =
+SUM(C_j^t_i, j) + A^t_i. Upon receiving the public DH keys from trustees,
+clients compute their shared secrets with the trustees, the anonymous slot
+owner computes two secrets one for his client DH key and another for the slot
+DH key.
+
+In exchange k, a verdict slot will be encrypted with a generator, g_k, derived
 from the hash of the cleartext from exchange k-1.  Specifically, client j
 computes a verdict element x_j = g_k^-(SUM(T_j*c_j, i)). If client j owns the
-slot, he can multiply in a message, m: x_j = m * x_j.  This then becomes his
+slot, c_j consists of both the private keys for the well-known client and slot
+keys.  He can then multiply in a message, m: x_j = m * x_j.  This becomes his
 ciphertext for that slot. The relay computes each trustee j's ciphertext,
 g_k^s_j. Upon receiving all these ciphertext, the relay multiples the client
-ciphertexts and trustee ciphertexts. If g_k is the same for all, all values
+ciphertexts and trustee ciphertexts.  If g_k is the same for all, all values
 cancel out revealing the message m.  The message m contains a seed used to
 encrypt the symmetric DC-net ciphertext in the same exchange. In addition to
 transmitting x_j, clients transmit a proof of knowledge, proving that either
