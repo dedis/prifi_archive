@@ -22,6 +22,13 @@ def _exchange(exchange_data):
             print("{}: {}".format(i, message))
     return None
 
+def call(me, client_id, name, data):
+    if me.id == client_id:
+        return globals()["_" + name](data)
+    return requests.post("http://localhost:{}/{}".format(client_id + 12345, name),
+                        headers={"content-type" : "application/json"},
+                        data=json.dumps(data))
+
 def main():
     global client
 
@@ -54,12 +61,7 @@ def main():
         "client_id" : client_id,
         "data" : transmission,
     }
-    if client_id == 0:
-        _exchange(d)
-    else:
-        resp = requests.post("http://localhost:12345/exchange",
-                            headers={"content-type" : "application/json"},
-                            data=json.dumps(d))
+    call(client, 0, "exchange", d)
 
 if __name__ == "__main__":
     main()
