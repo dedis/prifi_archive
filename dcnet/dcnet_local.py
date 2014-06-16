@@ -29,10 +29,11 @@ def main():
     for i, client in enumerate(clients):
         message = "This is client-{}'s message.".format(i)
         transmission = client.prepare_exchange(0, message)
-        messages = clients[0].handle_exchange(0, i, transmission)
-        if messages is not None:
-            for i, message in enumerate(messages):
-                print("{}: {}".format(i, message))
+        for j, receiver in enumerate(clients):
+            messages = receiver.handle_exchange(0, i, transmission)
+            if messages is not None:
+                for k, message in enumerate(messages):
+                    print("{}: {}".format(j, message))
 
 if __name__ == "__main__":
     main()

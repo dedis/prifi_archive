@@ -29,10 +29,9 @@ class Client:
         # use shared secrets to seed pseudo-random streams for longer messages
         self.prsgs = [random.Random(secret) for secret in self.shared_secrets]
 
-        # we're the leader
-        if self.id == 0:
-            self.received = 0
-            self.exchange = list()
+        # data structures to aggregate ciphertext
+        self.received = 0
+        self.exchange = list()
 
     def prepare_exchange(self, exchange_id, message):
         transmission = list()
@@ -54,9 +53,6 @@ class Client:
         return transmission
 
     def handle_exchange(self, exchange_id, client_id, data):
-        # only the leader should ever receive
-        assert self.id == 0
-
         # make sure all slots are present
         assert len(data) == self.n_clients
 

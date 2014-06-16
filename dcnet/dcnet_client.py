@@ -22,7 +22,25 @@ def _exchange(exchange_data):
             print("{}: {}".format(i, message))
     return None
 
-def call(me, client_id, name, data):
+@route("/start", method="POST")
+def start():
+    return _start(request.json)
+
+def _start(start_data):
+    # run for one exchange (each client gets one slot)
+    exchange_id, client_id = 0, client.id
+    message = "This is client-{}'s message.".format(client_id)
+    transmission = client.prepare_exchange(exchange_id, message)
+    d = {
+        "exchange_id" : exchange_id,
+        "client_id" : client_id,
+        "data" : transmission,
+    }
+    for i in range(client.n_clients):
+        r = client_call(client, i, "exchange", d)
+    return None
+
+def client_call(me, client_id, name, data):
     if me.id == client_id:
         return globals()["_" + name](data)
     return requests.post("http://localhost:{}/{}".format(client_id + 12345, name),
@@ -51,17 +69,6 @@ def main():
 
     # start the http server
     run(port=client_id + 12345)
-
-    # run for one exchange (each client gets one slot)
-    exchange_id = 0
-    message = "This is client-{}'s message.".format(client_id)
-    transmission = client.prepare_exchange(exchange_id, message)
-    d = {
-        "exchange_id" : exchange_id,
-        "client_id" : client_id,
-        "data" : transmission,
-    }
-    call(client, 0, "exchange", d)
 
 if __name__ == "__main__":
     main()
