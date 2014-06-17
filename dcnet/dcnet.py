@@ -23,7 +23,7 @@ class Client:
     def compute_secrets(self, public_keys):
         # complete the Diffie-Hellman exchange
         self.public_keys = public_keys
-        self.n_clients = len(self.public_keys)
+        self.n_clients = len(public_keys)
         self.shared_secrets = [shared_secret(public_key, self.private_key) for public_key in self.public_keys]
 
         # use shared secrets to seed pseudo-random streams for longer messages

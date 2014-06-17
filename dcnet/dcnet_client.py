@@ -50,10 +50,10 @@ def client_call(me, client_id, name, data):
 def main():
     global client
 
-    p = argparse.ArgumentParser(description="Local, insecure DC-net test")
+    p = argparse.ArgumentParser(description="Basic DC-net client")
     p.add_argument("-c", "--clients", type=int, metavar="N", default=8, dest="n_clients")
-    p.add_argument("private_data")
     p.add_argument("data_dir")
+    p.add_argument("private_data")
     opts = p.parse_args()
 
     # start new client using id and key from private_data
