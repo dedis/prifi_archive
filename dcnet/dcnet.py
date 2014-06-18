@@ -13,64 +13,63 @@ def shared_secret(public, private):
 def randbits(rand, bits):
     return rand.randrange((1 << bits) - 1)
 
+def secret_streams(private_key, public_keys):
+    return [random.Random(shared_secret(p, private_key)) for p in public_keys]
+
 class Client:
 
     def __init__(self, client_id, private_key):
         self.id = client_id
         self.private_key = private_key
-        self.slot_size = 512
 
-    def compute_secrets(self, public_keys):
-        # complete the Diffie-Hellman exchange
-        self.public_keys = public_keys
-        self.n_clients = len(public_keys)
-        self.shared_secrets = [shared_secret(public_key, self.private_key) for public_key in self.public_keys]
+    def compute_secrets(self, trustee_keys):
+        # complete the Diffie-Hellman exchange to generate streams
+        self.n_peers = len(trustee_keys)
+        self.prsgs = secret_streams(self.private_key, trustee_keys)
 
-        # use shared secrets to seed pseudo-random streams for longer messages
-        self.prsgs = [random.Random(secret) for secret in self.shared_secrets]
+    def encode(self, payload_len, message):
+        # combine all the coin flips
+        coins = [randbits(self.prsgs[i], payload_len) for i in range(self.n_peers)]
+        data = functools.reduce(operator.xor, coins, 0)
 
-        # data structures to aggregate ciphertext
-        self.received = 0
-        self.exchange = list()
+        # add message if present
+        if message != None:
+            message = int.from_bytes(message, "big")
+            data ^= message
+        return data
 
-    def prepare_exchange(self, exchange_id, message):
-        transmission = list()
-        for slot in range(self.n_clients):
-            # combine all the coin flips
-            coins = [randbits(self.prsgs[i], self.slot_size) for i in range(self.n_clients) if i != self.id]
-            data = functools.reduce(operator.xor, coins, 0)
+class Trustee:
 
-            # add message if it's my turn
-            if slot == self.id:
-                message = message.encode("utf-8")
-                message = int.from_bytes(message, "big")
-                assert message.bit_length() <= self.slot_size
-                data ^= message
+    def __init__(self, trustee_id, private_key):
+        self.id = trustee_id
+        self.private_key = private_key
 
-            # add the slot
-            transmission.append(data)
+    def compute_secrets(self, client_keys):
+        self.n_peers = len(client_keys)
+        self.prsgs = secret_streams(self.private_key, client_keys)
 
-        return transmission
+    def encode(self, payload_len):
+        coins = [randbits(self.prsgs[i], payload_len) for i in range(self.n_peers)]
+        data = functools.reduce(operator.xor, coins, 0)
+        return data
 
-    def handle_exchange(self, exchange_id, client_id, data):
-        # make sure all slots are present
-        assert len(data) == self.n_clients
+class Relay:
 
-        # update the current state of exchange
-        self.exchange.append(data)
-        self.received += 1
+    def __init__(self):
+        pass
 
-        # if we have all the pieces, extract the message
-        if self.received == self.n_clients:
-            messages = [0] * self.n_clients
-            for share in self.exchange:
-                for i, slot in enumerate(share):
-                    messages[i] ^= slot
+    def decode_start(self):
+        self.data = 0
+        self.client_received = 0
+        self.trustee_received = 0
 
-            for i, message in enumerate(messages):
-                messages[i] = message.to_bytes(self.slot_size // 8, "big")
-                messages[i] = messages[i].decode("utf-8")
+    def decode_client(self, client_id, payload):
+        self.data ^= payload
+        self.client_received += 1
 
-            self.received = 0
-            self.exchange = list()
-            return messages
+    def decode_trustee(self, trustee_id, payload):
+        self.data ^= payload
+        self.trustee_received += 1
+
+    def decode_final(self):
+        return self.data.to_bytes(self.data.bit_length() + 7 // 8, "big")
