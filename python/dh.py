@@ -27,7 +27,7 @@ p = _s2l("B10B8F96 A080E01D DE92DE5E AE5D54EC 52C99FBC FB06A3C6"
 q = _s2l("F518AA87 81A8DF27 8ABA4E7D 64B7CB9D 49462353")
 
 class PublicKey:
-    def __init__(self, y):
+    def __init__(self, y, g = g, p = p, q = q):
         self.g = g
         self.p = p
         self.q = q
@@ -47,11 +47,11 @@ class PublicKey:
         return self.dsa.verify(msg, sig)
 
 class PrivateKey(PublicKey):
-    def __init__(self):
+    def __init__(self, g = g, p = p, q = q):
         self.x = random.randrange(1 << (q.bit_length() - 1), q - 1)
         y = pow(g, self.x, p)
-        PublicKey.__init__(self, y)
-        self.pubkey = PublicKey(self.y)
+        PublicKey.__init__(self, y, g, p, q)
+        self.pubkey = PublicKey(self.y, g, p, q)
 
     def _gen_dsa(self):
         return DSA.construct((self.y, self.g, self.p, self.q, self.x))

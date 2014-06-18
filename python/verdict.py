@@ -6,6 +6,8 @@ import random
 from Crypto.Hash import SHA256
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
+from dh import PrivateKey, PublicKey
+
 def _s2l(s):
     s = bytes("".join(s.split()), "UTF-8")
     s = binascii.a2b_hex(s)
@@ -28,11 +30,6 @@ def rand_in_q():
 def gen_key():
     return rand_in_q()
 
-class PrivateKey:
-    def __init__(self):
-        self.x = rand_in_q()
-        self.y = pow(g, self.x, p)
-
 class Verdict:
     def __init__(self, key, public_keys):
         self.key = key
@@ -40,7 +37,7 @@ class Verdict:
         self.shared_secret = 1
         self.index = -1
         for idx in range(len(self.public_keys)):
-            ks = self.public_keys[idx]
+            ks = self.public_keys[idx].y
             self.shared_secret = (self.shared_secret * ks) % p
             if ks == self.key.y:
                 self.index = idx
@@ -62,7 +59,7 @@ class Verdict:
         return data * pow(generator, self.shared_secret, p)
 
     def _challenge(self, generator, ciphertext, index):
-        data_key = self.public_keys[index]
+        data_key = self.public_keys[index].y
 
         v1 = rand_in_q()
         v2 = rand_in_q()
@@ -105,7 +102,7 @@ class Verdict:
     def verify(self, generator, ciphertext, proof, data_index, user_index):
         c1, c2, r1, r2 = proof
         commitment = self.commitments[user_index]
-        data_key = self.public_keys[data_index]
+        data_key = self.public_keys[data_index].y
 
         t1 = (pow(commitment, c1, p) * pow(g, r1, p)) % p
         t2 = (pow(ciphertext, c1, p) * pow(generator, r1, p)) % p
@@ -129,9 +126,9 @@ def main():
     keys = []
     pkeys = []
     for idx in range(count):
-        k = PrivateKey()
+        k = PrivateKey(g, p, q)
         keys.append(k)
-        pkeys.append(k.y)
+        pkeys.append(k.pubkey)
 
     verdicts = []
     commitments = []
