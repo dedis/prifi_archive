@@ -1,0 +1,30 @@
+import argparse
+import json
+import os
+import random
+import requests
+
+from bottle import request, route, run
+
+import dcnet
+
+@route("/client_ciphertext", method="POST")
+def client_ciphertext():
+    return _client_ciphertext(request.json)
+
+def _client_ciphertext(client_data):
+    client_id = client_data["client_id"]
+    data = client_data["data"]
+    relay.decode_client(client_id, data)
+    print(relay.decode_final().decode("utf-8"))
+    return None
+
+def main():
+    global relay
+    relay = dcnet.Relay()
+
+    # start the http server
+    run(port=11111)
+
+if __name__ == "__main__":
+    main()
