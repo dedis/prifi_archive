@@ -56,16 +56,20 @@ included twice, once by the trustee and once by the client.
 In LLD, slots have a fundamental unit of cells.  Trustees use the
 client/trustee shared secrets, the current interval index, the current cell
 index, and the slot DH key as seeds to random number generators -- hash(secret
-| interval index | cell index | slot DH key) -- producing a ciphertext for each
+| interval index | cell index | slot index) -- producing a ciphertext for each
 client.  Trustees generate these shared ciphertexts in batches, at a minimum of
 a cell size, Xor them together, and deliver the resulting byte array to the
 relay.
 
 Similarly, the clients use the client/trustee shared secrets as seeds to random
 number generators producing a ciphertext for each trustee.  The client then
-Xors these together and transmits at least an appropriate number of cells to
-the upstream relay.  The number of cells depends on the previous state of the
-cleartext and is defined in the section discussing slot format.
+Xors these together and transmits an appropriate number of cells to the
+upstream relay.  The number of cells can depend on a many number of things,
+such as fairness, policy, and the number of cells requested by the slot. This
+document, for now, only considers the number of cells requested by the slot,
+such that the output of exchange i specifies the number of cells requested in
+exchange i+1. This specific details of slot format are defined in the section
+discussing slot format.
 
 The relay accumulates trustee ciphertext and reserves it for later use.  After
 receiving a ciphertext from all clients for the given interval, the relay
