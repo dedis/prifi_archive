@@ -40,11 +40,16 @@ def main():
     global relay
 def main():
     global relay
+
+    p = argparse.ArgumentParser(description="Basic DC-net trustee")
+    p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
+    opts = p.parse_args()
+
     relay = dcnet.Relay()
     relay.decode_start()
 
     # start the http server
-    run(port=11111)
+    run(port=opts.port)
 
 if __name__ == "__main__":
     main()

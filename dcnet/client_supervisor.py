@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import requests
 import time
@@ -8,37 +9,48 @@ import sys
 
 def main():
     p = argparse.ArgumentParser(description="Start up a number of clients on localhost")
-    p.add_argument("-c", "--clients", type=int, metavar="N", default=10, dest="n_clients")
-    p.add_argument("-t", "--trustees", type=int, metavar="N", default=3, dest="n_trustees")
-    p.add_argument("data_dir")
+    p.add_argument("config_dir")
     opts = p.parse_args()
 
-    n_clients = opts.n_clients
-    n_trustees = opts.n_trustees
-    data_dir = opts.data_dir
+    # find the ids and addresses of participants to start
+    with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
+        data = json.load(fp)
+        relay_ids, relay_ips = zip(*[(r["id"], r["ip"]) for r in data["relays"]])
+        client_ids, client_ips = zip(*[(c["id"], c["ip"]) for c in data["clients"]])
+        trustee_ids, trustee_ips = zip(*[(t["id"], t["ip"]) for t in data["servers"]])
+
+    with open(os.path.join(opts.config_dir, "session.json"), "r", encoding="utf-8") as fp:
+        data = json.load(fp)
+        session_id = data["session-id"]
+
+    # XXX assuming that relay is already running on addresses from config
+    # so we don't start them up here - this makes debugging easier for now
+
     try:
         # spawn n client processes
-        print("Launching {} clients".format(n_clients))
+        print("Launching {} clients".format(len(client_ids)))
         procs = []
-        for i in range(n_clients):
-            private_data = os.path.join(opts.data_dir, "client-{}.json".format(i))
-            p = subprocess.Popen([sys.executable, "dcnet_client.py", data_dir, private_data],
+        for iden, ip in zip(client_ids, client_ips):
+            private_data = os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id))
+            p = subprocess.Popen([sys.executable, "dcnet_client.py", opts.config_dir,
+                                private_data, "-p", ip.split(":")[1]],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             procs.append(p)
 
         # same with trustees
-        print("Launching {} trustees".format(n_trustees))
-        for i in range(n_trustees):
-            private_data = os.path.join(opts.data_dir, "trustee-{}.json".format(i))
-            p = subprocess.Popen([sys.executable, "dcnet_trustee.py", data_dir, private_data],
+        print("Launching {} trustees".format(len(trustee_ids)))
+        for iden, ip in zip(trustee_ids, trustee_ips):
+            private_data = os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id))
+            p = subprocess.Popen([sys.executable, "dcnet_trustee.py", opts.config_dir,
+                                private_data, "-p", ip.split(":")[1]],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             procs.append(p)
 
         # initiate an interval on all clients and trustees
         time.sleep(1)
-        print("Starting dc-net on {} clients and {} trustees".format(n_clients, n_trustees))
-        for i in range(n_clients + n_trustees):
-            r = requests.post("http://localhost:{}/interval_conclusion".format(i + 12345))
+        print("Starting dc-net")
+        for ip in client_ips + trustee_ips:
+            r = requests.post("http://{}/interval_conclusion".format(ip))
 
         while True:
             time.sleep(1)
@@ -47,7 +59,7 @@ def main():
     print("Cleaning up")
     for i, p in enumerate(procs):
         p.wait()
-        print(("Client {}" if i < n_clients else "Trustee {}").format(i))
+        print("Client {}".format(i))
         print("-"*20)
         print(p.stderr.read().decode("utf-8"))
         print("-"*20)

@@ -7,54 +7,59 @@ import dcnet
 
 def main():
     p = argparse.ArgumentParser(description="Local, insecure DC-net test")
-    p.add_argument("data_dir")
-    p.add_argument("-c", "--clients", type=int, metavar="N", default=10, dest="n_clients")
-    p.add_argument("-t", "--trustees", type=int, metavar="N", default=3, dest="n_trustees")
+    p.add_argument("config_dir")
     opts = p.parse_args()
 
-    # start multiple clients in the same process
-    clients = []
-    n_clients = opts.n_clients
-    for i in range(n_clients):
-        with open(os.path.join(opts.data_dir, "client-{}.json".format(i)), "r", encoding="utf-8") as fp:
-            data = json.load(fp)
-            client_id = data["n"]
-            private_key = data["private_key"]
-            clients.append(dcnet.Client(client_id, private_key))
-
-    # same with trustees
-    trustees = []
-    n_trustees = opts.n_trustees
-    for i in range(n_trustees):
-        with open(os.path.join(opts.data_dir, "trustee-{}.json".format(i)), "r", encoding="utf-8") as fp:
-            data = json.load(fp)
-            trustee_id = data["n"]
-            private_key = data["private_key"]
-            trustees.append(dcnet.Trustee(trustee_id, private_key))
-
-    # give everyone the public session data
-    with open(os.path.join(opts.data_dir, "session.json"), "r", encoding="utf-8") as fp:
+    # load the public session data
+    with open(os.path.join(opts.config_dir, "session.json"), "r", encoding="utf-8") as fp:
         data = json.load(fp)
-        trustee_public_keys = data["trustee_public_keys"][:n_trustees]
-        for client in clients:
-            client.compute_secrets(trustee_public_keys)
-        client_public_keys = data["client_public_keys"][:n_clients]
-        for trustee in trustees:
-            trustee.compute_secrets(client_public_keys)
+        session_id = data["session-id"]
+        relay_ids = [r["id"] for r in data["relays"]]
+        client_ids, client_keys = zip(*[(c["id"], c["dhkey"]) for c in data["clients"]])
+        trustee_ids, trustee_keys = zip(*[(s["id"], s["dhkey"]) for s in data["servers"]])
 
-    # start a single relay
+    # start a single relay for now
     relay = dcnet.Relay()
     relay.decode_start()
 
-    # run for one cell (first client gets ownership)
-    messages = ["This is client-0's message.".encode("utf-8")]
-    messages += [None] * (n_clients - 1)
+    # start multiple clients in the same process
+    clients = []
+    for iden in client_ids:
+        with open(os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id)), "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+            private_key = data["private_key"]
+            clients.append(dcnet.Client(iden, private_key))
+
+    # same with servers
+    trustees = []
+    for iden in trustee_ids:
+        with open(os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id)), "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+            private_key = data["private_key"]
+            trustees.append(dcnet.Trustee(iden, private_key))
+
+    # share public keys
+    for client in clients:
+        client.compute_secrets(trustee_keys)
+    for trustee in trustees:
+        trustee.compute_secrets(client_keys)
+
+    # load the post-shuffle slots
+    with open(os.path.join(opts.config_dir, "shuffle.json"), "r", encoding="utf-8") as fp:
+        data = json.load(fp)
+        slots = data["slots"]
+
+    # run for one slot
+    messages = ["This is client-{}'s message.".format(i) for i in range(len(clients))]
     for i, client in enumerate(clients):
-        cell = client.encode(len(messages[0]), messages[i])
-        relay.decode_client(i, cell)
+        if client_keys[i] == slots[0]:
+            cell = client.encode(len(messages[0]), messages[i].encode("utf-8"))
+        else:
+            cell = client.encode(len(messages[0]), None)
+        relay.decode_client(None, cell)
     for i, trustee in enumerate(trustees):
         cell = trustee.encode(len(messages[0]))
-        relay.decode_trustee(i, cell)
+        relay.decode_trustee(None, cell)
 
     # make sure the message survives
     print(relay.decode_final().decode("utf-8"))
