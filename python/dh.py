@@ -47,8 +47,10 @@ class PublicKey:
         return self.dsa.verify(msg, sig)
 
 class PrivateKey(PublicKey):
-    def __init__(self, g = g, p = p, q = q):
-        self.x = random.randrange(1 << (q.bit_length() - 1), q - 1)
+    def __init__(self, x = None, g = g, p = p, q = q):
+        self.x = x
+        if self.x is None:
+            self.x = random.randrange(1 << (q.bit_length() - 1), q - 1)
         y = pow(g, self.x, p)
         PublicKey.__init__(self, y, g, p, q)
         self.pubkey = PublicKey(self.y, g, p, q)

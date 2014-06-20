@@ -28,7 +28,7 @@ def main():
 
     with open(os.path.join(opts.output_dir, "shuffle.json"), "w", encoding="utf-8") as fp:
         json.dump(shuffle, fp)
-    print("Wrote post-shuffle config to {}".format(os.path.join(opts.output_dir, "shuffle.json")))
+    print("Generated post-shuffle config to {}".format(os.path.join(opts.output_dir, "shuffle.json")))
 
 if __name__ == "__main__":
     main()

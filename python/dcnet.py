@@ -170,7 +170,7 @@ class Client:
         for nidx in range(len(self.nyms_in_processing)):
             nym = self.nyms_in_processing[nidx]
             for idx in range(offset, len(self.pub_nym_keys)):
-                if nym.public_key().element != self.pub_nym_keys[idx].element:
+                if nym.pubkey.y != self.pub_nym_keys[idx].y:
                     continue
                 self.own_nym_keys.append((nym, idx))
                 self.own_nyms[idx] = nym
