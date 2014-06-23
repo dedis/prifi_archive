@@ -3,7 +3,7 @@ Created on Jun 23, 2014
 
 @author: eleanor
 '''
-import Crypto.Random.random.StrongRandom
+import random
 import Crypto.Hash
 
 H = Crypto.Hash.SHA.new()
@@ -29,8 +29,10 @@ class TrapClient:
         for s in trustee_secrets:
             self.Tt[s] = self.h.digest() ** s
         self.T = H.new(self.Tt)
-        self.N = Crypto.Random.random.StrongRandom((self.T, "Noise"))
-        self.R = Crypto.Random.random.StrongRandom((self.T, "Position"))
+        random.seed((self.T, "Noise"))
+        self.N = random.getstate()
+        random.seed((self.T, "Position"))
+        self.R = random.getstate()
 
     def encode_cell(self, payload, noise_gen, pos_gen, wordsize):
         '''
