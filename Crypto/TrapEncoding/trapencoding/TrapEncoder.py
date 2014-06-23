@@ -24,8 +24,8 @@ class TrapEncoder:
     def __init__(self, chunk_size, trap_bit_gen, background_stream):
         """ Initializes all attributes to specified or empty values """
         self.chunk_size = chunk_size
-        self.trap_bit_gen = trap_bit_gen
-        self.background_stream = background_stream
+        self.trap_bit_gen = lambda:(yield trap_bit_gen.randint(0, chunk_size - 1))
+        self.background_stream = lambda:(yield trap_bit_gen.getrandombits(chunk_size))
         self.trap_bits = []
         self.background = []
 
