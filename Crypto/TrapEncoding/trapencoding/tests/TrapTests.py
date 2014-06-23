@@ -1,4 +1,6 @@
 from Crypto.Random import random
+from bitstring import Bits, BitArray
+from trapencoding.Inversion import InversionEncoder
 import string
 import time
 import numpy
@@ -16,12 +18,12 @@ def correctness(TE):
     return True
 
 def encode_decode(TE, message):
-    (index, cipherchunks) = TE.encode(message)
+    index, header, cipherchunks = TE.encode(message)
     if TE.verify(cipherchunks, index) == False:
         print("[x] Failed encoding: Problem with trap bits for {0}"
               .format(message))
         return False
-    new_text = TE.decode(cipherchunks, index)
+    new_text = TE.decode(header, cipherchunks)
     if new_text != message:
         print("[x] Failed decoding: Expected {0} but got {1}"
               .format(new_text, message))
@@ -66,3 +68,14 @@ def speed_encode_msg(TE, message):
     TE.encode(message)
     stop = time.time()
     return stop - start
+
+if __name__ == '__main__':
+    # Randomly choose a trap bit
+    chunk_size = 32
+    trap_bit_gen = lambda:(yield random.randint(0,chunk_size - 1))
+    # Background stream is blocks of 1025 random bits
+    back_gen = lambda:(yield Bits(uint=random.getrandbits(chunk_size),
+                                  length=chunk_size))
+    IE = InversionEncoder(chunk_size, trap_bit_gen, back_gen)
+    correctness(IE)
+    vary_message_size(IE, 128, 16 * 1024)

@@ -31,19 +31,19 @@ class TrapEncoder:
 
     @abstractmethod
     def encode(self, input_text):
-        """ Takes plaintext to encode and returns a tuple (index, chunks), where
-            index is the index of the first chunk of the background cipherstream
-            used in encoding this text, and chunks is list of Bits objects
+        """ Takes plaintext to encode and returns a tuple (index, header,
+        chunks), where index is the index of the first chunk of the background
+        cipherstream used in encoding this text, and chunks is list of Bits
+        objects
             encoding the plaintext
             """
         return
 
     @abstractmethod
-    def decode(self, cipherchunks, index):
-        """ Takes a list of Bits objects (cipherchunks)
+    def decode(self, cipherheader, cipherchunks):
+        """ Takes a list of Bits objects (cipherchunks) and their corresponding
+            header bits indicating whether they should be flipped (cipherheader)
             and returns the plaintext.
-            index is the beginning of the portion of the cypherstream used,
-            if needed.
             """
         return
 
