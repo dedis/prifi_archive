@@ -9,10 +9,11 @@ class Relay:
     classdocs
     '''
 
-    def __init__(self, params):
+    def __init__(self, trap_encoder):
         '''
         Constructor
         '''
+        self.te = trap_encoder
 
-    def decode(self, header, chunks):
-        return
+    def decode_cell(self, header, chunks):
+        return self.te.decode(header, chunks)
