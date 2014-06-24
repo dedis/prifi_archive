@@ -83,12 +83,34 @@ trustee ciphertext.
 Certifying the Output
 ======================
 
-In order to certify the output of an exchange, or that the relay forwarded the
-correct output of the DC-net, each client signs the output of the previous
-round and transmits it to the relay with its ciphertext, the relay accumulates
-these signatures and transmits them to all clients along with the cleartext.
+We propose three methods for certifyiing the output of a slot: 1) each client
+signing off on the previous cleartext, 2) a shared secret among the clients
+that decrypts their ciphertext to reveal DC-net ciphertext, and 3) a per-nym
+verifiable DC-net that unclocks the nyms ciphertext using a similar shared
+secret between the anonymous owner and all clients.
 
-Alternatively, we can introduce a verifiable DC-net (Verdict) slot for each
+In the first approach, clients produce a signature using the previous exchanges
+cleartext, the session, interval, and exchange identifiers, ensuring that even
+if the same cleartext results for each exchange the client will be signing
+unique data. The relay accumulates the client signature from each client and
+transmits them back to all clients.
+
+In the next approach, each client shares a secret with every other client and
+computes a group-wide shared secret. The clients submit two ciphertexts along
+with their ciphertext: an encrypted key used encrypt their ciphertext and their
+portion of the decryption key.  Each client i has a private key, x_i, and a
+shared public key, g^x_i. In order to compute , and computes their portion of
+the shared secret as s_i = multi(g^x_j^x_i, j < i) * multi(-1 * g^x_j^x_i -1, j
+> i). The portion of the decryption key, d_i, is computed as g^(hash(m))^s_i,
+where m is the set of messages from the previous exchange concatenated with the
+current session, interval, and exchange identifiers. Multiplying all the d_i
+together results in a value of 1. Hence, the encrypted key, e_i, takes the form
+of key_i * d_i. To derive the key, multiply d_i * multi(e_j, j != i). The
+ciphertext transmitted with this is then encrypted using this key and can be
+decrypted by the relay using this key. At the conclusion of each interval,
+clients provide a proof of correctness of the form...
+
+In this approach, we introduce a verifiable DC-net (Verdict) slot for each
 active symmetric DC-net slot. After the shuffle, each client j obtains a shared
 secret, s_j, with the anonymous slot owner using their respective well-known DH
 keys. The slot owner, client i, sets his s_i = -SUM(s_j, j).  In exchange k, a
@@ -296,7 +318,7 @@ VI.   Client / Relay Interaction
 VII.  Configuration
 ===============================================================================
 Each Dissent deployment has several configurable layers: system, session,
-post-shuffle and interval.
+pseudonym and interval.
 
 =====================
 System Configuration
@@ -357,11 +379,11 @@ correctness of the session configuration file.
   }
 }
 
-===========================
-Post-Shuffle Configuration
-===========================
+========================
+Pseudonym Configuration
+========================
 
-The post shuffle configuration consists of anonymous DH keys in a fixed order
+The pseudonym configuration consists of anonymous DH keys in a fixed order
 representing the order fo the communication slots during exchanges. This too
 includes the signature from all trustees.
 
@@ -405,6 +427,7 @@ Clients - users of the service
 Relays - data plane server
 Trustees - control plane server
 Interval - the online and active set of clients
+Symmetric encryption cipher - AES128CTR
 
 ===============================================================================
 E.   Tasks
