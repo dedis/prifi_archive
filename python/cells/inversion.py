@@ -47,7 +47,15 @@ class InversionEncoder:
         chunks = __bits_to_chunks(Bits(bytes(cell, "utf_8")), self.chunk_size)
         noise, positions = self.__generate_traps(len(chunks))
         return self.__encode_chunks(noise, positions, chunks)
-    
+
+    def decoded_size(self, size):
+        size = size * 8  # Convert from bytes to bits
+        return (size - self.chunk_size + 1) / (self.chunk_size + 1)
+
+    def encoded_size(self, size):
+        size = size * 8  # Convert from bytes to bits
+        return size + ((size + (self.chunk_size - 1)) / self.chunk_size)
+
     def verify(self, cell):
         """ Checks that the trap bit in each chunk in cipherchunks is correct.
             Precondition: noise_state and position_state should be in the
@@ -124,10 +132,6 @@ class InversionEncoder:
                 new_chunks += [~chunks[i]]
                 new_header += [True]
         return [Bits(new_header)] + new_chunks
-
-    def max_size(self, in_size):
-        # TODO: ?
-        return in_size
 
 class InversionDecoder:
     def decode(self, cell):
