@@ -42,9 +42,9 @@ class InversionEncoder:
         header adds (n/k) bits of overhead.
 
         inputs:
-          input_text (str): The string to encode
+          input_text (bytes): The data to encode
         """
-        chunks = __bits_to_chunks(Bits(bytes(cell, "utf_8")), self.chunk_size)
+        chunks = __bits_to_chunks(Bits(cell), self.chunk_size)
         noise, positions = self.__generate_traps(len(chunks))
         return self.__encode_chunks(noise, positions, chunks)
 
@@ -135,14 +135,13 @@ class InversionEncoder:
 
 class InversionDecoder:
     def decode(self, cell):
-        """ Takes the output of encode and returns its decoded plaintext (str).
+        """ Takes the output of encode and returns it decoded (in bytes).
         """
         cipherheader = cell[0]
         cipherchunks = cell[1:]
         plain_chunks = self.__decode_chunks(cipherheader, cipherchunks)
         joined = BitArray().join(plain_chunks)
-        bytes_joined = joined.tobytes()
-        return bytes_joined.decode("utf-8")
+        return joined.tobytes()
 
     def __decode_chunks(self, head, chunks):
         """ Takes encoded input and returns the decoded chunks (i.e., the
