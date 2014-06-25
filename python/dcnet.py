@@ -174,6 +174,7 @@ class Client:
                 self.nyms_in_processing.remove(nym)
 
     def send(self, nym_idx, data):
+        assert self.encoder.encoded_size(len(data)) <= cell_length
         if nym_idx not in self.data_queue:
             self.data_queue[nym_idx] = []
         self.data_queue[nym_idx].append(data)

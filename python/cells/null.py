@@ -4,8 +4,11 @@ class NullEncoder:
     def encode(self, cell):
         return cell
 
-    def max_size(self, in_size):
-        return in_size
+    def decoded_size(self, size):
+        return size
+
+    def encoded_size(self, size):
+        return size
 
 class NullDecoder:
     def decode(self, cell):
