@@ -5,6 +5,9 @@ Created on Jun 25, 2014
 @author: eleanor
 '''
 import random
+import string
+import numpy
+import time
 from bitstring import Bits, BitArray
 
 class InversionEncoder:
@@ -44,17 +47,22 @@ class InversionEncoder:
         inputs:
           input_text (bytes): The data to encode
         """
-        chunks = __bits_to_chunks(Bits(cell), self.chunk_size)
+        chunks = self.__bits_to_chunks(Bits(cell), self.chunk_size)
         noise, positions = self.__generate_traps(len(chunks))
         return self.__encode_chunks(noise, positions, chunks)
 
     def decoded_size(self, size):
         size = size * 8  # Convert from bytes to bits
-        return (size - self.chunk_size + 1) / (self.chunk_size + 1)
+        bits_size = (size * self.chunk_size - self.chunk_size + 1) / \
+                    (self.chunk_size + 1)
+        print("decoded size for size {0}: {1}".format(size, bits_size))
+        return (bits_size + 7) / 8
 
     def encoded_size(self, size):
         size = size * 8  # Convert from bytes to bits
-        return size + ((size + (self.chunk_size - 1)) / self.chunk_size)
+        bits_size = size + ((size + (self.chunk_size - 1)) / self.chunk_size)
+        print("encoded size for size {0}: {1}".format(size, bits_size))
+        return (bits_size + 7) / 8
 
     def verify(self, cell):
         """ Checks that the trap bit in each chunk in cipherchunks is correct.
@@ -70,10 +78,7 @@ class InversionEncoder:
             print("Warning: Attempt to verify empty ciphertext")
             return True
         cipherchunks = cell[1:]
-        noise, positions = self.__generate_traps(self.noise_state,
-                                                 self.position_state,
-                                                 len(cipherchunks[0]),
-                                                 len(cipherchunks))
+        noise, positions = self.__generate_traps(len(cipherchunks))
         for i in range(len(cipherchunks)):
             back_chunk = noise[i]
             this_bit = positions[i]
@@ -99,7 +104,8 @@ class InversionEncoder:
               chunk_size)
         """
         random.setstate(self.noise_state)
-        noise = [Bits(random.getrandbits(self.chunk_size))\
+        noise = [Bits(uint=random.getrandbits(self.chunk_size),
+                      length=self.chunk_size)\
                  for _ in range(num_chunks)]
         self.noise_state = random.getstate()
         random.setstate(self.position_state)
@@ -123,15 +129,21 @@ class InversionEncoder:
         """
         new_chunks = []
         new_header = []
-        for i in len(chunks):
-            if chunks[i] == \
-            noise[i][positions[i]]:
+        for i in range(len(chunks)):
+            if chunks[i][positions[i]] == noise[i][positions[i]]:
                 new_chunks += [chunks[i]]
                 new_header += [False]
             else:
                 new_chunks += [~chunks[i]]
                 new_header += [True]
         return [Bits(new_header)] + new_chunks
+
+    def __bits_to_chunks(self, in_bin, chunk_l):
+        """ in_bin (Bits): the input message
+            chunk_l (int): the chunk length in bits
+        """
+        return [in_bin[i:i + chunk_l] for i in range(0, len(in_bin), chunk_l)]
+
 
 class InversionDecoder:
     def decode(self, cell):
@@ -156,8 +168,88 @@ class InversionDecoder:
             plain_chunks += [decoded]
         return plain_chunks
 
-def __bits_to_chunks(in_bin, chunk_l):
-    """ in_bin (Bits): the input message
-        chunk_l (int): the chunk length in bits
-    """
-    return [in_bin[i:i + chunk_l] for i in range(0, len(in_bin), chunk_l)]
+###### Tests ######
+def test_correctness(e, d):
+    for i in range(10):
+        debug(2, "Getting random string...")
+        to_test = rand_string(300)
+        debug(1, "Testing encoding/decoding {0} of 10".format(i))
+        e.reset()
+        if test_encode_verify_decode(e, d, to_test) == False:
+            return False
+    print("[+] Passed correctness!")
+    return True
+
+def test_encode_verify_decode(e, d, message):
+    encoded = e.encode(bytes(message, "utf-8"))
+    e.reset()
+    if e.verify(encoded) == False:
+        print("[x] Failed encoding: Problem with trap bits for {0}"
+              .format(message))
+        return False
+    new_text = d.decode(encoded).decode("utf-8")
+    if new_text != message:
+        print("[x] Failed decoding: Expected {0} but got {1}"
+              .format(new_text, message))
+        return False
+    if not test_size_reporting(e, encoded, bytes(new_text, "utf-8")):
+        return False
+
+def test_size_reporting(e, encoded, decoded):
+    if e.decoded_size(len(encoded)) == len(decoded):
+        print("[+] Passed decoded size")
+    else:
+        print("[x] Failed decoded size for {2}: Expected {0}, got {1}"
+              .format(len(decoded), e.decoded_size(len(encoded)), decoded))
+    if e.encoded_size(len(decoded)) == len(encoded):
+        print("[+] Passed encoded size")
+    else:
+        print("[x] Failed encoded size for {2}: Expected {0}, got {1}"
+              .format(len(encoded), e.encoded_size(len(decoded)), decoded))
+
+def rand_string(length=5):
+    chars = list(string.ascii_uppercase + string.digits)
+    ret = []
+    for _ in range(length):
+        ret += [random.choice(chars)]
+    return ''.join(ret)
+
+debug_level = 1
+def debug(level, msg):
+    if level <= debug_level:
+        print(msg)
+
+# Performance tests
+def vary_message_size(e, min_bytes, max_bytes):
+    print("Testing performance of strings from {0} to {1} kilobytes."
+          .format(min_bytes / 1000, max_bytes / 1000))
+    print("Size\tAvg Time\tAvg time per kB\tAvg kB/second")
+    i = 0
+    while min_bytes * (2 ** i) <= max_bytes:
+        test_message_size(e, min_bytes * (2 ** i))
+        i += 1
+    print("Done!")
+
+def test_message_size(e, total_bytes, trials=10):
+    times = []
+    for _ in range(trials):
+        message = rand_string(total_bytes)
+        times += [speed_encode_msg(e, bytes(message, "utf-8"))]
+    print("{0}\t{1}\t{2}\t{3}"
+          .format(total_bytes / 1000,
+                  numpy.mean(times),
+                  numpy.mean(times) / total_bytes / 1000,
+                  total_bytes / 1000 / numpy.mean(times)))
+    return total_bytes / 1000 / numpy.mean(times)
+
+def speed_encode_msg(e, message):
+    start = time.time()
+    e.encode(message)
+    stop = time.time()
+    return stop - start
+
+if __name__ == '__main__':
+    e = InversionEncoder(1, 32)
+    d = InversionDecoder()
+    test_correctness(e, d)
+#     vary_message_size(e, 128, 16 * 1024)
