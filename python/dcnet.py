@@ -25,31 +25,65 @@ cell_length = 256
 empty_cell = bytes(0 for x in range(cell_length))
 
 class XorNet:
+    """ Class for handling the xor net layer.
+
+    Attributes:
+      secrets (object list): The shared secrets to use to encrypt ciphertext
+      interval (int): The number of the current interval
+        (to uniquify the AES keys)
+      cell_count (int -> int dictionary): Maps nym indices to the number of
+        cells of that index that have been encrypted so far (used as another
+        uniquifier)
+    """
     def __init__(self, secrets, interval):
         self.secrets = secrets
         self.interval = interval
-        streams = []
-        for secret in secrets:
+        self.cell_count = {}
+
+    def produce_ciphertext(self, nym_idx):
+        if nym_idx not in self.cell_count:
+            self.cell_count[nym_idx] = 0
+
+        # We're not transmitting data, so start with null ciphertext
+        ciphertext = bytes(0 for x in range(cell_length))
+        for secret in self.secrets:
+            # Per secret, AES-encrypt the ciphertext with a hash of the secret
+            # plus interval/cell/slot information.
             h = SHA256.new()
             h.update(secret)
             h.update(long_to_bytes(self.interval))
             seed = h.digest()[:16]
             aes = AES.new(seed, AES.MODE_CTR, counter = Counter.new(128))
-            streams.append(aes)
-        self.streams = streams
-
-    def produce_ciphertext(self):
-        ciphertext = bytes(0 for x in range(cell_length))
-        for stream in self.streams:
-            ciphertext = stream.encrypt(ciphertext)
+            ciphertext = aes.encrypt(ciphertext)
+        # At this point, ciphertext has been encrypted with something resulting
+        # from each shared secret
+        self.cell_count[nym_idx] += 1
         return ciphertext
 
 class Trustee:
     def __init__(self, key, client_keys, checker):
+        """
+        Usage: Create a Trustee, call add_nyms on all client nyms, then call
+        sync.  After this, call produce_interval_ciphertext as needed.
+
+        Attributes:
+          key (PrivateKey): This trustee's long-term private key
+          client_keys (PublicKey list): List of long-term public keys of
+            clients
+          interval (int): The index of the current interval
+          secrets (byte list list): List of long-term shared secrets between
+            this trustee and each client
+          nym_keys (PublicKey list): List of long-term public keys of each slot
+            owner pseudonym
+          trap_keys (PrivateKey list): The nth element is the trustee's trap
+            private key for the nth interval.
+          xornet (XorNet): Local copy of the XorNet for generating ciphertext
+        """
         self.key = key
         self.client_keys = client_keys
         self.interval = -1
 
+        # Generate a shared secret with each client. These are session-long.
         self.secrets = []
         for key in self.client_keys:
             self.secrets.append(long_to_bytes(self.key.exchange(key)))
@@ -60,17 +94,32 @@ class Trustee:
         self.all_trap_secrets = []
 
     def add_nyms(self, nym_keys):
+        """ Called when the client set changes to add new nym_keys to this
+        trustee's nym_keys set.
+        """
         self.nym_keys.extend(nym_keys)
         self.all_trap_secrets.extend([[] for n in nym_keys])
 
-    def sync(self, client_set, trap_key):
-        self.interval += 1
+    def sync(self, client_set):
+        """ Called at the beginning of an interval to generate new trap keys
+        for secret sharing, and to update xornet with the new interval.
+        """
         self.trap_keys.append(trap_key)
         self.xornet = XorNet(self.secrets, self.interval)
         self.all_trap_secrets = [[] for _ in self.nym_keys]
 
-    def produce_ciphertext(self, nym_index):
-        return self.xornet.produce_ciphertext()
+    def produce_interval_ciphertext(self):
+        """ Generate cells_count cells' worth of ciphertext for each nym in
+        self.nym_keys. Returns as a list of lists of ciphertext cells
+        """
+        cell_count = 100
+        cells_for_nyms = []
+        for ndx in range(len(self.nym_keys)):
+            ciphertext = []
+            for idx in range(cell_count):
+                ciphertext.append(self.xornet.produce_ciphertext(ndx))
+            cells_for_nyms.append(ciphertext)
+        return cells_for_nyms
 
     def publish_trap_secrets(self):
         trap_key = self.trap_keys[-1]
@@ -104,6 +153,24 @@ class Trustee:
         return True
 
 class Relay:
+    """ DC-nets layer Relay.
+
+    Usage: initialize, add_nyms on the number of nyms across all clients, sync,
+    then store_trustee_ciphertext untill there is enough to call
+    process_ciphertext. Repeat for each round.
+
+    Attributes:
+      nyms (int): Number of nyms in the current interval
+      trustees (int): The number of trustees this relay is communicating with
+      interval (int): Index of the current interval
+      accumulator: Accumulator object from certify
+      decoder (any Decoder class from cells): The decoder to use for reversing
+        the trap encoding
+      cells_for_nyms (list list): Indexed by trustee index; stores a list of
+        of cells for each nym within each trustee entry
+      current_cell (int list): The nth element is the index of the next cell of
+        nym n to process
+    """
     def __init__(self, trustees, accumulator, decoder):
         self.nyms = 0
         self.trustees = trustees
@@ -120,23 +187,48 @@ class Relay:
         self.current_cell = [0 for x in range(self.nyms)]
 
     def store_trustee_ciphertext(self, trustee_idx, cells_for_nyms):
+        """ cells_for_nyms is a list of cells for each pseudonym. This stores
+        that list under trustee_idx within self.cells_for_nyms.
+        """
         assert len(self.cells_for_nyms[trustee_idx]) == 0
         self.cells_for_nyms[trustee_idx] = cells_for_nyms
 
     def process_ciphertext(self, ciphertexts):
+        """ returns the original messages encoded in ciphertexts. NOTE: This
+        assumes enough trustee ciphertext has already been accumulated and
+        does not block!
+
+        input:
+        ciphertexts is a list of lists, where there is one element per slot,
+        and each slot contains a list of the form [client_texts, Client DH
+        signature], where each element of client_texts is a list of nym_texts,
+        where each nym_text is a list of the cells contained in the slot owned
+        by a single pseudonym.
+
+        output:
+        Returns a list with one element per pseudonym, where eacn element is
+        a list of decoded cells.
+        """
         ciphertexts = self.accumulator.before(ciphertexts)
 
+        # cleartext is a list with one element per pseudonym, where each element
+        # contains the cleartext of that pseudonym's output. So cleartext is
+        # actual-client-agnostic.
         cleartext = []
         for nym_texts in ciphertexts[0]:
             cleartext.append([0 for x in range(len(nym_texts))])
 
         # Merging client ciphertexts
         for cldx in range(len(ciphertexts)):
+            # For each client...
             client_texts = ciphertexts[cldx]
             for nymdx in range(len(client_texts)):
+                # For each nym slot of this client's ciphertext...
                 nym_texts = client_texts[nymdx]
                 for celldx in range(len(nym_texts)):
+                    # For each cell in this nym's slot...
                     cell = nym_texts[celldx]
+                    # xor this client's verison of this cell with the cell so far
                     cleartext[nymdx][celldx] ^= bytes_to_long(cell)
 
         # Merging trustee ciphertexts
@@ -145,6 +237,8 @@ class Relay:
             offset = self.current_cell[nymdx]
             cells = len(nym_texts)
             for celldx in range(cells):
+                # For each cell:
+                # 1. xor the stored trustee cell with the client cell...
                 for tidx in range(self.trustees):
                     cell = self.cells_for_nyms[tidx][nymdx][offset + celldx]
                     cleartext[nymdx][celldx] ^= bytes_to_long(cell)
@@ -156,14 +250,46 @@ class Relay:
             nym_texts = cleartext[nymdx]
             cells = len(nym_texts)
             for celldx in range(cells):
+                # 2. cell decode the xornet-decrypted cell...
                 cell = long_to_bytes(cleartext[nymdx][celldx])
                 cell = self.decoder.decode(cell)
+                # 3. update cleartext to store the original message for later
+                #    transmission to clients
                 cleartext[nymdx][celldx] = cell
             self.current_cell[nymdx] += cells
 
         return self.accumulator.after(cleartext)
 
 class Client:
+    """ DC-nets layer Client. A Client can own multiple pseudonyms (nyms), each
+    of which has its own slot. Each slot is comprised of cells.
+
+    Usage: After creating a Client, call add_own_nym on one or more private
+    keys, then call add_nyms on all public keys (including this client's). Then,
+    call sync with trap keys produced by each trustee. After this, call send an
+    arbitrary number of times to send data.
+
+    Attributes:
+      key (PrivateKey): This client's long-term private key
+      trustee_keys (PublicKey list): List of long-term public keys of trustees
+      secrets (byte list list): List of long-term shared secrets between this
+        client and each trustee
+      trap_seeds (byte list): One per nym. Each seed is a hash of all trap keys
+        passed to sync.
+      own_nym_keys ((PrivateKey, int) list): List of (private key, nym index)
+        tuples for each pseudonym owned by this client
+      own_nyms (int -> PrivateKey): map of nym indices to nym PrivateKeys owned
+        by this client
+      pub_nym_keys (PublicKey list): List of (anybody's) public pseudonym keys
+      nyms_in_processing (PrivateKey list): list for temporarily storing nyms
+        for which we have the private key but have not yet added the public key
+      interval (int): The index of the current interval
+      data_queue (int -> byte list): map of nym indices to list of data to be
+        transmitted with that pseudonym
+      certifier: Certifier object from certify
+      encoder (Encoder object from cells): Object for trap encoding data
+      xornet (XorNet): Local copy of the XorNet for generating ciphertext
+    """
     def __init__(self, key, trustee_keys, certifier, encoder):
         self.key = key
         self.trustee_keys = trustee_keys
@@ -183,6 +309,12 @@ class Client:
         self.message_queue = messages
 
     def sync(self, client_set, trap_keys):
+        """ Called at the beginning of each interval to update all secrets
+
+        inputs:
+          client_set: TODO:?
+          trap_keys (PublicKey list): Public trap key per trustee
+        """
         self.interval += 1
         self.xornet = XorNet(self.secrets, self.interval)
 
@@ -195,9 +327,15 @@ class Client:
             self.encoder.reset(h.digest())
 
     def add_own_nym(self, nym_key):
+        """ Add nym_key (PrivateKey) to nyms_in_processing. Once its PublicKey
+        gets added via add_nyms, it will be moved to own_nyms.
+        """
         self.nyms_in_processing.append(nym_key)
 
     def add_nyms(self, nym_keys):
+        """ Add nym_keys (PublicKey list) to pub_nym_keys. If the corresponding
+        private key is in processing, add that to own_nyms and own_nym_keys.
+        """
         offset = len(self.pub_nym_keys)
         self.pub_nym_keys.extend(nym_keys)
         for nidx in range(len(self.nyms_in_processing)):
@@ -225,7 +363,31 @@ class Client:
                 blocksize=cell_length)
         return ciphertext
 
+        for nidx in range(len(self.nyms_in_processing)):
+            nym = self.nyms_in_processing[nidx]
+            # If trying to add a nym_key owned by this client, remove it from
+            # nyms_in_processing and update own_nym_keys and own_nyms with it.
+            for idx in range(offset, len(self.pub_nym_keys)):
+                if nym.public_key().element != self.pub_nym_keys[idx].element:
+                    continue
+                self.own_nym_keys.append((nym, idx))
+                self.own_nyms[idx] = nym
+                self.nyms_in_processing.remove(nym)
+
+    def send(self, nym_idx, data):
+        """ Add data (byte list) to the queue of data to send with nym_idx.
+        Precondition: data must be small enough to fit in a cell.
+        """
+        assert self.encoder.encoded_size(len(data)) <= cell_length
+        if nym_idx not in self.data_queue:
+            self.data_queue[nym_idx] = []
+        self.data_queue[nym_idx].append(data)
+
     def produce_ciphertexts(self):
+        """ Produce ciphertext for all (everybody's) nyms, optionally encoding
+        data into the slots owned by this Client's nyms. Returns the output of
+        a call to certify (ciphertexts, (other, own))
+        """
         cells_for_nyms = []
         count = 1
         for nym_idx in range(len(self.pub_nym_keys)):
@@ -233,6 +395,8 @@ class Client:
             for idx in range(count):
                 ciphertext = self.xornet.produce_ciphertext((nym_idx))
                 cleartext = long_to_bytes(0)
+                # For each nym, if it has data to send, encode it and xor it
+                # into the ciphertext
                 if nym_idx in self.data_queue:
                     cleartext = self.encoder.encode(self.data_queue[nym_idx][0])
                     if len(self.data_queue[nym_idx]) == 1:
