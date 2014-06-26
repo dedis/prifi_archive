@@ -116,6 +116,14 @@ class Client:
         self.interval += 1
         self.xornet = XorNet(self.secrets, self.interval)
 
+        self.trap_seeds = []
+        for nym_key, idx in self.own_nym_keys:
+            h = SHA256.new()
+            for trap_key in trap_keys:
+                h.update(long_to_bytes(trap_key.exchange(nym_key)))
+            self.trap_seeds.append(h.digest())
+            self.encoder.reset(h.digest())
+
     def add_own_nym(self, nym_key):
         self.nyms_in_processing.append(nym_key)
 
@@ -147,6 +155,30 @@ class Client:
                 blocksize=cell_length)
         return ciphertext
 
+    def produce_ciphertexts(self):
+        cells_for_nyms = []
+        count = 1
+        for nym_idx in range(len(self.pub_nym_keys)):
+            cells = []
+            for idx in range(count):
+                ciphertext = self.xornet.produce_ciphertext((nym_idx))
+                cleartext = long_to_bytes(0)
+                if nym_idx in self.data_queue:
+                    cleartext = self.encoder.encode(self.data_queue[nym_idx][0])
+                    if len(self.data_queue[nym_idx]) == 1:
+                        del self.data_queue[nym_idx]
+                    else:
+                        self.data_queue[nym_idx] = self.data_queue[nym_idx][1:]
+                elif nym_idx in self.own_nyms:
+                    cleartext = self.encoder.encode(cleartext)
+                ciphertext = long_to_bytes(
+                        bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
+                cells.append(ciphertext)
+            cells_for_nyms.append(cells)
+        return self.certifier.certify(cells_for_nyms)
+
+    def process_cleartext(self, cleartext):
+        return self.certifier.verify(cleartext)
 
 def gen_keys(count):
     dhkeys = []

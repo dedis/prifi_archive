@@ -10,6 +10,9 @@ class NullEncoder:
     def encoded_size(self, size):
         return size
 
+    def reset(self, arg=None):
+        return
+
 class NullDecoder:
     def decode(self, cell):
         return cell
