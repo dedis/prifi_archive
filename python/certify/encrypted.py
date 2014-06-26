@@ -9,16 +9,19 @@ from Crypto.Util.number import long_to_bytes, bytes_to_long
 import verdict
 
 class EncryptedAccumulator:
+    def __init__(self, group):
+        self.group = group
+
     def before(self, ciphertexts):
         nciphertexts = [ciphertext[0] for ciphertext in ciphertexts]
         for sdx in range(len(nciphertexts)):
-            shared = 1
+            shared = self.group.identity()
             for idx in range(len(ciphertexts)):
                 if idx == sdx:
                     continue
-                shared = (shared * ciphertexts[idx][1][0]) % verdict.p
-            seed = (shared * ciphertexts[sdx][1][1]) % verdict.p
-            aes = AES.new(long_to_bytes(seed), AES.MODE_CTR, counter = Counter.new(128))
+                shared = self.group.add(shared, ciphertexts[idx][1][0])
+            seed = self.group.decode(self.group.add(shared, ciphertexts[sdx][1][1]))
+            aes = AES.new(seed, AES.MODE_CTR, counter = Counter.new(128))
             for ndx in range(len(nciphertexts[sdx])):
                 for cdx in range(len(nciphertexts[sdx][ndx])):
                     nciphertexts[sdx][ndx][cdx] = aes.decrypt(nciphertexts[sdx][ndx][cdx])
@@ -35,7 +38,7 @@ class EncryptedCertifier:
         self.hdata = bytes_to_long(h.digest())
 
     def certify(self, ciphertexts):
-        generator = pow(self.verifier.key.g, self.hdata % self.verifier.key.q, self.verifier.key.p)
+        generator = pow(self.verifier.group.g, self.hdata % self.verifier.group.q, self.verifier.group.p)
         other = self.verifier.generate_ciphertext(generator)
         seed = random.getrandbits(128)
         own = self.verifier.generate_ciphertext(generator, seed)
@@ -48,4 +51,3 @@ class EncryptedCertifier:
 
     def verify(self, cleartexts):
         return cleartexts
-

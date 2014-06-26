@@ -14,7 +14,10 @@ from certify.encrypted import EncryptedAccumulator, EncryptedCertifier
 from certify.null import NullAccumulator, NullCertifier
 from certify.signature import SignatureAccumulator, SignatureCertifier
 
-from dh import PublicKey, PrivateKey
+from elgamal import PublicKey, PrivateKey
+import schnorr
+
+global_group = schnorr.verdict_1024()
 
 cell_length = 24
 empty_cell = bytes(0 for x in range(cell_length))
@@ -61,7 +64,7 @@ class Trustee:
 
     def sync(self, client_set):
         self.interval += 1
-        trap_key = PrivateKey()
+        trap_key = PrivateKey(global_group)
         self.trap_keys.append(trap_key)
         self.xornet = XorNet(self.secrets, self.interval)
 
@@ -167,7 +170,7 @@ class Client:
         for nidx in range(len(self.nyms_in_processing)):
             nym = self.nyms_in_processing[nidx]
             for idx in range(offset, len(self.pub_nym_keys)):
-                if nym.pubkey.y != self.pub_nym_keys[idx].y:
+                if nym.public_key().element != self.pub_nym_keys[idx].element:
                     continue
                 self.own_nym_keys.append((nym, idx))
                 self.own_nyms[idx] = nym
@@ -208,9 +211,9 @@ def gen_keys(count):
     pkeys = []
 
     for idx in range(count):
-        dh = PrivateKey(verdict.g, verdict.p, verdict.q)
+        dh = PrivateKey(global_group)
         dhkeys.append(dh)
-        pkeys.append(dh.pubkey)
+        pkeys.append(dh.public_key())
 
     return dhkeys, pkeys
 
@@ -242,7 +245,7 @@ def main():
 
     accumulator = NullAccumulator()
     accumulator = SignatureAccumulator()
-    accumulator = EncryptedAccumulator()
+    accumulator = EncryptedAccumulator(global_group)
     relay = Relay(trustee_count, accumulator, NullDecoder())
     relay.add_nyms(client_count)
     relay.sync(None)
@@ -250,7 +253,7 @@ def main():
     trap_keys = []
     for trustee in trustees:
         trustee.sync(None)
-        trap_keys.append(trustee.trap_keys[-1].pubkey)
+        trap_keys.append(trustee.trap_keys[-1].public_key())
 
     for client in clients:
         client.sync(None, trap_keys)
