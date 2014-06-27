@@ -10,12 +10,15 @@ import math
 from utils import debug
 from bitstring import Bits, BitArray
 
-cell_bit_length = 24 * 8
+cell_bit_length = 300 * 8
 chunk_size = 8
-chunks_per_cell = math.ceil(cell_bit_length / (1 + chunk_size))
 ### Number of bytes of header prepended to each encoded cell
-invert_header_size = math.ceil(chunks_per_cell / 8)
 length_field_size = math.ceil(math.ceil(math.log2(cell_bit_length)) / 8)
+chunks_per_cell = math.floor((cell_bit_length - length_field_size * 8) / (1 + chunk_size))
+invert_header_size = math.ceil(chunks_per_cell / 8)
+max_in_size = chunks_per_cell * chunk_size // 8
+print("cell_bit_length: {0}. chunk_size: {1}. length_field_size: {2}. chunks_per_cell: {3}. invert_header_size: {4}."
+      .format(cell_bit_length, chunk_size, length_field_size, chunks_per_cell, invert_header_size))
 
 class InversionChecker():
     def __init__(self, seed=None):
@@ -97,12 +100,14 @@ def bits_to_chunks(in_bin, pad=True):
     new_chunks = [in_bin[i:i + chunk_size]\
             for i in range(0, len(in_bin), chunk_size)]
     if pad:
+        extra_chunks = chunks_per_cell - len(new_chunks)
         new_chunks[-1] = Bits(new_chunks[-1] + \
                           [False] * (chunk_size - len(new_chunks[-1])))
+        new_chunks.extend([Bits([False] * chunk_size)] * extra_chunks)
     return new_chunks
 
 def encoded_bytes_to_header_chunks(cell, trim=True):
-    length = Bits(cell[:length_field_size]).unpack("int")[0]
+    length = Bits(cell[:length_field_size]).unpack("uint")[0]
     debug(2, "length: {0}\n as unpacked from {1}".format(length, Bits(cell[:length_field_size])))
     offset = invert_header_size + length_field_size
     invert_header_bytes = cell[length_field_size:offset]
@@ -142,7 +147,8 @@ class InversionEncoder(InversionChecker):
         inputs:
           input_text (bytes): The data to encode
         """
-        length_b = Bits(int=len(cell) * 8, length=length_field_size * 8)
+        assert(self.encoded_size(len(cell)) <= cell_bit_length / 8)
+        length_b = Bits(uint=len(cell) * 8, length=length_field_size * 8)
         length_B = Bits([False] * (length_field_size * 8 - len(length_b)) + \
                         length_b).tobytes()
         chunks = bits_to_chunks(Bits(cell))
@@ -167,13 +173,16 @@ class InversionEncoder(InversionChecker):
         length field, so this returns a max size that will be within one
         chunk_size of the actual answer.
         """
-        return size - invert_header_size - length_field_size
+        return max_in_size
 
     def encoded_size(self, size):
         """ The size in bytes of the encoded version of a decoded string that
         is size bytes long """
-        return math.ceil(math.ceil(8 * size / chunk_size) * chunk_size / 8) + \
-            invert_header_size + length_field_size
+        chunks = math.ceil(8 * size / chunk_size)
+        if chunks < chunks_per_cell:
+            chunks = chunks_per_cell
+        return math.ceil(chunks * chunk_size / 8) + invert_header_size + \
+            length_field_size
 
     def __encode_chunks(self, noise, positions, chunks):
         """ Encodes a list of Bits objects.
@@ -227,7 +236,7 @@ class InversionDecoder:
 def test_correctness(e, d):
     for i in range(10):
         debug(2, "Getting random string...")
-        to_test = rand_string(random.randint(1, 300))
+        to_test = rand_string(random.randint(1, max_in_size))
         debug(2, "Testing encoding/decoding {0} of 10".format(i))
         e.reset()
         if test_encode_check_decode(e, d, to_test) == False:
@@ -257,7 +266,7 @@ def test_size_reporting(e, encoded, decoded):
         print("[x] Failed encoded size for {2}:\n Expected {0}, got {1}"
               .format(len(encoded), e.encoded_size(len(decoded)), decoded))
         return False
-    if e.decoded_size(len(encoded)) > len(decoded) + math.ceil(chunk_size / 8):
+    if e.decoded_size(len(encoded)) < len(decoded):
         print("[x] Failed decoded size for {2}:\n Expected {0}, got {1}"
               .format(len(decoded), e.decoded_size(len(encoded)), decoded))
         return False
