@@ -68,14 +68,19 @@ class Trustee:
         self.trap_keys.append(trap_key)
         self.xornet = XorNet(self.secrets, self.interval)
 
-    def produce_interval_ciphertext(self):
-        cell_count = 100
+    def produce_interval_ciphertext(self, cell_count=1):
         cells_for_nyms = []
         for ndx in range(len(self.nym_keys)):
             ciphertext = []
             for idx in range(cell_count):
                 ciphertext.append(self.xornet.produce_ciphertext(ndx))
             cells_for_nyms.append(ciphertext)
+        return cells_for_nyms
+
+    def produce_ciphertext(self, nyms):
+        cells_for_nyms = []
+        for ndx in nyms:
+            cells_for_nyms.append(self.xornet.produce_ciphertext(ndx))
         return cells_for_nyms
 
 class Relay:

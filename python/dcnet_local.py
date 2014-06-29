@@ -33,10 +33,10 @@ def main():
     # load the post-shuffle slots
     with open(os.path.join(opts.config_dir, "shuffle.json"), "r", encoding="utf-8") as fp:
         data = json.load(fp)
-        slot_keys = [PublicKey(x) for x in data["slots"]]
+        slot_keys = [PublicKey(s) for s in data["slots"]]
 
     # start multiple clients in the same process
-    # load private keys from individualfiles
+    # load private keys from individual files
     clients = []
     for iden in client_ids:
         with open(os.path.join(opts.config_dir, "{}.json".format(iden)), "r", encoding="utf-8") as fp:

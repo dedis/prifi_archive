@@ -27,18 +27,9 @@ def main():
     # so we don't start them up here - this makes debugging easier for now
 
     try:
-        # spawn n client processes
-        print("Launching {} clients".format(len(client_ids)))
-        procs = []
-        for iden, ip in zip(client_ids, client_ips):
-            private_data = os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id))
-            p = subprocess.Popen([sys.executable, "dcnet_client.py", opts.config_dir,
-                                private_data, "-p", ip.split(":")[1]],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            procs.append(p)
-
-        # same with trustees
+        # spawn n trustee processes
         print("Launching {} trustees".format(len(trustee_ids)))
+        procs = []
         for iden, ip in zip(trustee_ids, trustee_ips):
             private_data = os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id))
             p = subprocess.Popen([sys.executable, "dcnet_trustee.py", opts.config_dir,
@@ -46,11 +37,17 @@ def main():
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             procs.append(p)
 
-        # initiate an interval on all clients and trustees
-        time.sleep(1)
-        print("Starting dc-net")
-        for ip in client_ips + trustee_ips:
-            r = requests.post("http://{}/interval_conclusion".format(ip))
+        # XXX hack to ensure connection order
+        time.sleep(3)
+
+        # same with clients
+        print("Launching {} clients".format(len(client_ids)))
+        for iden, ip in zip(client_ids, client_ips):
+            private_data = os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id))
+            p = subprocess.Popen([sys.executable, "dcnet_client.py", opts.config_dir,
+                                private_data, "-p", ip.split(":")[1]],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            procs.append(p)
 
         while True:
             time.sleep(1)
