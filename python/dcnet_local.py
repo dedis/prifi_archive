@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import time
+from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
 
@@ -73,27 +74,46 @@ def main():
     for client in clients:
         client.sync(None, trap_keys)
 
-    for idx in range(len(trustees)):
-        trustee = trustees[idx]
-        ciphertext = trustee.produce_interval_ciphertext()
-        relay.store_trustee_ciphertext(idx, ciphertext)
+    cleartexts = []
+    for i in range(1):
+        relay.decode_start()
+        for idx in range(len(trustees)):
+            trustee = trustees[idx]
+            ciphertext = trustee.produce_ciphertext()
+            relay.decode_trustee(ciphertext)
 
-    client_ciphertexts = []
-    for client in clients:
-        client_ciphertexts.append(client.produce_ciphertexts())
-    print(relay.process_ciphertext(client_ciphertexts))
+        for idx in range(len(clients)):
+            client = clients[idx]
+            ciphertext = client.produce_ciphertexts()
+            relay.decode_client(ciphertext)
 
-    print(time.time() - t0)
-    t0 = time.time()
-
-    client_ciphertexts = []
-    for client in clients:
-        client.send(client.own_nym_keys[0][1], bytes("Hello", "UTF-8"))
-        client_ciphertexts.append(client.produce_ciphertexts())
-    print(relay.process_ciphertext(client_ciphertexts))
+        cleartexts.append(relay.decode_cell())
+    print(cleartexts)
 
     print(time.time() - t0)
     t0 = time.time()
+
+    cleartexts = []
+    for i in range(len(clients)):
+        relay.decode_start()
+        for idx in range(len(trustees)):
+            trustee = trustees[idx]
+            ciphertext = trustee.produce_ciphertext()
+            relay.decode_trustee(ciphertext)
+
+        for i, client in enumerate(clients):
+            ciphertext = client.produce_ciphertexts()
+            cleartext = long_to_bytes(0)
+            if i == 0:
+                cleartext = bytes("Hello", "UTF-8")
+            ciphertext = long_to_bytes(
+                    bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
+            relay.decode_client(ciphertext)
+
+        cleartexts.append(relay.decode_cell())
+    print(cleartexts)
+
+    print(time.time() - t0)
 
 if __name__ == "__main__":
     main()

@@ -31,8 +31,8 @@ def main():
         print("Launching {} trustees".format(len(trustee_ids)))
         procs = []
         for iden, ip in zip(trustee_ids, trustee_ips):
-            private_data = os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id))
-            p = subprocess.Popen([sys.executable, "dcnet_trustee.py", opts.config_dir,
+            private_data = os.path.join(opts.config_dir, "{}.json".format(iden))
+            p = subprocess.Popen([sys.executable, "trustee.py", opts.config_dir,
                                 private_data, "-p", ip.split(":")[1]],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             procs.append(p)
@@ -43,8 +43,8 @@ def main():
         # same with clients
         print("Launching {} clients".format(len(client_ids)))
         for iden, ip in zip(client_ids, client_ips):
-            private_data = os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id))
-            p = subprocess.Popen([sys.executable, "dcnet_client.py", opts.config_dir,
+            private_data = os.path.join(opts.config_dir, "{}.json".format(iden))
+            p = subprocess.Popen([sys.executable, "client.py", opts.config_dir,
                                 private_data, "-p", ip.split(":")[1]],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             procs.append(p)
