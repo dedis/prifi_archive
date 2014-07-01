@@ -10,7 +10,7 @@ from Crypto.Util.number import long_to_bytes, bytes_to_long
 import verdict
 
 from cells.null import NullDecoder, NullEncoder
-from certify.encrypted import EncryptedAccumulator, EncryptedCertifier
+from certify.encrypted_exchange import EncryptedAccumulator, EncryptedCertifier
 from certify.null import NullAccumulator, NullCertifier
 from certify.signature import SignatureAccumulator, SignatureCertifier
 
@@ -237,7 +237,7 @@ def main():
     for idx in range(client_count):
         certifier = NullCertifier()
         certifier = SignatureCertifier(client_dhkeys[idx], client_keys)
-        certifier = EncryptedCertifier(verdict.Verdict(client_dhkeys[idx], client_keys))
+        certifier = EncryptedCertifier(verdict.ClientVerdict(client_dhkeys[idx], client_keys, trustee_keys))
         client = Client(client_dhkeys[idx], trustee_keys, certifier, NullEncoder())
         client.add_own_nym(nym_dhkeys[idx])
         client.add_nyms(nym_keys)
@@ -245,7 +245,13 @@ def main():
 
     accumulator = NullAccumulator()
     accumulator = SignatureAccumulator()
-    accumulator = EncryptedAccumulator(global_group)
+
+    ss = 0
+    for tdh in trustee_dhkeys:
+        v = verdict.TrusteeVerdict(tdh, client_keys, trustee_keys)
+        ss = (ss + v.shared_secret()) % tdh.group.order()
+
+    accumulator = EncryptedAccumulator(verdict.TrusteeVerdict(ss, client_keys, trustee_keys, True))
     relay = Relay(trustee_count, accumulator, NullDecoder())
     relay.add_nyms(client_count)
     relay.sync(None)
@@ -266,26 +272,35 @@ def main():
     client_ciphertexts = []
     for client in clients:
         client_ciphertexts.append(client.produce_ciphertexts())
-    print(relay.process_ciphertext(client_ciphertexts))
+    cleartext = relay.process_ciphertext(client_ciphertexts)
+    print(cleartext)
 
     print(time.time() - t0)
+    for client in clients:
+        client.process_cleartext(cleartext)
     t0 = time.time()
 
     client_ciphertexts = []
     for client in clients:
         client.send(client.own_nym_keys[0][1], bytes("Hello", "UTF-8"))
         client_ciphertexts.append(client.produce_ciphertexts())
-    print(relay.process_ciphertext(client_ciphertexts))
+    cleartext = relay.process_ciphertext(client_ciphertexts)
+    print(cleartext)
 
     print(time.time() - t0)
+    for client in clients:
+        client.process_cleartext(cleartext)
     t0 = time.time()
 
     client_ciphertexts = []
     for client in clients:
         client_ciphertexts.append(client.produce_ciphertexts())
-    print(relay.process_ciphertext(client_ciphertexts))
+    cleartext = relay.process_ciphertext(client_ciphertexts)
+    print(cleartext)
 
     print(time.time() - t0)
+    for client in clients:
+        client.process_cleartext(cleartext)
     t0 = time.time()
 
 if __name__ == "__main__":

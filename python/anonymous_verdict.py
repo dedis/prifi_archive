@@ -9,14 +9,15 @@ from Crypto.Util.number import long_to_bytes, bytes_to_long
 import schnorr
 from elgamal import PublicKey, PrivateKey
 
-class BaseVerdict:
-    def __init__(self, client_keys, trustee_keys):
+class VerdictBase:
+    def __init__(self, anon_key, client_keys, trustee_keys):
         self.group = trustee_keys[0].group
+        self.anon_key = anon_key
         self.client_keys = client_keys
         self.trustee_keys = trustee_keys
 
     def generate_ciphertext(self, generator, data = None):
-        encrypted = self.group.multiply(generator, self._shared_secret)
+        encrypted = self.group.multiply(generator, self.shared_secret)
         if data != None:
             data = self.group.encode(data)
             encrypted = self.group.add(data, encrypted)
@@ -31,35 +32,48 @@ class BaseVerdict:
     def commitment(self):
         return self.secret_commit
 
-class TrusteeVerdict(BaseVerdict):
-    def __init__(self, ss_or_key, client_keys, trustee_keys, ss = False):
-        BaseVerdict.__init__(self, client_keys, trustee_keys)
+class OwnerVerdict(VerdictBase):
+    def __init__(self, anon_key, key, client_keys, trustee_keys):
+        VerdictBase.__init__(self, anon_key, client_keys, trustee_keys)
 
-        if ss:
-            self._shared_secret = ss_or_key
-        else:
-            self._shared_secret = self.group.zero()
-            for idx in range(len(client_keys)):
-                self._shared_secret = (self._shared_secret - ss_or_key.exchange(client_keys[idx])) % self.group.q
-        self.secret_commit = self.group.multiply(self.group.generator(), self._shared_secret)
-
-    def shared_secret(self):
-        return self._shared_secret
-
-
-class ClientVerdict(BaseVerdict):
-    def __init__(self, key, client_keys, trustee_keys):
-        BaseVerdict.__init__(self, client_keys, trustee_keys)
-
-        self._shared_secret = self.group.zero()
-        index = -1
+        self.shared_secret = self.group.zero()
         for idx in range(len(trustee_keys)):
-            ks = trustee_keys[idx]
-            if index == -1 and ks == key.element:
-                index = idx
-                continue
-            self._shared_secret = (self._shared_secret + key.exchange(trustee_keys[idx])) % self.group.q
-        self.secret_commit = self.group.multiply(self.group.generator(), self._shared_secret)
+            self.shared_secret = (self.shared_secret + \
+                    key.exchange(trustee_keys[idx]) + \
+                    anon_key.exchange(trustee_keys[idx]) \
+                    ) % self.group.q
+
+
+        self.secret_commit = self.group.multiply(self.group.generator(), \
+                self.shared_secret)
+
+class ClientVerdict(VerdictBase):
+    def __init__(self, anon_key, key, client_keys, trustee_keys):
+        VerdictBase.__init__(self, anon_key, client_keys, trustee_keys)
+
+        self.shared_secret = self.group.zero()
+        for idx in range(len(trustee_keys)):
+            self.shared_secret = (self.shared_secret + \
+                    key.exchange(trustee_keys[idx])) % self.group.q
+
+
+        self.secret_commit = self.group.multiply(self.group.generator(), \
+                self.shared_secret)
+
+class TrusteeVerdict(VerdictBase):
+    def __init__(self, anon_key, key, client_keys, trustee_keys):
+        VerdictBase.__init__(self, anon_key, client_keys, trustee_keys)
+
+        self.shared_secret = self.group.zero()
+        for idx in range(len(client_keys)):
+            self.shared_secret = (self.shared_secret - \
+                    key.exchange(client_keys[idx])) % self.group.q
+
+        self.shared_secret = (self.shared_secret - \
+                key.exchange(anon_key)) % self.group.q
+
+        self.secret_commit = self.group.multiply(self.group.generator(), \
+                self.shared_secret)
 
 class Test(unittest.TestCase):
     def test_basic(self):
@@ -77,22 +91,27 @@ class Test(unittest.TestCase):
 
         return (keys, pkeys)
 
-    def setup(self, group, clients, trustees):
+    def setup(self, group, clients, trustees, owner_idx):
         ckeys, cpkeys = self.gen_keys(group, clients)
         tkeys, tpkeys = self.gen_keys(group, trustees)
+        akey = PrivateKey(group)
+        apkey = akey.public_key()
 
         cverdicts = []
         ccommitments = []
 
         for idx in range(clients):
-            cverdicts.append(ClientVerdict(ckeys[idx], cpkeys, tpkeys))
+            if idx == owner_idx:
+                cverdicts.append(OwnerVerdict(akey, ckeys[idx], cpkeys, tpkeys))
+            else:
+                cverdicts.append(ClientVerdict(apkey, ckeys[idx], cpkeys, tpkeys))
             ccommitments.append(cverdicts[-1].commitment())
 
         tverdicts = []
         tcommitments = []
 
         for idx in range(trustees):
-            tverdicts.append(TrusteeVerdict(tkeys[idx], cpkeys, tpkeys))
+            tverdicts.append(TrusteeVerdict(apkey, tkeys[idx], cpkeys, tpkeys))
             tcommitments.append(tverdicts[-1].commitment())
 
         for verdict in cverdicts:
@@ -108,7 +127,7 @@ class Test(unittest.TestCase):
         clients = 10
         owner_idx = random.randrange(0, clients)
 
-        cverdicts, tverdicts = self.setup(group, clients, trustees)
+        cverdicts, tverdicts = self.setup(group, clients, trustees, owner_idx)
 
         msg = bytes("hello world", "UTF-8")
         h = SHA256.new()
