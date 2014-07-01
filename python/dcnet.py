@@ -3,6 +3,7 @@
 import queue
 import random
 import time
+from copy import deepcopy
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from Crypto.Util import Counter
@@ -10,7 +11,7 @@ from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import verdict
 
-from cells.null import NullDecoder, NullEncoder
+from cells.null import NullDecoder, NullEncoder, NullChecker
 from certify.encrypted_exchange import EncryptedAccumulator, EncryptedCertifier
 from certify.null import NullAccumulator, NullCertifier
 from certify.signature import SignatureAccumulator, SignatureCertifier
@@ -44,7 +45,7 @@ class XorNet:
         return ciphertext
 
 class Trustee:
-    def __init__(self, key, client_keys):
+    def __init__(self, key, client_keys, checker):
         self.key = key
         self.client_keys = client_keys
         self.interval = -1
@@ -55,17 +56,52 @@ class Trustee:
 
         self.nym_keys = []
         self.trap_keys = []
+        self.checker = checker
+        self.all_trap_secrets = []
 
     def add_nyms(self, nym_keys):
         self.nym_keys.extend(nym_keys)
+        self.all_trap_secrets.extend([[] for n in nym_keys])
 
     def sync(self, client_set, trap_key):
         self.interval += 1
         self.trap_keys.append(trap_key)
         self.xornet = XorNet(self.secrets, self.interval)
+        self.all_trap_secrets = [[] for _ in self.nym_keys]
 
     def produce_ciphertext(self, nym_index):
         return self.xornet.produce_ciphertext()
+
+    def publish_trap_secrets(self):
+        trap_key = self.trap_keys[-1]
+        secrets = [long_to_bytes(trap_key.exchange(k)) for k in self.nym_keys]
+        return secrets
+
+    def store_trap_secrets(self, trap_secrets):
+        for i in range(len(trap_secrets)):
+            this_trap_list = self.all_trap_secrets[i]
+            for secret in trap_secrets[i]:
+                if secret not in this_trap_list:
+                    self.all_trap_secrets[i].append(secret)
+
+    def check_interval_traps(self, cleartexts):
+        """ Determine whether any trap bits have been flipped, where ciphertexts
+        is a list of cells
+        """
+        nym_trap_checkers = []
+        for nym_secrets in self.all_trap_secrets:
+            h = SHA256.new()
+            for secret in nym_secrets:
+                h.update(secret)
+            nym_trap_checkers.append(self.checker(h.digest()))
+        for cleartext in cleartexts:
+            for nymdx in range(len(cleartext)):
+                for cell in cleartext[nymdx]:
+                    if not nym_trap_checkers[nymdx].check(long_to_bytes(cell)):
+                        print("A trap bit was flipped!")
+                        # TODO: Call something if this happens
+                        return False
+        return True
 
 class Relay:
     def __init__(self, trustees, accumulator, decoder):
@@ -80,18 +116,52 @@ class Relay:
 
     def sync(self, client_set):
         self.interval += 1
+        self.cells_for_nyms = [[] for x in range(self.trustees)]
+        self.current_cell = [0 for x in range(self.nyms)]
 
-    def decode_start(self):
-        self.xorbuf = 0
+    def store_trustee_ciphertext(self, trustee_idx, cells_for_nyms):
+        assert len(self.cells_for_nyms[trustee_idx]) == 0
+        self.cells_for_nyms[trustee_idx] = cells_for_nyms
 
-    def decode_client(self, cell):
-        self.xorbuf ^= bytes_to_long(cell)
+    def process_ciphertext(self, ciphertexts):
+        ciphertexts = self.accumulator.before(ciphertexts)
 
-    def decode_trustee(self, cell):
-        self.decode_client(cell)
+        cleartext = []
+        for nym_texts in ciphertexts[0]:
+            cleartext.append([0 for x in range(len(nym_texts))])
 
-    def decode_cell(self):
-        return long_to_bytes(self.xorbuf, cell_length)
+        # Merging client ciphertexts
+        for cldx in range(len(ciphertexts)):
+            client_texts = ciphertexts[cldx]
+            for nymdx in range(len(client_texts)):
+                nym_texts = client_texts[nymdx]
+                for celldx in range(len(nym_texts)):
+                    cell = nym_texts[celldx]
+                    cleartext[nymdx][celldx] ^= bytes_to_long(cell)
+
+        # Merging trustee ciphertexts
+        for nymdx in range(len(cleartext)):
+            nym_texts = cleartext[nymdx]
+            offset = self.current_cell[nymdx]
+            cells = len(nym_texts)
+            for celldx in range(cells):
+                for tidx in range(self.trustees):
+                    cell = self.cells_for_nyms[tidx][nymdx][offset + celldx]
+                    cleartext[nymdx][celldx] ^= bytes_to_long(cell)
+
+        return cleartext
+
+    def trap_decode_cleartext(self, cleartext):
+        for nymdx in range(len(cleartext)):
+            nym_texts = cleartext[nymdx]
+            cells = len(nym_texts)
+            for celldx in range(cells):
+                cell = long_to_bytes(cleartext[nymdx][celldx])
+                cell = self.decoder.decode(cell)
+                cleartext[nymdx][celldx] = cell
+            self.current_cell[nymdx] += cells
+
+        return self.accumulator.after(cleartext)
 
 class Client:
     def __init__(self, key, trustee_keys, certifier, encoder):
@@ -204,7 +274,7 @@ def main():
 
     trustees = []
     for idx in range(trustee_count):
-        trustee = Trustee(trustee_dhkeys[idx], client_keys)
+        trustee = Trustee(trustee_dhkeys[idx], client_keys, NullChecker)
         trustee.add_nyms(nym_keys)
         trustees.append(trustee)
 
@@ -232,8 +302,11 @@ def main():
     relay.add_nyms(client_count)
     relay.sync(None)
 
-    for i, trustee in enumerate(trustees):
-        trustee.sync(None, trap_dhkeys[i])
+    trap_keys = []
+    to_check = []
+    for trustee in trustees:
+        trustee.sync(None)
+        trap_keys.append(trustee.trap_keys[-1].public_key())
 
     for client in clients:
         client.sync(None, trap_keys)
@@ -246,12 +319,13 @@ def main():
             ciphertext = trustee.produce_ciphertext(i)
             relay.decode_trustee(ciphertext)
 
-        for client in clients:
-            ciphertext = client.produce_ciphertexts(i)
-            relay.decode_client(ciphertext)
-
-        cleartexts.append(relay.decode_cell().decode("utf-8"))
-    print(cleartexts)
+    client_ciphertexts = []
+    for client in clients:
+        client_ciphertexts.append(client.produce_ciphertexts())
+    next_to_check = relay.process_ciphertext(client_ciphertexts)
+    to_check.append(deepcopy(next_to_check))
+    cleartext = relay.trap_decode_cleartext(next_to_check)
+    print(cleartext)
 
     print(time.time() - t0)
     for client in clients:
@@ -259,9 +333,12 @@ def main():
     t0 = time.time()
 
     for client in clients:
-        message = bytes("Hello", "utf-8")
-        message += bytes(cell_length - len(message))
-        client.message_queue.put(message)
+        client.send(client.own_nym_keys[0][1], bytes("Hello", "UTF-8"))
+        client_ciphertexts.append(client.produce_ciphertexts())
+    next_to_check = relay.process_ciphertext(client_ciphertexts)
+    to_check.append(deepcopy(next_to_check))
+    cleartext = relay.trap_decode_cleartext(next_to_check)
+    print(cleartext)
 
     cleartexts = []
     for i in range(len(clients)):
@@ -271,14 +348,27 @@ def main():
             ciphertext = trustee.produce_ciphertext(i)
             relay.decode_trustee(ciphertext)
 
-        for client in clients:
-            ciphertext = client.produce_ciphertexts(i)
-            relay.decode_client(ciphertext)
-
-        cleartexts.append(relay.decode_cell())
-    print(cleartexts)
+    client_ciphertexts = []
+    for client in clients:
+        client_ciphertexts.append(client.produce_ciphertexts())
+    next_to_check = relay.process_ciphertext(client_ciphertexts)
+    to_check.append(deepcopy(next_to_check))
+    cleartext = relay.trap_decode_cleartext(next_to_check)
+    print(cleartext)
 
     print(time.time() - t0)
+
+    trap_secrets = [trustee.publish_trap_secrets() for trustee in trustees]
+    composite_secrets = [[trap_secrets[i][j] for i in range(trustee_count)] for j in range(len(trap_secrets[0]))]
+    for i in range(trustee_count):
+        trustees[i].store_trap_secrets(composite_secrets)
+        if trustees[i].check_interval_traps(to_check):
+            print("Trustee {0} approved this interval's cleartext".format(i))
+        else:
+            print("Trustee {0} rejected this interval's cleartext".format(i))
+            break
+    print(time.time() - t0)
+    t0 = time.time()
 
 if __name__ == "__main__":
     main()
