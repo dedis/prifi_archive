@@ -24,7 +24,7 @@ invert_header_size = math.ceil(math.ceil(chunks_per_cell / chunk_size) * chunk_s
 invert_header_chunks = math.ceil(invert_header_size * 8 / chunk_size)
 # maximum number of bytes of data that encode can be called on
 max_in_size = chunks_per_cell * chunk_size // 8 - invert_header_size
-print("cell_bit_length: {0} ".format(cell_bit_length) + \
+debug(1, "cell_bit_length: {0} ".format(cell_bit_length) + \
 "chunk_size: {0} ".format(chunk_size) + \
 "length_field_size: {0} ".format(length_field_size) + \
 "length_field_chunks: {0} ".format(length_field_chunks) + \
@@ -104,74 +104,6 @@ class InversionChecker():
                      for _ in range(num_chunks)]
         self.position_state = random.getstate()
         return noise, positions
-
-def bits_to_chunks(in_bin, padcell=False, padchunks=False, prepend=0):
-    """ in_bin (Bits): the input message
-        padcell (bool): If True, blank chunks will be added so the output fills
-          a cell (with room left for inversion bits)
-        padchunks (bool): If True, if the last chunk is less than chunk_size,
-          zeros will be appended until it fills a chunk
-        prepend (int): The number of bits to be prepended to each chunk. If this
-          is set to greater than zero, then chunk_size - prepend bits of data
-          and prepend zero-bits at the beginning will be in each output chunk.
-          This is used for the alternate encoding scheme used for the inversion
-          header.
-    """
-    new_chunks = [Bits([False] * prepend + in_bin[i:i + chunk_size - prepend])\
-            for i in range(0, len(in_bin), chunk_size - prepend)]
-    if padchunks:
-        new_chunks[-1] = Bits(new_chunks[-1] + \
-                          [False] * (chunk_size - len(new_chunks[-1])))
-    if padcell:
-        extra_chunks = chunks_per_cell - len(new_chunks)
-        new_chunks.extend([Bits([False] * chunk_size)] * extra_chunks)
-    return new_chunks
-
-def encoded_bytes_to_header_chunks(cell, trim=True):
-    """ Converts an encoded list of bytes to a tuple (length, header, chunks),
-    where length is the number of bits of data in the plaintext, header is the
-    inversion bits, and chunks is a list of chunks of data.
-    If trim is True, any padding added during encode will be removed.
-    """
-    # Separate the inversion bits
-    header = bits_to_chunks(Bits(cell)[:invert_header_size * chunk_size])
-    offset = invert_header_size + length_field_size
-    # Separate the length field from the data chunks
-    length_chunks = bits_to_chunks(Bits(cell[invert_header_size:offset]))
-    # Decode the inversion bits
-    for i in range(len(header)):
-        if header[i][0] == 1:
-            # Flip chunks of inversion bits if needed
-            header[i] = ~header[i]
-        # Remove the prepended bits from encode
-        header[i] = header[i][1:]
-    # De-chunk so the inversion bits are a single bitstring
-    header = BitArray().join(header)
-    # Decode the length field
-    for i in range(len(length_chunks)):
-        if header[i] == 1:
-            length_chunks[i] = ~length_chunks[i]
-    # Trim the length field bits from the inversion header
-    header = header[len(length_chunks):]
-    # parse the length field
-    length = BitArray().join(length_chunks).unpack("uint")[0]
-    if trim:
-        cipherchunks = bits_to_chunks(Bits(cell[offset:])[:length])
-    else:
-        cipherchunks = bits_to_chunks(Bits(cell[offset:]))
-    # Trim any extra inversion header bits
-    cipherheader = Bits(header[:len(cipherchunks)])
-    debug(2, "Full initial header was: {0}".format(Bits(cell[:offset])) + \
-          "\n invert header: {0}.".format(header) + \
-          "\n cipherheader: {0}".format(cipherheader) + \
-          "\n len cipherheader {0}".format(len(cipherheader)) + \
-          "\n cipherchunks {0}".format(cipherchunks) + \
-          "\n len cipherchunks: {0}.".format(len(cipherchunks)) + \
-          "\n Original was: {0}".format(Bits(cell)) + \
-          "\n length bin: {0}".format(Bits(cell[invert_header_size:offset])) + \
-          "\n length: {0}".format(length) + \
-          "\n length chunks: {0}".format(length_chunks))
-    return length, cipherheader, cipherchunks
 
 class InversionEncoder(InversionChecker):
     """ Class for encoding cells according to the inversion scheme.
@@ -312,10 +244,82 @@ class InversionDecoder:
             plain_chunks += [decoded]
         return plain_chunks
 
+###### Shared helper functions ######
+
+def bits_to_chunks(in_bin, padcell=False, padchunks=False, prepend=0):
+    """ in_bin (Bits): the input message
+        padcell (bool): If True, blank chunks will be added so the output fills
+          a cell (with room left for inversion bits)
+        padchunks (bool): If True, if the last chunk is less than chunk_size,
+          zeros will be appended until it fills a chunk
+        prepend (int): The number of bits to be prepended to each chunk. If this
+          is set to greater than zero, then chunk_size - prepend bits of data
+          and prepend zero-bits at the beginning will be in each output chunk.
+          This is used for the alternate encoding scheme used for the inversion
+          header.
+    """
+    new_chunks = [Bits([False] * prepend + in_bin[i:i + chunk_size - prepend])\
+            for i in range(0, len(in_bin), chunk_size - prepend)]
+    if padchunks:
+        new_chunks[-1] = Bits(new_chunks[-1] + \
+                          [False] * (chunk_size - len(new_chunks[-1])))
+    if padcell:
+        extra_chunks = chunks_per_cell - len(new_chunks)
+        new_chunks.extend([Bits([False] * chunk_size)] * extra_chunks)
+    return new_chunks
+
+def encoded_bytes_to_header_chunks(cell, trim=True):
+    """ Converts an encoded list of bytes to a tuple (length, header, chunks),
+    where length is the number of bits of data in the plaintext, header is the
+    inversion bits, and chunks is a list of chunks of data.
+    If trim is True, any padding added during encode will be removed.
+    """
+    # Separate the inversion bits
+    header = bits_to_chunks(Bits(cell)[:invert_header_size * chunk_size])
+    offset = invert_header_size + length_field_size
+    # Separate the length field from the data chunks
+    length_chunks = bits_to_chunks(Bits(cell[invert_header_size:offset]))
+    # Decode the inversion bits
+    for i in range(len(header)):
+        if header[i][0] == 1:
+            # Flip chunks of inversion bits if needed
+            header[i] = ~header[i]
+        # Remove the prepended bits from encode
+        header[i] = header[i][1:]
+    # De-chunk so the inversion bits are a single bitstring
+    header = BitArray().join(header)
+    # Decode the length field
+    for i in range(len(length_chunks)):
+        if header[i] == 1:
+            length_chunks[i] = ~length_chunks[i]
+    # Trim the length field bits from the inversion header
+    header = header[len(length_chunks):]
+    # parse the length field
+    length = BitArray().join(length_chunks).unpack("uint")[0]
+    if trim:
+        cipherchunks = bits_to_chunks(Bits(cell[offset:])[:length])
+    else:
+        cipherchunks = bits_to_chunks(Bits(cell[offset:]))
+    # Trim any extra inversion header bits
+    cipherheader = Bits(header[:len(cipherchunks)])
+    debug(2, "Full initial header was: {0}".format(Bits(cell[:offset])) + \
+          "\n invert header: {0}.".format(header) + \
+          "\n cipherheader: {0}".format(cipherheader) + \
+          "\n len cipherheader {0}".format(len(cipherheader)) + \
+          "\n cipherchunks {0}".format(cipherchunks) + \
+          "\n len cipherchunks: {0}.".format(len(cipherchunks)) + \
+          "\n Original was: {0}".format(Bits(cell)) + \
+          "\n length bin: {0}".format(Bits(cell[invert_header_size:offset])) + \
+          "\n length: {0}".format(length) + \
+          "\n length chunks: {0}".format(length_chunks))
+    return length, cipherheader, cipherchunks
+
+
 ###### Tests ######
 def test_correctness(e, d):
     for i in range(10):
         debug(2, "Getting random string...")
+        random.seed()
         to_test = rand_string(random.randint(1, max_in_size))
         debug(2, "Testing encoding/decoding {0} of 10".format(i))
         e.reset()
