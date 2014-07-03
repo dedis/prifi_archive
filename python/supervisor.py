@@ -50,6 +50,8 @@ def main():
             procs.append(p)
 
         while True:
+            #for i, p in enumerate(procs):
+            #    print(i, p.stdout.readline())
             time.sleep(1)
     except KeyboardInterrupt:
         pass

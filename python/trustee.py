@@ -58,7 +58,7 @@ def main():
     sock.connect((relay_host, relay_port))
 
     # stream the ciphertext to the relay
-    for i in range(len(slot_keys)):
+    while True:
         ciphertext = trustee.produce_ciphertext()
         n = sock.send(ciphertext)
 

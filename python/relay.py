@@ -3,7 +3,9 @@ import json
 import os
 import random
 import requests
+import select
 import socket
+from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
 from dcnet import global_group
@@ -40,6 +42,7 @@ def main():
     ssock.listen(5)
 
     # make sure everybody connects
+    # XXX don't rely on connection order hack
     tsocks = [None] * n_trustees
     for i in range(n_trustees):
         sock, addr = ssock.accept()
@@ -49,8 +52,53 @@ def main():
         sock, addr = ssock.accept()
         csocks[i] = sock
 
-    # transfer some data
-    for i in range(n_clients):
+    inputs = []
+    outputs = []
+
+    downstream_queue = []
+    conns = {}
+
+    # XXX define elsewhere
+    downcellmax = 64*1024
+    socks_address = ("localhost", 8080)
+
+    while True:
+        # queue up any downstream data
+        # XXX may need to move this into separate per connection threads
+        # goroutines make it soooo much cleaner
+        readable, writeable, exceptional = select.select(inputs, outputs, inputs, 0)
+        for r in readable:
+            downstream = memoryview(bytearray(downcellmax))
+            n = r.recv_into(downstream[6:])
+            # XXX ugly lookup, probably need wrapper struct with cno
+            for cno, conn in conns.items():
+                if conn == r:
+                    print("socks relay down: {} bytes on cno {}".format(n, cno))
+                    downstream[:4] = long_to_bytes(cno, 4)
+                    downstream[4:6] = long_to_bytes(n, 2)
+                    downstream_queue.append(downstream[:6+n])
+                    # close the connection to socks relay
+                    if n == 0:
+                        r.close()
+                        inputs.remove(r)
+                        del conns[cno]
+                    break
+
+        # see if there's anything to send
+        if len(downstream_queue) > 0:
+            downstream = downstream_queue[0]
+            del downstream_queue[:1]
+        else:
+            downstream = bytearray(6)
+
+        # send downstream to all clients
+        cno = bytes_to_long(downstream[:4])
+        dlen = bytes_to_long(downstream[4:6])
+        if dlen > 0:
+            print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
+        for csock in csocks:
+            n = csock.send(downstream)
+
         # get trustee ciphertexts
         relay.decode_start()
         for tsock in tsocks:
@@ -62,10 +110,23 @@ def main():
             cslice = csock.recv(dcnet.cell_length)
             relay.decode_client(cslice)
 
-        # send down to clients
-        cleartext = relay.decode_cell()
-        for csock in csocks:
-            csock.send(cleartext)
+        # decode the actual upstream
+        upstream = relay.decode_cell()
+        cno = bytes_to_long(upstream[:4])
+        uplen = bytes_to_long(upstream[4:6])
+
+        if cno == 0:
+            continue
+        conn = conns.get(cno)
+        if conn == None:
+            # new connection to local socks server
+            conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            conn.connect(socks_address)
+            inputs.append(conn)
+            conns[cno] = conn
+
+        print("upstream sending {} bytes on cno {}".format(uplen, cno))
+        n = conn.send(upstream[6:6+uplen])
 
 if __name__ == "__main__":
     main()
