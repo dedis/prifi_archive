@@ -4,6 +4,7 @@ import queue
 import random
 import time
 from copy import deepcopy
+import unittest
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from Crypto.Util import Counter
@@ -414,125 +415,129 @@ class Client:
     def process_cleartext(self, cleartext):
         return self.certifier.verify(cleartext)
 
-def gen_keys(count):
-    dhkeys = []
-    pkeys = []
 
-    for idx in range(count):
-        dh = PrivateKey(global_group)
-        dhkeys.append(dh)
-        pkeys.append(dh.public_key())
+class Test(unittest.TestCase):
+    def setUp(self):
+        self.trustee_count = 3
+        self.client_count = 10
 
-    return dhkeys, pkeys
+        self.trustee_dhkeys, self.trustee_keys = self.gen_keys(self.trustee_count)
+        self.client_dhkeys, self.client_keys = self.gen_keys(self.client_count)
+        self.nym_dhkeys, self.nym_keys = self.gen_keys(self.client_count)
 
-def main():
-    t0 = time.time()
+        self.trustees = self.spawn_trustees()
+        self.clients = self.spawn_clients()
+        self.relay = self.spawn_relay()
 
-    trustee_count = 3
-    client_count = 10
+        self.start_interval()
 
-    trustee_dhkeys, trustee_keys = gen_keys(trustee_count)
-    client_dhkeys, client_keys = gen_keys(client_count)
-    nym_dhkeys, nym_keys = gen_keys(client_count)
-    trap_dhkeys, trap_keys = gen_keys(trustee_count)
+    def test_send(self):
+        for idx in range(len(self.trustees)):
+            trustee = self.trustees[idx]
+            ciphertext = trustee.produce_interval_ciphertext()
+            self.relay.store_trustee_ciphertext(idx, ciphertext)
 
-    trustees = []
-    for idx in range(trustee_count):
-        trustee = Trustee(trustee_dhkeys[idx], client_keys, NullChecker)
-        trustee.add_nyms(nym_keys)
-        trustees.append(trustee)
+        self.to_chk = []
+        self.send(self.clients, self.trustees, self.relay, self.to_chk)
+        self.send(self.clients, self.trustees, self.relay, self.to_chk,
+                  bytes("Hello", "UTF-8"))
+        self.send(self.clients, self.trustees, self.relay, self.to_chk)
 
-    clients = []
-    for idx in range(client_count):
-        certifier = NullCertifier()
-        certifier = SignatureCertifier(client_dhkeys[idx], client_keys)
-        certifier = EncryptedCertifier(verdict.ClientVerdict(client_dhkeys[idx], client_keys, trustee_keys))
-        client = Client(client_dhkeys[idx], trustee_keys, certifier, NullEncoder())
-        client.add_own_nym(nym_dhkeys[idx])
-        client.add_nyms(nym_keys)
-        client.set_message_queue(queue.Queue())
-        clients.append(client)
+    def test_check(self):
+        self.test_send()
+        t0 = time.time()
+        trap_secrets = [trustee.publish_trap_secrets() for trustee in self.trustees]
+        composite_secrets = [[trap_secrets[i][j] \
+                              for i in range(self.trustee_count)] \
+                                for j in range(len(trap_secrets[0]))]
+        for i in range(self.trustee_count):
+            self.trustees[i].store_trap_secrets(composite_secrets)
+            self.assertTrue(self.trustees[i].check_interval_traps(self.to_chk),
+                            msg="Trustee {0} rejected ciphertext {1}"
+                            .format(i, self.to_chk))
+        print(time.time() - t0)
 
-    accumulator = NullAccumulator()
-    accumulator = SignatureAccumulator()
+    def gen_keys(self, count):
+        dhkeys = []
+        pkeys = []
 
-    ss = 0
-    for tdh in trustee_dhkeys:
-        v = verdict.TrusteeVerdict(tdh, client_keys, trustee_keys)
-        ss = (ss + v.shared_secret()) % tdh.group.order()
+        for idx in range(count):
+            dh = PrivateKey(global_group)
+            dhkeys.append(dh)
+            pkeys.append(dh.public_key())
 
-    accumulator = EncryptedAccumulator(verdict.TrusteeVerdict(ss, client_keys, trustee_keys, True))
-    relay = Relay(trustee_count, accumulator, NullDecoder())
-    relay.add_nyms(client_count)
-    relay.sync(None)
+        return dhkeys, pkeys
 
-    trap_keys = []
-    to_check = []
-    for trustee in trustees:
-        trustee.sync(None)
-        trap_keys.append(trustee.trap_keys[-1].public_key())
+    def spawn_trustees(self):
+        trustees = []
+        for idx in range(self.trustee_count):
+            trustee = Trustee(self.trustee_dhkeys[idx], self.client_keys,
+                              NullChecker)
+            trustee.add_nyms(self.nym_keys)
+            trustees.append(trustee)
+        return trustees
 
-    for client in clients:
-        client.sync(None, trap_keys)
+    def spawn_clients(self):
+        clients = []
+        for idx in range(self.client_count):
+            certifier = NullCertifier()
+            certifier = SignatureCertifier(self.client_dhkeys[idx],
+                                           self.client_keys)
+            client_verdict = verdict.ClientVerdict(self.client_dhkeys[idx],
+                                                   self.client_keys,
+                                                   self.trustee_keys)
+            certifier = EncryptedCertifier(client_verdict)
+            client = Client(self.client_dhkeys[idx], self.trustee_keys, certifier, NullEncoder())
+            client.add_own_nym(self.nym_dhkeys[idx])
+            client.add_nyms(self.nym_keys)
+            clients.append(client)
+        return clients
 
-    cleartexts = []
-    for i in range(len(clients)):
-        relay.decode_start()
-        for idx in range(len(trustees)):
-            trustee = trustees[idx]
-            ciphertext = trustee.produce_ciphertext(i)
-            relay.decode_trustee(ciphertext)
+    def spawn_relay(self):
+        accumulator = NullAccumulator()
+        accumulator = SignatureAccumulator()
 
-    client_ciphertexts = []
-    for client in clients:
-        client_ciphertexts.append(client.produce_ciphertexts())
-    next_to_check = relay.process_ciphertext(client_ciphertexts)
-    to_check.append(deepcopy(next_to_check))
-    cleartext = relay.trap_decode_cleartext(next_to_check)
-    print(cleartext)
+        ss = 0
+        for tdh in self.trustee_dhkeys:
+            v = verdict.TrusteeVerdict(tdh, self.client_keys, self.trustee_keys)
+            ss = (ss + v.shared_secret()) % tdh.group.order()
 
-    print(time.time() - t0)
-    for client in clients:
-        client.process_cleartext(cleartext)
-    t0 = time.time()
+        trustee_verdict = verdict.TrusteeVerdict(ss, self.client_keys,
+                                                 self.trustee_keys, True)
+        accumulator = EncryptedAccumulator(trustee_verdict)
+        relay = Relay(self.trustee_count, accumulator, NullDecoder())
+        relay.add_nyms(self.client_count)
+        return relay
 
-    for client in clients:
-        client.send(client.own_nym_keys[0][1], bytes("Hello", "UTF-8"))
-        client_ciphertexts.append(client.produce_ciphertexts())
-    next_to_check = relay.process_ciphertext(client_ciphertexts)
-    to_check.append(deepcopy(next_to_check))
-    cleartext = relay.trap_decode_cleartext(next_to_check)
-    print(cleartext)
+    def start_interval(self):
+        self.relay.sync(None)
+        trap_keys = []
+        for trustee in self.trustees:
+            trustee.sync(None)
+            trap_keys.append(trustee.trap_keys[-1].public_key())
+        for client in self.clients:
+            client.sync(None, trap_keys)
 
-    cleartexts = []
-    for i in range(len(clients)):
-        relay.decode_start()
-        for idx in range(len(trustees)):
-            trustee = trustees[idx]
-            ciphertext = trustee.produce_ciphertext(i)
-            relay.decode_trustee(ciphertext)
+    def send(self, clients, trustees, relay, to_check, m=None):
+        t0 = time.time()
+        client_ciphertexts = []
+        for client in clients:
+            if m != None:
+                client.send(client.own_nym_keys[0][1], m)
+            client_ciphertexts.append(client.produce_ciphertexts())
+        next_to_check = relay.process_ciphertext(client_ciphertexts)
+        to_check.append(deepcopy(next_to_check))
+        cleartext = relay.trap_decode_cleartext(next_to_check)
 
-    client_ciphertexts = []
-    for client in clients:
-        client_ciphertexts.append(client.produce_ciphertexts())
-    next_to_check = relay.process_ciphertext(client_ciphertexts)
-    to_check.append(deepcopy(next_to_check))
-    cleartext = relay.trap_decode_cleartext(next_to_check)
-    print(cleartext)
-
-    print(time.time() - t0)
-
-    trap_secrets = [trustee.publish_trap_secrets() for trustee in trustees]
-    composite_secrets = [[trap_secrets[i][j] for i in range(trustee_count)] for j in range(len(trap_secrets[0]))]
-    for i in range(trustee_count):
-        trustees[i].store_trap_secrets(composite_secrets)
-        if trustees[i].check_interval_traps(to_check):
-            print("Trustee {0} approved this interval's cleartext".format(i))
-        else:
-            print("Trustee {0} rejected this interval's cleartext".format(i))
-            break
-    print(time.time() - t0)
-    t0 = time.time()
+        if m == None:
+            m = long_to_bytes(0)
+        for i in range(len(cleartext)):
+            self.assertEqual(cleartext[i][0], m,
+                             msg="Slot {0} got {1}; expected{2}"
+                             .format(i, cleartext[i][0], m))
+        print(time.time() - t0)
+        for client in clients:
+            client.process_cleartext(cleartext)
 
 if __name__ == "__main__":
-    main()
+    unittest.main()
