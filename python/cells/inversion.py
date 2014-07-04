@@ -7,12 +7,13 @@ Created on Jun 25, 2014
 import random
 import string
 import math
+import unittest
 from utils import debug
 from bitstring import Bits, BitArray
 from Crypto.Util.number import long_to_bytes
 
-cell_bit_length = 12 * 8  # Bits per cell
-chunk_size = 4  # bits per chunk
+cell_bit_length = 24 * 8  # Bits per cell
+chunk_size = 8  # bits per chunk
 # number of chunks of data (length field included) that can fit in a cell
 chunks_per_cell = math.floor((cell_bit_length) / +\
                              (1 + 1 / chunk_size + chunk_size))
@@ -21,7 +22,8 @@ length_field_size = math.ceil(math.log2(chunks_per_cell * chunk_size) / 8)
 # number of chunks needed to represent the length in bits of the data
 length_field_chunks = math.ceil(length_field_size * 8 / chunk_size)
 # number of bytes needed to represent the inversion bits
-invert_header_size = math.ceil(math.ceil(chunks_per_cell / chunk_size) * chunk_size / 8)
+invert_header_size = math.ceil(math.ceil(chunks_per_cell / (chunk_size - 1)) * \
+                               chunk_size / 8)
 # number of chunks needed to represent the inversion bits
 invert_header_chunks = math.ceil(invert_header_size * 8 / chunk_size)
 # maximum number of bytes of data that encode can be called on
@@ -70,12 +72,12 @@ class InversionChecker():
             print("Warning: Attempt to check empty ciphertext")
             return True
         noise, positions = self._generate_traps(len(cipherchunks))
-        debug(1, "Checking: Noise: {0}.\n Positions: {1}.\n Chunks: {2}"
+        debug(2, "Checking: Noise: {0}.\n Positions: {1}.\n Chunks: {2}"
               .format(noise, positions, cipherchunks))
         for i in range(len(cipherchunks)):
             back_chunk = noise[i]
             this_bit = positions[i]
-            debug(2, "cell: {0}. back_chunk: {1}. this_bit: {2}."
+            debug(3, "cell: {0}. back_chunk: {1}. this_bit: {2}."
                   .format(Bits(cell), back_chunk, this_bit) + \
                   " num chks: {1}. cipherchunks: {0}"
                   .format(cipherchunks, len(cipherchunks)))
@@ -209,7 +211,7 @@ class InversionEncoder(InversionChecker):
         header_positions = positions[:invert_header_chunks]
         positions = positions[invert_header_chunks:]
         for i in range(len(chunks)):
-            debug(2, "i: {0}. chunk: {1}. Position: {2}. noise: {3}."
+            debug(4, "i: {0}. chunk: {1}. Position: {2}. noise: {3}."
                   .format(i, chunks[i], positions[i], noise[i]))
             if chunks[i][positions[i]] == noise[i][positions[i]]:
                 new_chunks += [chunks[i]]
@@ -217,7 +219,7 @@ class InversionEncoder(InversionChecker):
             else:
                 new_chunks += [~chunks[i]]
                 new_header += [True]
-            debug(2, "Encoded chunk {0} which was {1} as {2} to avoid {3} of {4}."
+            debug(3, "Encoded chunk {0} which was {1} as {2} to avoid {3} of {4}."
                   .format(i, chunks[i], new_chunks[-1], positions[i], noise[i]))
         header_chunks = bits_to_chunks(new_header, padchunks=True, prepend=1)
         debug(2, "new header: {0}\n header chunks: {1},\n header_noise: {2}"
@@ -314,7 +316,7 @@ def encoded_bytes_to_header_chunks(cell, trim=True):
         cipherchunks = bits_to_chunks(Bits(cell[offset:]))
     # Trim any extra inversion header bits
     cipherheader = Bits(header[:len(cipherchunks)])
-    debug(2, "Full initial header was: {0}".format(Bits(cell[:offset])) + \
+    debug(3, "Full initial header was: {0}".format(Bits(cell[:offset])) + \
           "\n header_chunks: {0}".format(header_chunks) + \
           "\n header_decoded_chunks: {0}".format(header_decoded_chunks) + \
           "\n invert header: {0}.".format(header) + \
@@ -330,59 +332,53 @@ def encoded_bytes_to_header_chunks(cell, trim=True):
 
 
 ###### Tests ######
-def test_correctness(e, d):
-    for i in range(10):
-        debug(2, "Getting random string...")
-        random.seed()
-        to_test = rand_string(random.randint(1, max_in_size))
-        debug(2, "Testing encoding/decoding {0} of 10".format(i))
-        e.reset()
-        if test_encode_check_decode(e, d, to_test) == False:
-            return False
-    print("[+] Passed correctness!")
-    return True
 
-def test_encode_check_decode(e, d, message="", msg_b=None):
-    if msg_b == None:
-        msg_b = bytes(message, "utf-8")
-    e.reset()
-    encoded = e.encode(msg_b)
-    debug(2, "Encoded: {0}\n or:{1}".format(encoded, Bits(encoded)))
-    e.reset()
-    new_text_b = d.decode(encoded)
-    if new_text_b != msg_b:
-        print("[x] Failed decoding:\n Expected {0}\n but got {1}"
-              .format(msg_b, new_text_b))
-        return False
-    if e.check(encoded) == False:
-        print("[x] Failed checking: Problem with trap bits for {0}"
-              .format(msg_b))
-        return False
-    if not test_size_reporting(e, encoded, msg_b):
-        return False
-    print("[+] Passed encode/check/decode for {0}".format(msg_b))
-    return True
+class Test(unittest.TestCase):
+    def setUp(self):
+        self.c = InversionChecker(1)
+        self.e = InversionEncoder(1)
+        self.d = InversionDecoder()
 
-def test_size_reporting(e, encoded, decoded):
-    if e.encoded_size(len(decoded)) != len(encoded):
-        print("[x] Failed encoded size for {2}:\n Expected {0}, got {1}"
-              .format(len(encoded), e.encoded_size(len(decoded)), decoded))
-        return False
-    if e.decoded_size(len(encoded)) < len(decoded):
-        print("[x] Failed decoded size for {2}:\n Expected {0}, got {1}"
-              .format(len(decoded), e.decoded_size(len(encoded)), decoded))
-        return False
-    return True
+    def test_correctness(self):
+        for i in range(10):
+            debug(2, "Getting random string...")
+            random.seed()
+            to_test = self.rand_string(random.randint(1, max_in_size))
+            debug(2, "Testing encoding/decoding {0} of 10".format(i))
+            self.encode_check_decode(to_test)
+        debug(1, "[+] Passed correctness")
 
-def rand_string(length=5):
-    chars = list(string.ascii_uppercase + string.digits)
-    ret = []
-    for _ in range(length):
-        ret += [random.choice(chars)]
-    return ''.join(ret)
+    def encode_check_decode(self, message="", msg_b=None):
+        if msg_b == None:
+            msg_b = bytes(message, "utf-8")
+        encoded = self.e.encode(msg_b)
+        debug(2, "Encoded: {0}\n or:{1}".format(encoded, Bits(encoded)))
+        new_text_b = self.d.decode(encoded)
+        self.assertEqual(new_text_b, msg_b,
+                         msg="[x] Failed decoding:\n Expected {0}\n but got {1}"
+                              .format(msg_b, new_text_b))
+        self.assertTrue(self.c.check(encoded),
+                        msg="[x] Failed checking: Problem with trap bits for {0}"
+                        .format(msg_b))
+        self.size_reporting(encoded, msg_b)
+        debug(1, "[+] Passed encode/check/decode for {0}".format(msg_b))
+
+    def size_reporting(self, encoded, decoded):
+        self.assertEqual(self.e.encoded_size(len(decoded)), len(encoded),
+            msg="[x] Failed encoded size for {2}:\n Expected {0}, got {1}"
+                  .format(len(encoded),
+                          self.e.encoded_size(len(decoded)), decoded))
+        self.assertGreaterEqual(self.e.decoded_size(len(encoded)), len(decoded),
+            msg="[x] Failed decoded size for {2}:\n Expected {0}, got {1}"
+                  .format(len(decoded),
+                          self.e.decoded_size(len(encoded)), decoded))
+
+    def rand_string(self, length=5):
+        chars = list(string.ascii_uppercase + string.digits)
+        ret = []
+        for _ in range(length):
+            ret += [random.choice(chars)]
+        return ''.join(ret)
 
 if __name__ == '__main__':
-    e = InversionEncoder(1)
-    d = InversionDecoder()
-#     test_encode_check_decode(e, d, msg_b=long_to_bytes(0))
-    test_correctness(e, d)
+    unittest.main()
