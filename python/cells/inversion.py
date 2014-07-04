@@ -10,7 +10,8 @@ import math
 import unittest
 from utils import debug
 from bitstring import Bits, BitArray
-from Crypto.Util.number import long_to_bytes
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+from Crypto.Hash import SHA256
 
 cell_bit_length = 24 * 8  # Bits per cell
 chunk_size = 8  # bits per chunk
@@ -38,24 +39,39 @@ debug(1, "cell_bit_length: {0} ".format(cell_bit_length) + \
 "max_in_size: {0} ".format(max_in_size))
 
 class InversionBase():
-    def __init__(self, seed):
-        self.seed = seed
-        if seed != None:
-            random.seed((seed, "Noise"))
-            self.noise_state = random.getstate()
-            random.seed((seed, "Position"))
-            self.position_state = random.getstate()
+    def __init__(self, seeds):
+        self.noise_states = []
+        h = SHA256.new()
+        for seed in seeds:
+            h.update(long_to_bytes(seed))
+            random.seed(seed)
+            self.noise_states.append(random.getstate())
+        random.seed(h.digest())
+        self.position_state = random.getstate()
 
-    def trap_noise(self, num_chunks):
+    def trap_noise(self, count, kind="Cells"):
         """ Generate num_chunks terms of the noise sequence
           outputs:
             noise (Bits list): List of chunk_size-bit noise chunks
         """
-        random.setstate(self.noise_state)
-        noise = [Bits(uint=random.getrandbits(chunk_size),
-                      length=chunk_size)\
-                 for _ in range(num_chunks)]
-        self.noise_state = random.getstate()
+        noises = {}
+        noise = [0] * count
+        for i in range(len(self.noise_states)):
+            noises[i] = []
+            random.setstate(self.noise_states[i])
+            debug(2, " noisestates {0} is {1}".format(i, self.noise_states[i]))
+            for celldx in range(count):
+                noises[i].append(random.getrandbits(cell_bit_length))
+                debug(2, " xoring {0} into {1}".format(noises[i][-1], noise[celldx]))
+                noise[celldx] ^= noises[i][-1]
+            self.noise_states[i] = random.getstate()
+        noise = [long_to_bytes(n) for n in noise]
+        if kind == "Chunks":
+            noise = [bits_to_chunks(Bits(n)) for n in noise]
+            debug(2, "Cell noises: {0}\n noise: {1}".format(noises, noise))
+        else:
+            debug(2, "Cell noises: {0}\n noise: {1}".format(noises,
+                                                        [Bits(n) for n in noise]))
         return noise
 
     def trap_positions(self, num_chunks):
@@ -70,8 +86,19 @@ class InversionBase():
         self.position_state = random.getstate()
         return positions
 
+    def cell_trap_mask(self, noise, positions):
+        """ Generates a mask that's 0 for all non trap bits and the trap bit for
+        trap bits.
+        Assumes noise and positions are chunk-wise """
+        pos_mask = BitArray().join(
+            [Bits([False] * (chunk_size - 1) + [True]) << (chunk_size - pos - 1) \
+            for pos in positions])
+        if len(noise) > 1:
+            noise = BitArray().join(noise)
+        return bytes_to_long((pos_mask & noise).tobytes())
+
 class InversionChecker(InversionBase):
-    def check(self, cell):
+    def check(self, cell, fast=True):
         """ Checks that the trap bit in each chunk in cipherchunks is correct.
             Precondition: noise_state and position_state should be in the
             initial state for the cell to be checked.
@@ -84,8 +111,16 @@ class InversionChecker(InversionBase):
         if (len(cipherchunks) < 1):
             print("Warning: Attempt to check empty ciphertext")
             return True
-        noise = self.trap_noise(len(cipherchunks))
+        [noise] = self.trap_noise(1, "Chunks")
         positions = self.trap_positions(len(cipherchunks))
+        if fast:
+            mask = self.cell_trap_mask(noise, positions)
+            masked = mask & bytes_to_long(cell)
+            debug(2, "mask: {0} cell: {1}\nmskd: {2}\nnois: {3}"
+                  .format(Bits(long_to_bytes(mask)),
+                          Bits(cell),
+                          Bits(long_to_bytes(masked)), noise))
+            return mask & bytes_to_long(cell) == mask
         debug(2, "Checking: Noise: {0}.\n Positions: {1}.\n Chunks: {2}"
               .format(noise, positions, cipherchunks))
         for i in range(len(cipherchunks)):
@@ -141,26 +176,17 @@ class InversionEncoder(InversionBase):
         chunks = bits_to_chunks(length_p + Bits(cell),
                                 padchunks=True, padcell=True)
         assert(len(chunks) >= 1)
-        noise = self.trap_noise(len(chunks) + invert_header_chunks)
+        [noise] = self.trap_noise(1, "Chunks")
         positions = self.trap_positions(len(chunks) + invert_header_chunks)
         header_chunks, enc = self.__encode_chunks(noise, positions, chunks)
-        header = BitArray().join(header_chunks)
-        inv_h = Bits(header + [False] * \
-                              math.ceil(invert_header_size * 8 - len(header)))
-        inv_B = inv_h.tobytes()
-        enc_b = BitArray().join(enc)
-        enc_B = enc_b.tobytes()
-        debug(2, "Length: {0}\n ByteLength: {1}\n Invert Header: {2}."
-                  .format(len(cell) * 8, length_b, Bits(header)) + \
-              "\n Full header: {0}\n enc: {1}\n Together: {2}"
-                      .format(inv_h + enc[:length_field_chunks], enc,
-                              Bits(inv_B + enc_B)) + \
+        joined = self.__join_encoded(header_chunks, enc)
+        masked = self.__trap_mask_cell(noise, positions, joined)
+        debug(2, "Length: {0}\n ByteLength: {1}"
+                  .format(len(cell) * 8, length_b) + \
               "\n  Cell: {0}\n len+cell bits: {1}"
-                      .format(Bits(cell), length_p + Bits(cell)))
-        assert(len(inv_B + enc_B) > 1)
-        debug(1.5, "Encoding: noise: {0}.\n positions: {1}.\n Chunks: {2}"
-              .format(noise, positions, bits_to_chunks(Bits(inv_B + enc_B))))
-        return inv_B + enc_B
+                      .format(Bits(cell), length_p + Bits(cell)) + \
+              "\n joined: {0}\n masked: {1}".format(Bits(joined), Bits(masked)))
+        return masked
 
     def decoded_size(self, size):
         """ The size in bytes of the decoded version of an encoded string that
@@ -221,6 +247,25 @@ class InversionEncoder(InversionBase):
               header_noise[i][header_positions[i]]:
                 header_chunks[i] = ~header_chunks[i]
         return header_chunks, new_chunks
+
+    def __join_encoded(self, header_chunks, data_chunks):
+        header = BitArray().join(header_chunks)
+        inv_h = Bits(header + [False] * \
+                              math.ceil(invert_header_size * 8 - len(header)))
+        inv_B = inv_h.tobytes()
+        enc_b = BitArray().join(data_chunks)
+        enc_B = enc_b.tobytes()
+        assert(len(inv_B + enc_B) > 1)
+        debug(3, " Chunks: {0}.\n Invert Header: {1}."
+                  .format(bits_to_chunks(Bits(inv_B + enc_B)), Bits(header)) + \
+              "\n Full header: {0}\n enc: {1}\n Together: {2}"
+                      .format(inv_h + data_chunks[:length_field_chunks],
+                              data_chunks, Bits(inv_B + enc_B)))
+        return inv_B + enc_B
+
+    def __trap_mask_cell(self, noise, positions, joined):
+        noise = BitArray().join(noise)
+        return (noise ^ Bits(joined)).tobytes()
 
 class InversionDecoder:
     def decode(self, cell):
@@ -326,8 +371,9 @@ def encoded_bytes_to_header_chunks(cell, trim=True):
 
 class Test(unittest.TestCase):
     def setUp(self):
-        self.c = InversionChecker(1)
-        self.e = InversionEncoder(1)
+        self.c = InversionChecker([1, 2])
+        self.decode_helper = InversionBase([1, 2])
+        self.e = InversionEncoder([1, 2])
         self.d = InversionDecoder()
 
     def test_correctness(self):
@@ -342,16 +388,22 @@ class Test(unittest.TestCase):
     def encode_check_decode(self, message="", msg_b=None):
         if msg_b == None:
             msg_b = bytes(message, "utf-8")
-        encoded = self.e.encode(msg_b)
-        debug(2, "Encoded: {0}\n or:{1}".format(encoded, Bits(encoded)))
-        new_text_b = self.d.decode(encoded)
+        encoded = Bits(self.e.encode(msg_b))
+        noise = Bits(self.decode_helper.trap_noise(1)[0])
+        debug(2, "Encoded: {0}-len {1}\n  noise: {2}-len {3}"
+              .format(len(encoded), encoded, len(noise), noise))
+        to_decode = encoded ^ noise
+        debug(2, "Encoded: {0}-len {1}\n  noise: {2}-len {3}\n to_decode: {4}"
+              .format(len(encoded), encoded, len(noise),
+                      noise, to_decode))
+        new_text_b = self.d.decode(to_decode.tobytes())
         self.assertEqual(new_text_b, msg_b,
                          msg="[x] Failed decoding:\n Expected {0}\n but got {1}"
                               .format(msg_b, new_text_b))
-        self.assertTrue(self.c.check(encoded),
+        self.assertTrue(self.c.check(to_decode.tobytes()),
                         msg="[x] Failed checking: Problem with trap bits for {0}"
                         .format(msg_b))
-        self.size_reporting(encoded, msg_b)
+        self.size_reporting(encoded.tobytes(), msg_b)
         debug(1, "[+] Passed encode/check/decode for {0}".format(msg_b))
 
     def size_reporting(self, encoded, decoded):
