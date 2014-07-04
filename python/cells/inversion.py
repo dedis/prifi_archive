@@ -37,11 +37,8 @@ debug(1, "cell_bit_length: {0} ".format(cell_bit_length) + \
 "invert_header_chunks {0} ".format(invert_header_chunks) + \
 "max_in_size: {0} ".format(max_in_size))
 
-class InversionChecker():
-    def __init__(self, seed=None):
-        """ Note: If seed is not passed in constructor, it must be passed with
-        reset before encoding.
-        """
+class InversionBase():
+    def __init__(self, seed):
         self.seed = seed
         if seed != None:
             random.seed((seed, "Noise"))
@@ -49,15 +46,31 @@ class InversionChecker():
             random.seed((seed, "Position"))
             self.position_state = random.getstate()
 
-    def reset(self, seed=None):
-        """ Reset the random generators """
-        if seed != None:
-            self.seed = seed
-        random.seed((self.seed, "Noise"))
+    def trap_noise(self, num_chunks):
+        """ Generate num_chunks terms of the noise sequence
+          outputs:
+            noise (Bits list): List of chunk_size-bit noise chunks
+        """
+        random.setstate(self.noise_state)
+        noise = [Bits(uint=random.getrandbits(chunk_size),
+                      length=chunk_size)\
+                 for _ in range(num_chunks)]
         self.noise_state = random.getstate()
-        random.seed((self.seed, "Position"))
-        self.position_state = random.getstate()
+        return noise
 
+    def trap_positions(self, num_chunks):
+        """ Generate num_chunks terms of the trap position sequence.
+          outputs:
+            positions (int list): List of trap bit positions (ints between 0 and
+              chunk_size)
+          """
+        random.setstate(self.position_state)
+        positions = [random.randint(0, chunk_size - 1)\
+                     for _ in range(num_chunks)]
+        self.position_state = random.getstate()
+        return positions
+
+class InversionChecker(InversionBase):
     def check(self, cell):
         """ Checks that the trap bit in each chunk in cipherchunks is correct.
             Precondition: noise_state and position_state should be in the
@@ -71,7 +84,8 @@ class InversionChecker():
         if (len(cipherchunks) < 1):
             print("Warning: Attempt to check empty ciphertext")
             return True
-        noise, positions = self._generate_traps(len(cipherchunks))
+        noise = self.trap_noise(len(cipherchunks))
+        positions = self.trap_positions(len(cipherchunks))
         debug(2, "Checking: Noise: {0}.\n Positions: {1}.\n Chunks: {2}"
               .format(noise, positions, cipherchunks))
         for i in range(len(cipherchunks)):
@@ -90,30 +104,7 @@ class InversionChecker():
                 return False
         return True
 
-    def _generate_traps(self, num_chunks):
-        """ Generate num_chunks terms of the noise and trap position sequences.
-
-          inputs:
-            noise_state, position_state (tuple): Random states as described above
-            chunk_size (int): The number of bits per noise chunk to generate
-            num_chunks (int): The number of terms to generate
-          outputs:
-            noise (Bits list): List of chunk_size-bit noise chunks
-            positions (int list): List of trap bit positions (ints between 0 and
-              chunk_size)
-        """
-        random.setstate(self.noise_state)
-        noise = [Bits(uint=random.getrandbits(chunk_size),
-                      length=chunk_size)\
-                 for _ in range(num_chunks)]
-        self.noise_state = random.getstate()
-        random.setstate(self.position_state)
-        positions = [random.randint(0, chunk_size - 1)\
-                     for _ in range(num_chunks)]
-        self.position_state = random.getstate()
-        return noise, positions
-
-class InversionEncoder(InversionChecker):
+class InversionEncoder(InversionBase):
     """ Class for encoding cells according to the inversion scheme.
 
     NOTE: This currently only supports encoding cells with sizes that are
@@ -150,8 +141,8 @@ class InversionEncoder(InversionChecker):
         chunks = bits_to_chunks(length_p + Bits(cell),
                                 padchunks=True, padcell=True)
         assert(len(chunks) >= 1)
-        noise, positions = self._generate_traps(len(chunks) + \
-                                                invert_header_chunks)
+        noise = self.trap_noise(len(chunks) + invert_header_chunks)
+        positions = self.trap_positions(len(chunks) + invert_header_chunks)
         header_chunks, enc = self.__encode_chunks(noise, positions, chunks)
         header = BitArray().join(header_chunks)
         inv_h = Bits(header + [False] * \
