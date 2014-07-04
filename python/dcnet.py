@@ -99,12 +99,15 @@ class Trustee:
         trustee's nym_keys set.
         """
         self.nym_keys.extend(nym_keys)
-        self.all_trap_secrets.extend([[] for n in nym_keys])
+        self.all_trap_secrets.extend([[] for _ in nym_keys])
 
     def sync(self, client_set):
         """ Called at the beginning of an interval to generate new trap keys
         for secret sharing, and to update xornet with the new interval.
         """
+        self.interval += 1
+        trap_key = PrivateKey(global_group)
+        self.trap_secrets = [trap_key.exchange(k) for k in self.nym_keys]
         self.trap_keys.append(trap_key)
         self.xornet = XorNet(self.secrets, self.interval)
         self.all_trap_secrets = [[] for _ in self.nym_keys]
@@ -117,15 +120,17 @@ class Trustee:
         cells_for_nyms = []
         for ndx in range(len(self.nym_keys)):
             ciphertext = []
+            nym_noise_gen = self.checker([self.trap_secrets[ndx]])
+            noise = nym_noise_gen.trap_noise(cell_count)
             for idx in range(cell_count):
-                ciphertext.append(self.xornet.produce_ciphertext(ndx))
+                cell = bytes_to_long(self.xornet.produce_ciphertext(ndx))
+                cell ^= bytes_to_long(noise[idx])
+                ciphertext.append(long_to_bytes(cell))
             cells_for_nyms.append(ciphertext)
         return cells_for_nyms
 
     def publish_trap_secrets(self):
-        trap_key = self.trap_keys[-1]
-        secrets = [long_to_bytes(trap_key.exchange(k)) for k in self.nym_keys]
-        return secrets
+        return self.trap_secrets
 
     def store_trap_secrets(self, trap_secrets):
         for i in range(len(trap_secrets)):
@@ -140,10 +145,7 @@ class Trustee:
         """
         nym_trap_checkers = []
         for nym_secrets in self.all_trap_secrets:
-            h = SHA256.new()
-            for secret in nym_secrets:
-                h.update(secret)
-            nym_trap_checkers.append(self.checker(h.digest()))
+            nym_trap_checkers.append(self.checker(nym_secrets))
         for cleartext in cleartexts:
             for nymdx in range(len(cleartext)):
                 for cell in cleartext[nymdx]:
@@ -177,7 +179,7 @@ class Relay:
         self.trustees = trustees
         self.interval = -1
         self.accumulator = accumulator
-        self.decoder = decoder
+        self.decoder = decoder()
 
     def add_nyms(self, nym_count):
         self.nyms += nym_count
@@ -304,7 +306,7 @@ class Client:
         self.pub_nym_keys = []
         self.nyms_in_processing = []
         self.certifier = certifier
-        self.encoder = encoder
+        self.new_encoder = encoder
 
     def set_message_queue(self, messages):
         self.message_queue = messages
@@ -319,13 +321,13 @@ class Client:
         self.interval += 1
         self.xornet = XorNet(self.secrets, self.interval)
 
-        self.trap_seeds = []
+        self.trap_seeds = {}
         for nym_key, idx in self.own_nym_keys:
-            h = SHA256.new()
+            self.trap_seeds[nym_key] = []
             for trap_key in trap_keys:
-                h.update(long_to_bytes(trap_key.exchange(nym_key)))
-            self.trap_seeds.append(h.digest())
-            self.encoder.reset(h.digest())
+                self.trap_seeds[nym_key] \
+                    .append(trap_key.exchange(nym_key))
+            self.encoder = self.new_encoder(self.trap_seeds[nym_key])
 
     def add_own_nym(self, nym_key):
         """ Add nym_key (PrivateKey) to nyms_in_processing. Once its PublicKey
@@ -472,7 +474,7 @@ class Test(unittest.TestCase):
         trustees = []
         for idx in range(self.trustee_count):
             trustee = Trustee(self.trustee_dhkeys[idx], self.client_keys,
-                              NullChecker)
+                              self.checker)
             trustee.add_nyms(self.nym_keys)
             trustees.append(trustee)
         return trustees
@@ -487,7 +489,8 @@ class Test(unittest.TestCase):
                                                    self.client_keys,
                                                    self.trustee_keys)
             certifier = EncryptedCertifier(client_verdict)
-            client = Client(self.client_dhkeys[idx], self.trustee_keys, certifier, NullEncoder())
+            client = Client(self.client_dhkeys[idx], self.trustee_keys,
+                            certifier, self.encoder)
             client.add_own_nym(self.nym_dhkeys[idx])
             client.add_nyms(self.nym_keys)
             clients.append(client)
@@ -505,7 +508,7 @@ class Test(unittest.TestCase):
         trustee_verdict = verdict.TrusteeVerdict(ss, self.client_keys,
                                                  self.trustee_keys, True)
         accumulator = EncryptedAccumulator(trustee_verdict)
-        relay = Relay(self.trustee_count, accumulator, NullDecoder())
+        relay = Relay(self.trustee_count, accumulator, self.decoder)
         relay.add_nyms(self.client_count)
         return relay
 
