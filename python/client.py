@@ -1,10 +1,12 @@
 import argparse
 import json
 import os
+import queue
 import random
 import select
 import socket
 import sys
+import threading
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
@@ -15,8 +17,65 @@ from certify.null import NullAccumulator, NullCertifier
 
 from elgamal import PublicKey, PrivateKey
 
+def read_relay(conn):
+    slot_idx = 0
+
+    while True:
+        # read full header
+        header = bytearray(6)
+        n = conn.recv_into(header, flags=socket.MSG_WAITALL)
+        cno = bytes_to_long(header[:4])
+        dlen = bytes_to_long(header[4:])
+
+        # and the payload
+        buf = bytearray(dlen)
+        n = conn.recv_into(buf, flags=socket.MSG_WAITALL)
+
+        if cno != 0 or dlen != 0:
+            print("downstream from relay: cno {} dlen {}".format(cno, dlen))
+
+        # pass along if necessary
+        # XXX make concurrency-safe
+        if cno > 0 and cno < len(conns) and conns[cno] is not None:
+            if dlen > 0:
+                n = conns[cno].conn.send(buf)
+            else:
+                print("upstream closed conn {}".format(cno))
+                conns[cno].conn.close()
+                conns[cno] = None
+
+        # prepare next upstream
+        slot = slot_keys[slot_idx]
+        ciphertext = client.produce_ciphertexts()
+        cleartext = bytearray(dcnet.cell_length)
+        if slot.element == nym_private_key.element:
+            try:
+                cleartext = upstream_queue.get_nowait()
+            except queue.Empty:
+                pass
+        # XXX pull XOR out into util
+        ciphertext = long_to_bytes(
+                bytes_to_long(ciphertext) ^ bytes_to_long(cleartext),
+                blocksize=dcnet.cell_length)
+        n = conn.send(ciphertext)
+        slot_idx = (slot_idx + 1) % len(slot_keys)
+
+class ClientConn:
+    
+    def __init__(self, cno, conn):
+        self.cno = cno
+        self.conn = conn
+
+    def fileno(self):
+        return self.conn.fileno()
+
 def main():
     global client
+    # XXX hacky globals to work for now
+    global upstream_queue
+    global conns
+    global slot_keys
+    global nym_private_key
 
     p = argparse.ArgumentParser(description="Basic DC-net client")
     p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
@@ -66,75 +125,41 @@ def main():
     relay_port = int(relay_address[1])
     rsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     rsock.connect((relay_host, relay_port))
+    rthread = threading.Thread(target=read_relay, args=(rsock,))
+    rthread.start()
 
-    inputs = [ssock, rsock]
+    inputs = [ssock]
     outputs = []
 
-    upstream_queue = []
+    upstream_queue = queue.Queue()
     conns = [None]
 
-    slot_idx = 0
     while True:
         readable, writable, exceptional = select.select(inputs, outputs, inputs)
-        for r in readable:
+        for rinput in readable:
 
             # new connection
-            if r is ssock:
+            if rinput is ssock:
                 sock, addr = ssock.accept()
-                conns.append(sock)
-                inputs.append(sock)
-
-            # downstream cell from relay
-            elif r is rsock:
-
-                # read the downstream header
-                header = bytearray(6)
-                n = r.recv_into(header)
-                cno = bytes_to_long(header[:4])
-                dlen = bytes_to_long(header[4:])
-                if cno != 0 or dlen != 0:
-                    print("downstream from relay: cno {} dlen {}".format(cno, dlen))
-
-                # and the actual data
-                downstream = bytearray(dlen)
-                n = r.recv_into(downstream)
-
-                # pass along if necessary
-                if cno > 0 and cno < len(conns) and conns[cno] is not None:
-                    if dlen > 0:
-                        n = conns[cno].send(downstream)
-                    else:
-                        print("upstream closed conn {}".format(cno))
-                        conns[cno].close()
-
-                # prepare next upstream
-                slot = slot_keys[slot_idx]
-                ciphertext = client.produce_ciphertexts()
-                cleartext = bytearray(dcnet.cell_length)
-                if slot.element == nym_private_key.element:
-                    if len(upstream_queue) > 0:
-                        cleartext = upstream_queue[0]
-                        del upstream_queue[:1]
-                # XXX pull XOR out into util
-                ciphertext = long_to_bytes(
-                        bytes_to_long(ciphertext) ^ bytes_to_long(cleartext),
-                        blocksize=dcnet.cell_length)
-                n = rsock.send(ciphertext)
-                slot_idx = (slot_idx + 1) % len(slot_keys)
+                cno = len(conns)
+                conn = ClientConn(cno, sock)
+                conns.append(conn)
+                inputs.append(conn)
+                print("new client: cno {}".format(cno))
 
             # upstream data from client
             else:
-                # XXX can definitely optimize lookup
-                cno = conns.index(r)
+                cno, conn = rinput.cno, rinput.conn
                 upstream = memoryview(bytearray(dcnet.cell_length))
-                n = r.recv_into(upstream[6:])
+                n = conn.recv_into(upstream[6:])
                 upstream[:4] = long_to_bytes(cno, 4)
                 upstream[4:6] = long_to_bytes(n, 2)
-                upstream_queue.append(upstream)
+                upstream_queue.put(upstream)
+                print("client upstream: {} bytes on cno {}".format(n, cno))
                 if n == 0:
-                    r.close()
+                    conn.close()
                     conns[cno] = None
-                    inputs.remove(r)
+                    inputs.remove(rinput)
 
 if __name__ == "__main__":
     main()
