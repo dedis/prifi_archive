@@ -1,25 +1,27 @@
 #!/usr/bin/env python
 from Crypto.Hash import SHA256
 import random
-from bitstring import Bits, BitArray
-from Crypto.Util.number import long_to_bytes
+from bitstring import Bits
+from Crypto.Util.number import long_to_bytes, bytes_to_long
 import unittest
 
 cell_bit_length = 8
 request_bits = 2
 
-def cell_from_seeds(seeds):
-    """ Generates a request cell for the client with the provided seeds """
-    h = SHA256.new()
-    for seed in seeds:
-        h.update(long_to_bytes(seed))
-    random.seed(h.digest())
-    cell = [False] * cell_bit_length
-    for _ in range(request_bits):
-        cell[random.randint(1, cell_bit_length) - 1] = True
-    return Bits(cell)
+class RequestBase():
+    def cell_from_seeds(self, seeds):
+        """ Generates a request cell for the client with the provided seeds """
+        h = SHA256.new()
+        for seed in seeds:
+            h.update(long_to_bytes(seed))
+        random.seed(h.digest())
+        cell = [False] * self.cell_bit_length
+        flip = random.sample(range(0, self.cell_bit_length), self.request_bits)
+        for bit in flip:
+            cell[bit] = True
+        return bytes_to_long(Bits(cell).tobytes())
 
-class RequestChecker:
+class RequestChecker(RequestBase):
     def __init__(self, seedlist):
         """ seeds is a list of lists of trap secrets, such that seeds[nid][tid]
         is the shared secret between nym nid and trustee tid
@@ -30,48 +32,62 @@ class RequestChecker:
             nym whose request it is
         """
         self.bloom = {}
-        self.full = Bits(cell_bit_length)
+        self.full = 0
         for i in range(len(seedlist)):
-            key = cell_from_seeds(seedlist[i])
+            key = self.cell_from_seeds(seedlist[i])
+            print("Adding key {0} for val {1} to bloom".format(bin(key), i))
+            if key in self.bloom.keys():
+                print("Ouch, a hash collision!")
             self.bloom[key] = i
             self.full |= key
-        self.trapmask = ~self.full
+        print("Full: {0}".format(bin(self.full)))
+        # long to bytes apparently can't handle negatives, so use bits intsead
+        self.trapmask = ~Bits(uint=self.full, length=self.cell_bit_length)
+        self.trapcount = sum((~self.full >> i) & 0x1 \
+                             for i in range(self.cell_bit_length))
 
     def trap_noise(self, count):
         return NotImplemented
 
     def check(self, cell):
         """ Verify that the cell's trap bits have not been flipped """
-        if cell & self.trapmask != Bits(cell_bit_length):
-            print("Bad trap bit in request cell: Got {0}, mask was {1}"
-                  .format(cell & self.trapmask, self.trapmask))
+        cellbits = Bits(uint=bytes_to_long(cell), length=len(self.trapmask))
+        if cellbits & self.trapmask != Bits(len(self.trapmask)):
+            print("Bad trap bit in request cell: Got\n {0}, full was\n {1}"
+                  .format(cellbits & self.trapmask,
+                          bin(self.full)))
             return False
         return True
 
-class RequestEncoder:
+class RequestEncoder(RequestBase):
     def __init__(self, seeds=None):
-        self.cell = cell_from_seeds(seeds)
+        self.cell = self.cell_from_seeds(seeds)
 
     def encode(self, cell=None):
         """ Encodes a request for a cell into the shared request cell.
             The argument is ignored.
             """
-        return self.cell
+        return long_to_bytes(self.cell)
 
     def decoded_size(self, size):
         return NotImplemented
 
     def encoded_size(self, size):
-        return -(-cell_bit_length // 8)
+        return -(-self.cell_bit_length // 8)
 
 class RequestDecoder(RequestChecker):
     def decode(self, cell):
         """ Takes a request cell containing one or more requests for slots and
         grants all of them """
         nyms = []
+        lcell = bytes_to_long(cell)
         for key in self.bloom.keys():
-            if cell & key == key:
+            print("Cell: {0}\n key: {1}\n and: {2} = key? {3} thus: {4}"
+                  .format(bin(lcell), bin(key), bin(lcell & key), lcell & key == key, self.bloom[key]))
+            if lcell & key == key:
                 nyms.append(self.bloom[key])
+                print("Appended {0}. now nyms is {1}"
+                      .format(self.bloom[key], nyms))
         return nyms
 
 class Test(unittest.TestCase):
@@ -79,13 +95,15 @@ class Test(unittest.TestCase):
         self.e = RequestEncoder([1, 2, 3])
         self.c = RequestChecker([[1, 2, 3]])
         self.d = RequestDecoder([[1, 2, 3]])
+        random.seed()
 
     def test_cells_from_seeds(self):
-        self.assertEqual(cell_from_seeds([1, 2, 3]), cell_from_seeds([1, 2, 3]))
+        self.assertEqual(self.e.cell_from_seeds([1, 2, 3]),
+                         self.e.cell_from_seeds([1, 2, 3]))
 
     def test_encode(self):
         ecell = self.e.encode()
-        self.assertEqual(self.c.full, ecell)
+        self.assertEqual(self.c.full, bytes_to_long(ecell))
     
     def test_decode(self):
         ecell = self.e.encode()
@@ -95,29 +113,35 @@ class Test(unittest.TestCase):
         ecell = self.e.encode()
         self.assertTrue(self.c.check(ecell))
     
-    def test_bloom(self):
+    def test_flter_bloom(self):
         """ Tests that the result of multiple insertions of encoded()'s is a
         superset of the encoded cells, for multiple random sets """
         nymseeds = {}
-        encs = []
-        for i in range(10):
+        for i in range(30):
             nymseeds[i] = []
-            for _ in range(10):
+            for _ in range(30):
                 nymseeds[i].append(random.randint(0, 9))
-            encs.append(RequestEncoder(nymseeds[i]))
-        for trial in range(30):
+        d = RequestDecoder(nymseeds)
+        encs = [RequestEncoder(nymseeds[i]) for i in nymseeds]
+        random.seed()
+        for _ in range(30):
             samplesize = random.randint(1, len(nymseeds))
             nyms = sorted(random.sample(range(len(nymseeds)), samplesize))
             these_encs = [encs[i] for i in nyms]
-            cell = Bits(cell_bit_length)
+            cell = 0
             for enc in these_encs:
-                cell |= enc.encode()
-            d = RequestDecoder(nymseeds)
+                cell |= bytes_to_long(enc.encode())
             self.assertEqual(d.full | cell, d.full)
-            self.assertTrue(d.check(cell))
-            decoded = d.decode(cell)
+            self.assertTrue(d.check(long_to_bytes(cell)))
+            print("DONE CHECKING NOW DECODING")
+            decoded = sorted(d.decode(long_to_bytes(cell)))
+            print("DONE CHECKING NOW VERIFYING")
             for elt in nyms:
-                self.assertTrue(elt in decoded)
+                self.assertTrue(elt in decoded,
+                                msg="nyms: {0} decoded: {1}\n"
+                                .format(nyms, decoded) + \
+                                "encs: {0}\n cell: {1}"
+                                .format([i.encode() for i in encs], cell))
 
 if __name__ == '__main__':
     unittest.main()
