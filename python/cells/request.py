@@ -4,11 +4,26 @@ import random
 from bitstring import Bits
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 import unittest
+import math
+import functools
 
-cell_bit_length = 8
-request_bits = 2
+clients = 10
+trap_flip_risk = .1
+hash_collision_risk = 0.01
+
+def request_cell_length():
+    opt = Optimizer(clients, trap_flip_risk)
+    r, b = opt.findb(clients, trap_flip_risk, hash_collision_risk)
+    print("Request cell length: {0}. Bits per client: {1}".format(b, r))
+    return b
 
 class RequestBase():
+    def __init__(self, clients, trap_flip_risk, hash_collision_risk=0.01):
+        opt = Optimizer(clients, trap_flip_risk)
+        self.request_bits, self.cell_bit_length = opt.findb(clients,
+                                                            trap_flip_risk,
+                                                            hash_collision_risk)
+
     def cell_from_seeds(self, seeds):
         """ Generates a request cell for the client with the provided seeds """
         h = SHA256.new()
@@ -31,6 +46,7 @@ class RequestChecker(RequestBase):
           bloom (dict: Bits -> int): Maps encoded cells to the index of the
             nym whose request it is
         """
+        super().__init__(clients, trap_flip_risk, hash_collision_risk)
         self.bloom = {}
         self.full = 0
         for i in range(len(seedlist)):
@@ -61,6 +77,7 @@ class RequestChecker(RequestBase):
 
 class RequestEncoder(RequestBase):
     def __init__(self, seeds=None):
+        super().__init__(clients, trap_flip_risk, hash_collision_risk)
         self.cell = self.cell_from_seeds(seeds)
 
     def encode(self, cell=None):
@@ -89,6 +106,94 @@ class RequestDecoder(RequestChecker):
                 print("Appended {0}. now nyms is {1}"
                       .format(self.bloom[key], nyms))
         return nyms
+
+class Optimizer:
+    """ Class for efficiently computing optimal (or at least good) parameters
+    for request encoders """
+    def __init__(self, n, p):
+        """ p is the desired probability that any single bit will be a trap bit.
+        n is the number of clients. """
+        # pn has no special properties, it just makes the algebra cleaner
+        self.pn = (p * (n + 1) / n) ** (1 / (n + 1))
+        # the max number of request bits per client - this is the highest
+        # factorial we will need to compute
+        rmax = math.ceil(15 * n - 15 * n * self.pn - 1)
+        # dynamic programming table for factorials
+        self.factable = [1] * rmax
+        for i in range(1, rmax):
+            self.factable[i] = self.factable[i - 1] * i
+
+    def dpf(self, n):
+        """ (D)ynamic (P)rogramming (F)actorial:
+        Try to retrieve n! from the pre-computed factorial table """
+        if n >= len(self.factable):
+            print("Didn't compute n fact: {0}".format(n))
+            raise(Exception)  # the table should always be big enough,
+                            # so this is an error.
+            return math.factorial(n)
+        return self.factable[n]
+
+    def pno(self, n, r, b):
+        """ (P)robability that there are (no) hash collisions.
+        n is the number of pseudonyms
+        r is the number of bits each pseudonym sets to 1 in their encoded
+          request cell
+        b is the number of bits in the request cell
+        """
+        assert(b >= r)
+        ncr = self.nCr(b, r)
+        if ncr < n:
+            # there are fewer than n unique combinations of r bits from b, so
+            # there is a 100% chance of hash collisions.
+            return 0
+        return self.nPr(ncr, n) / ncr ** n
+
+    @functools.lru_cache()
+    def nCr(self, n, r):
+        """ From an (n) element set, the number of unordered (C)ombinations of
+        (r) elements that can be chosen from it """
+        rf = self.dpf(r)
+        part = self.partFact(n - r, n)
+        return part // rf
+
+    def nPr(self, n, r):
+        """ From an (n) element set, the number of (P)ermutations of (r)
+        elements that can be drawn from it. """
+        return self.partFact(n - r, n)
+
+    @functools.lru_cache()
+    def partFact(self, l, h):
+        """ The product of all integers in the interval (l, h], h > l.
+
+        Textbook nCr and nPr use factorials to approximate multiplying all
+        consecutive integers between two integers much higher than 1. partFact
+        computes this directly instead of computing both factorials.
+        """
+        if l >= h:
+            return 1
+        else:
+            return h * self.partFact(l, h - 1)
+
+    def findb(self, n, p, hp):
+        """ Experimentally determine the smallest number of bits required to
+        have a probability of hash collisions (two pseudonyms with the same
+        encoded cell contents) below hp.
+        inputs:
+          n: the number of pseudonyms
+          p: the desired probability that an arbitrary bit is a trap bit
+          hp: the desired maximum probability that multiple pseudonyms hash to
+            the same cell encoding
+        outputs:
+          r: the number of bits each encoder should set to 1 in their encoded
+            request cell
+          b: the size in bits of the request cell
+        """
+        self.pn = (p * (n + 1) / n) ** (1 / (n + 1))
+        for b in range(math.ceil(n / 8) * 8, math.ceil(n / 8) * 8 * 15, 8):
+            r = math.ceil(b - b * self.pn - 1)
+            h = self.pno(n, r, b)
+            if h > 1 - hp:
+                return r, b
 
 class Test(unittest.TestCase):
     def setUp(self):
