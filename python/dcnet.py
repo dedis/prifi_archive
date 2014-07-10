@@ -306,7 +306,7 @@ class Client:
         self.pub_nym_keys = []
         self.nyms_in_processing = []
         self.certifier = certifier
-        self.new_encoder = encoder
+        self.encoder = encoder
 
     def set_message_queue(self, messages):
         self.message_queue = messages
@@ -322,12 +322,13 @@ class Client:
         self.xornet = XorNet(self.secrets, self.interval)
 
         self.trap_seeds = {}
+        self.encoders = {}
         for nym_key, idx in self.own_nym_keys:
             self.trap_seeds[nym_key] = []
             for trap_key in trap_keys:
                 self.trap_seeds[nym_key] \
                     .append(trap_key.exchange(nym_key))
-            self.encoder = self.new_encoder(self.trap_seeds[nym_key])
+            self.encoders[idx] = self.encoder(self.trap_seeds[nym_key])
 
     def add_own_nym(self, nym_key):
         """ Add nym_key (PrivateKey) to nyms_in_processing. Once its PublicKey
@@ -381,7 +382,7 @@ class Client:
         """ Add data (byte list) to the queue of data to send with nym_idx.
         Precondition: data must be small enough to fit in a cell.
         """
-        assert self.encoder.encoded_size(len(data)) <= cell_length
+        assert self.encoders[nym_idx].encoded_size(len(data)) <= cell_length
         if nym_idx not in self.data_queue:
             self.data_queue[nym_idx] = []
         self.data_queue[nym_idx].append(data)
@@ -401,13 +402,13 @@ class Client:
                 # For each nym, if it has data to send, encode it and xor it
                 # into the ciphertext
                 if nym_idx in self.data_queue:
-                    cleartext = self.encoder.encode(self.data_queue[nym_idx][0])
+                    cleartext = self.encoders[nym_idx].encode(self.data_queue[nym_idx][0])
                     if len(self.data_queue[nym_idx]) == 1:
                         del self.data_queue[nym_idx]
                     else:
                         self.data_queue[nym_idx] = self.data_queue[nym_idx][1:]
                 elif nym_idx in self.own_nyms:
-                    cleartext = self.encoder.encode(cleartext)
+                    cleartext = self.encoders[nym_idx].encode(cleartext)
                 ciphertext = long_to_bytes(
                         bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
                 cells.append(ciphertext)
@@ -420,6 +421,10 @@ class Client:
 
 class Test(unittest.TestCase):
     def setUp(self):
+        self.encoder = NullEncoder
+        self.decoder = NullDecoder
+        self.checker = NullChecker
+
         self.trustee_count = 3
         self.client_count = 10
 
