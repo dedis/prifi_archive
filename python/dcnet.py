@@ -117,7 +117,7 @@ class Trustee:
         self.nym_keys. Returns as a list of lists of ciphertext cells
         """
         cell_count = 100
-        cells_for_nyms = []
+        cells_for_slots = {}
         for ndx in range(len(self.nym_keys)):
             ciphertext = []
             nym_noise_gen = self.checker([self.trap_secrets[ndx]])
@@ -126,8 +126,8 @@ class Trustee:
                 cell = bytes_to_long(self.xornet.produce_ciphertext(ndx))
                 cell ^= bytes_to_long(noise[idx])
                 ciphertext.append(long_to_bytes(cell))
-            cells_for_nyms.append(ciphertext)
-        return cells_for_nyms
+            cells_for_slots[ndx] = ciphertext
+        return cells_for_slots
 
     def publish_trap_secrets(self):
         return self.trap_secrets
@@ -143,13 +143,13 @@ class Trustee:
         """ Determine whether any trap bits have been flipped, where ciphertexts
         is a list of cells
         """
-        nym_trap_checkers = []
-        for nym_secrets in self.all_trap_secrets:
-            nym_trap_checkers.append(self.checker(nym_secrets))
+        slot_trap_checkers = {}
+        for ndx in range(len(self.all_trap_secrets)):
+            slot_trap_checkers[ndx] = self.checker(self.all_trap_secrets[ndx])
         for cleartext in cleartexts:
-            for nymdx in range(len(cleartext)):
+            for nymdx in slot_trap_checkers.keys():
                 for cell in cleartext[nymdx]:
-                    if not nym_trap_checkers[nymdx].check(long_to_bytes(cell)):
+                    if not slot_trap_checkers[nymdx].check(long_to_bytes(cell)):
                         print("A trap bit was flipped!")
                         # TODO: Call something if this happens
                         return False
@@ -186,15 +186,17 @@ class Relay:
 
     def sync(self, client_set):
         self.interval += 1
-        self.cells_for_nyms = [[] for x in range(self.trustees)]
-        self.current_cell = [0 for x in range(self.nyms)]
+        self.cells_for_slots = [[] for x in range(self.trustees)]
+        self.current_cell = {}
+        for x in range(self.nyms):
+            self.current_cell[x] = 0
 
-    def store_trustee_ciphertext(self, trustee_idx, cells_for_nyms):
-        """ cells_for_nyms is a list of cells for each pseudonym. This stores
-        that list under trustee_idx within self.cells_for_nyms.
+    def store_trustee_ciphertext(self, trustee_idx, cells_for_slots):
+        """ cells_for_slots is a list of cells for each slot. This stores
+        that list under trustee_idx within self.cells_for_slots.
         """
-        assert len(self.cells_for_nyms[trustee_idx]) == 0
-        self.cells_for_nyms[trustee_idx] = cells_for_nyms
+        assert len(self.cells_for_slots[trustee_idx]) == 0
+        self.cells_for_slots[trustee_idx] = cells_for_slots
 
     def process_ciphertext(self, ciphertexts):
         """ returns the original messages encoded in ciphertexts. NOTE: This
@@ -217,39 +219,39 @@ class Relay:
         # cleartext is a list with one element per pseudonym, where each element
         # contains the cleartext of that pseudonym's output. So cleartext is
         # actual-client-agnostic.
-        cleartext = []
-        for nym_texts in ciphertexts[0]:
-            cleartext.append([0 for x in range(len(nym_texts))])
+        cleartext = {}
+        for slotdx in ciphertexts[0].keys():
+            cleartext[slotdx] = [0 for x in range(len(ciphertexts[0][slotdx]))]
 
         # Merging client ciphertexts
         for cldx in range(len(ciphertexts)):
             # For each client...
             client_texts = ciphertexts[cldx]
-            for nymdx in range(len(client_texts)):
-                # For each nym slot of this client's ciphertext...
-                nym_texts = client_texts[nymdx]
-                for celldx in range(len(nym_texts)):
-                    # For each cell in this nym's slot...
-                    cell = nym_texts[celldx]
+            for slotdx in client_texts.keys():
+                # For each slot of this client's ciphertext...
+                slot_texts = client_texts[slotdx]
+                for celldx in range(len(slot_texts)):
+                    # For each cell in this slot...
+                    cell = slot_texts[celldx]
                     # xor this client's verison of this cell with the cell so far
-                    cleartext[nymdx][celldx] ^= bytes_to_long(cell)
+                    cleartext[slotdx][celldx] ^= bytes_to_long(cell)
 
         # Merging trustee ciphertexts
-        for nymdx in range(len(cleartext)):
-            nym_texts = cleartext[nymdx]
-            offset = self.current_cell[nymdx]
-            cells = len(nym_texts)
+        for slotdx in cleartext.keys():
+            slot_texts = cleartext[slotdx]
+            offset = self.current_cell[slotdx]
+            cells = len(slot_texts)
             for celldx in range(cells):
                 # For each cell:
                 # 1. xor the stored trustee cell with the client cell...
                 for tidx in range(self.trustees):
-                    cell = self.cells_for_nyms[tidx][nymdx][offset + celldx]
-                    cleartext[nymdx][celldx] ^= bytes_to_long(cell)
+                    cell = self.cells_for_slots[tidx][slotdx][offset + celldx]
+                    cleartext[slotdx][celldx] ^= bytes_to_long(cell)
 
         return cleartext
 
     def trap_decode_cleartext(self, cleartext):
-        for nymdx in range(len(cleartext)):
+        for nymdx in cleartext.keys():
             nym_texts = cleartext[nymdx]
             cells = len(nym_texts)
             for celldx in range(cells):
@@ -261,7 +263,10 @@ class Relay:
                 cleartext[nymdx][celldx] = cell
             self.current_cell[nymdx] += cells
 
-        return self.accumulator.after(cleartext)
+        ctlst = self.accumulator.after([cleartext[x] for x in range(len(cleartext))])
+        for i in range(len(ctlst)):
+            cleartext[i] = ctlst[i]
+        return cleartext
 
 class Client:
     """ DC-nets layer Client. A Client can own multiple pseudonyms (nyms), each
@@ -392,7 +397,7 @@ class Client:
         data into the slots owned by this Client's nyms. Returns the output of
         a call to certify (ciphertexts, (other, own))
         """
-        cells_for_nyms = []
+        cells_for_slots = {}
         count = 1
         for nym_idx in range(len(self.pub_nym_keys)):
             cells = []
@@ -412,8 +417,8 @@ class Client:
                 ciphertext = long_to_bytes(
                         bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
                 cells.append(ciphertext)
-            cells_for_nyms.append(cells)
-        return self.certifier.certify(cells_for_nyms)
+            cells_for_slots[nym_idx] = cells
+        return self.certifier.certify(cells_for_slots)
 
     def process_cleartext(self, cleartext):
         return self.certifier.verify(cleartext)
