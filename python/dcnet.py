@@ -12,6 +12,8 @@ from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import verdict
 
+from cells.inversion import InversionEncoder, InversionDecoder, InversionChecker
+from cells.request import RequestEncoder, RequestDecoder, RequestChecker
 from cells.null import NullDecoder, NullEncoder, NullChecker
 from certify.encrypted_exchange import EncryptedAccumulator, EncryptedCertifier
 from certify.null import NullAccumulator, NullCertifier
@@ -180,10 +182,11 @@ class Relay:
       accumulator: Accumulator object from certify
       decoder (any Decoder class from cells): The decoder to use for reversing
         the trap encoding
-      cells_for_nyms (list list): Indexed by trustee index; stores a list of
-        of cells for each nym within each trustee entry
+      cells_for_slot (int -> list): Indexed by trustee index; stores a list of
+        of cells for each nym within each trustee entry, plus one for the
+        request cell
       current_cell (int list): The nth element is the index of the next cell of
-        nym n to process
+        slot n to process
     """
     def __init__(self, trustees, accumulator, decoder, rdecoder):
         self.nyms = 0
@@ -475,6 +478,15 @@ class Test(unittest.TestCase):
         self.encoder = NullEncoder
         self.decoder = NullDecoder
         self.checker = NullChecker
+        self.encoder = InversionEncoder
+        self.decoder = InversionDecoder
+        self.checker = InversionChecker
+        self.rencoder = NullEncoder
+        self.rdecoder = NullDecoder
+        self.rchecker = NullChecker
+        self.rencoder = RequestEncoder
+        self.rdecoder = RequestDecoder
+        self.rchecker = RequestChecker
 
         self.trustee_count = 3
         self.client_count = 10
@@ -487,33 +499,27 @@ class Test(unittest.TestCase):
         self.clients = self.spawn_clients()
         self.relay = self.spawn_relay()
 
+        self.to_chk = []
+        self.client_ciphertext = []
+
         self.start_interval()
 
-    def test_send(self):
-        for idx in range(len(self.trustees)):
-            trustee = self.trustees[idx]
-            ciphertext = trustee.produce_interval_ciphertext()
-            self.relay.store_trustee_ciphertext(idx, ciphertext)
+    def test_send_check(self):
+        self.test_send_integrity()
+        self.check()
 
-        self.to_chk = []
-        self.send(self.clients, self.trustees, self.relay, self.to_chk)
-        self.send(self.clients, self.trustees, self.relay, self.to_chk,
-                  bytes("Hello", "UTF-8"))
-        self.send(self.clients, self.trustees, self.relay, self.to_chk)
+    def test_send_integrity(self):
+        self.send()
+        self.send(bytes("Hello", "UTF-8"))
+        self.send()
 
-    def test_check(self):
-        self.test_send()
-        t0 = time.time()
-        trap_secrets = [trustee.publish_trap_secrets() for trustee in self.trustees]
-        composite_secrets = [[trap_secrets[i][j] \
-                              for i in range(self.trustee_count)] \
-                                for j in range(len(trap_secrets[0]))]
-        for i in range(self.trustee_count):
-            self.trustees[i].store_trap_secrets(composite_secrets)
-            self.assertTrue(self.trustees[i].check_interval_traps(self.to_chk),
-                            msg="Trustee {0} rejected ciphertext {1}"
-                            .format(i, self.to_chk))
-        print(time.time() - t0)
+    def test_request_check(self):
+        self.request()
+        self.check()
+
+    def test_request_integrity(self):
+        self.assertEqual(self.request(),
+                         [x for x in range(len(self.clients))])
 
     def gen_keys(self, count):
         dhkeys = []
@@ -530,7 +536,7 @@ class Test(unittest.TestCase):
         trustees = []
         for idx in range(self.trustee_count):
             trustee = Trustee(self.trustee_dhkeys[idx], self.client_keys,
-                              self.checker)
+                              self.checker, self.rchecker)
             trustee.add_nyms(self.nym_keys)
             trustees.append(trustee)
         return trustees
@@ -546,7 +552,7 @@ class Test(unittest.TestCase):
                                                    self.trustee_keys)
             certifier = EncryptedCertifier(client_verdict)
             client = Client(self.client_dhkeys[idx], self.trustee_keys,
-                            certifier, self.encoder)
+                            certifier, self.encoder, self.rencoder)
             client.add_own_nym(self.nym_dhkeys[idx])
             client.add_nyms(self.nym_keys)
             clients.append(client)
@@ -564,39 +570,73 @@ class Test(unittest.TestCase):
         trustee_verdict = verdict.TrusteeVerdict(ss, self.client_keys,
                                                  self.trustee_keys, True)
         accumulator = EncryptedAccumulator(trustee_verdict)
-        relay = Relay(self.trustee_count, accumulator, self.decoder)
+        relay = Relay(self.trustee_count, accumulator, self.decoder,
+                      self.rdecoder)
         relay.add_nyms(self.client_count)
         return relay
 
     def start_interval(self):
         self.relay.sync(None)
         trap_keys = []
-        for trustee in self.trustees:
-            trustee.sync(None)
-            trap_keys.append(trustee.trap_keys[-1].public_key())
+        for idx in range(len(self.trustees)):
+            self.trustees[idx].sync(None)
+            trap_keys.append(self.trustees[idx].trap_keys[-1].public_key())
+            trustee = self.trustees[idx]
+            ciphertext = trustee.produce_interval_ciphertext()
+            self.relay.store_trustee_ciphertext(idx, ciphertext)
         for client in self.clients:
             client.sync(None, trap_keys)
 
-    def send(self, clients, trustees, relay, to_check, m=None):
-        t0 = time.time()
+    def handle_interval_ciphertext(self):
         client_ciphertexts = []
-        for client in clients:
-            if m != None:
-                client.send(client.own_nym_keys[0][1], m)
+        for client in self.clients:
             client_ciphertexts.append(client.produce_ciphertexts())
-        next_to_check = relay.process_ciphertext(client_ciphertexts)
-        to_check.append(deepcopy(next_to_check))
-        cleartext = relay.trap_decode_cleartext(next_to_check)
 
-        if m == None:
-            m = long_to_bytes(0)
-        for i in range(len(cleartext)):
-            self.assertEqual(cleartext[i][0], m,
-                             msg="Slot {0} got {1}; expected{2}"
-                             .format(i, cleartext[i][0], m))
-        print(time.time() - t0)
-        for client in clients:
+        cleartext = self.relay.process_ciphertext(client_ciphertexts)
+        self.to_chk.append(deepcopy(cleartext))
+        self.relay.trap_decode_cleartext(cleartext)
+        for client in self.clients:
             client.process_cleartext(cleartext)
+        return cleartext
+
+    def send(self, m=None):
+        t0 = time.time()
+        if m != None:
+            for client in self.clients:
+                client.send(client.own_nym_keys[0][1], m)
+        else:
+            m = long_to_bytes(0)
+        cleartext = self.handle_interval_ciphertext()
+        t1 = time.time() - t0
+
+        for i in range(len(cleartext) - 1):
+            self.assertEqual(cleartext[i][0], m,
+                             msg="Slot {0} got {1}; expected{2}.\n Whole ct: {3}"
+                             .format(i, cleartext[i][0], m, cleartext))
+        print("Sending {0} took {1}".format(m, t1))
+
+    def request(self):
+        for cldx in range(len(self.clients)):
+            self.clients[cldx].request([cldx])
+        self.handle_interval_ciphertext()
+        self.check()
+        nyms = self.relay.process_request_cell(self.trap_secrets)
+        return nyms
+
+    def check(self):
+        t0 = time.time()
+        self.trap_secrets = [trustee.publish_trap_secrets() \
+                             for trustee in self.trustees]
+        composite_secrets = [[self.trap_secrets[i][j] \
+                              for i in range(self.trustee_count)] \
+                                for j in range(len(self.trap_secrets[0]))]
+        for i in range(self.trustee_count):
+            self.trustees[i].store_trap_secrets(composite_secrets)
+            self.assertTrue(self.trustees[i].check_interval_traps(self.to_chk),
+                            msg="Trustee {0} rejected ciphertext {1}"
+                            .format(i, self.to_chk))
+        t1 = time.time() - t0
+        print("Checking ciphertexts took {0}".format(t1))
 
 if __name__ == "__main__":
     unittest.main()
