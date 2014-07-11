@@ -25,6 +25,8 @@ global_group = schnorr.verdict_1024()
 cell_length = 256
 empty_cell = bytes(0 for x in range(cell_length))
 
+rcelldx = -1
+
 class XorNet:
     """ Class for handling the xor net layer.
 
@@ -62,7 +64,7 @@ class XorNet:
         return ciphertext
 
 class Trustee:
-    def __init__(self, key, client_keys, checker):
+    def __init__(self, key, client_keys, checker, rchecker):
         """
         Usage: Create a Trustee, call add_nyms on all client nyms, then call
         sync.  After this, call produce_interval_ciphertext as needed.
@@ -92,6 +94,7 @@ class Trustee:
         self.nym_keys = []
         self.trap_keys = []
         self.checker = checker
+        self.rchecker = rchecker
         self.all_trap_secrets = []
 
     def add_nyms(self, nym_keys):
@@ -127,6 +130,13 @@ class Trustee:
                 cell ^= bytes_to_long(noise[idx])
                 ciphertext.append(long_to_bytes(cell))
             cells_for_slots[ndx] = ciphertext
+
+        # Generate ciphertext (but no noise) for the request cell
+        ciphertext = []
+        for idx in range(cell_count):
+            ciphertext.append(self.xornet.produce_ciphertext(rcelldx))
+        cells_for_slots[rcelldx] = ciphertext
+
         return cells_for_slots
 
     def publish_trap_secrets(self):
@@ -146,6 +156,7 @@ class Trustee:
         slot_trap_checkers = {}
         for ndx in range(len(self.all_trap_secrets)):
             slot_trap_checkers[ndx] = self.checker(self.all_trap_secrets[ndx])
+        slot_trap_checkers[rcelldx] = self.rchecker(self.all_trap_secrets)
         for cleartext in cleartexts:
             for nymdx in slot_trap_checkers.keys():
                 for cell in cleartext[nymdx]:
@@ -174,12 +185,13 @@ class Relay:
       current_cell (int list): The nth element is the index of the next cell of
         nym n to process
     """
-    def __init__(self, trustees, accumulator, decoder):
+    def __init__(self, trustees, accumulator, decoder, rdecoder):
         self.nyms = 0
         self.trustees = trustees
         self.interval = -1
         self.accumulator = accumulator
         self.decoder = decoder()
+        self.rdecoder = rdecoder
 
     def add_nyms(self, nym_count):
         self.nyms += nym_count
@@ -190,6 +202,8 @@ class Relay:
         self.current_cell = {}
         for x in range(self.nyms):
             self.current_cell[x] = 0
+        self.current_cell[rcelldx] = 0
+        self.interval_req_cell = 0
 
     def store_trustee_ciphertext(self, trustee_idx, cells_for_slots):
         """ cells_for_slots is a list of cells for each slot. This stores
@@ -197,6 +211,12 @@ class Relay:
         """
         assert len(self.cells_for_slots[trustee_idx]) == 0
         self.cells_for_slots[trustee_idx] = cells_for_slots
+
+    def process_request_cell(self, trap_secrets):
+        decoder = self.rdecoder(trap_secrets)
+        nyms = sorted(decoder.decode(long_to_bytes(self.interval_req_cell)))
+        print("Nyms requesting more space: {0}".format(nyms))
+        return nyms
 
     def process_ciphertext(self, ciphertexts):
         """ returns the original messages encoded in ciphertexts. NOTE: This
@@ -251,6 +271,11 @@ class Relay:
         return cleartext
 
     def trap_decode_cleartext(self, cleartext):
+        requests = cleartext.pop(rcelldx)
+        self.current_cell[rcelldx] += len(requests)
+        for r in requests:
+            self.interval_req_cell |= r
+
         for nymdx in cleartext.keys():
             nym_texts = cleartext[nymdx]
             cells = len(nym_texts)
@@ -266,6 +291,7 @@ class Relay:
         ctlst = self.accumulator.after([cleartext[x] for x in range(len(cleartext))])
         for i in range(len(ctlst)):
             cleartext[i] = ctlst[i]
+        cleartext[rcelldx] = [self.interval_req_cell]
         return cleartext
 
 class Client:
@@ -298,7 +324,7 @@ class Client:
       encoder (Encoder object from cells): Object for trap encoding data
       xornet (XorNet): Local copy of the XorNet for generating ciphertext
     """
-    def __init__(self, key, trustee_keys, certifier, encoder):
+    def __init__(self, key, trustee_keys, certifier, encoder, rencoder):
         self.key = key
         self.trustee_keys = trustee_keys
         self.secrets = []
@@ -310,8 +336,14 @@ class Client:
         self.interval = -1
         self.pub_nym_keys = []
         self.nyms_in_processing = []
+
+        self.interval = -1
+        self.data_queue = {}
+        self.requesters = {}
+
         self.certifier = certifier
         self.encoder = encoder
+        self.rencoder = rencoder
 
     def set_message_queue(self, messages):
         self.message_queue = messages
@@ -328,12 +360,14 @@ class Client:
 
         self.trap_seeds = {}
         self.encoders = {}
+        self.rencoders = {}
         for nym_key, idx in self.own_nym_keys:
             self.trap_seeds[nym_key] = []
             for trap_key in trap_keys:
                 self.trap_seeds[nym_key] \
                     .append(trap_key.exchange(nym_key))
             self.encoders[idx] = self.encoder(self.trap_seeds[nym_key])
+            self.rencoders[idx] = self.rencoder(self.trap_seeds[nym_key])
 
     def add_own_nym(self, nym_key):
         """ Add nym_key (PrivateKey) to nyms_in_processing. Once its PublicKey
@@ -392,6 +426,11 @@ class Client:
             self.data_queue[nym_idx] = []
         self.data_queue[nym_idx].append(data)
 
+    def request(self, nyms):
+        cleartext = 0
+        for nym_idx in nyms:
+            self.requesters[nym_idx] = self.rencoders[nym_idx].encode(long_to_bytes(cleartext))
+
     def produce_ciphertexts(self):
         """ Produce ciphertext for all (everybody's) nyms, optionally encoding
         data into the slots owned by this Client's nyms. Returns the output of
@@ -399,6 +438,7 @@ class Client:
         """
         cells_for_slots = {}
         count = 1
+        rcell = 0
         for nym_idx in range(len(self.pub_nym_keys)):
             cells = []
             for idx in range(count):
@@ -417,11 +457,17 @@ class Client:
                 ciphertext = long_to_bytes(
                         bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
                 cells.append(ciphertext)
+            if nym_idx in self.requesters:
+                nymreq = self.requesters.pop(nym_idx)
+                rcell |= bytes_to_long(nymreq)
             cells_for_slots[nym_idx] = cells
+        rciphertext = self.xornet.produce_ciphertext(rcelldx)
+        cells_for_slots[rcelldx] = [long_to_bytes(rcell ^ bytes_to_long(rciphertext))]
         return self.certifier.certify(cells_for_slots)
 
     def process_cleartext(self, cleartext):
-        return self.certifier.verify(cleartext)
+        self.interval_requests = cleartext[rcelldx]
+        return self.certifier.verify([cleartext[x] for x in range(len(cleartext) - 1)])
 
 
 class Test(unittest.TestCase):

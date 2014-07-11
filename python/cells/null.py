@@ -24,6 +24,9 @@ class NullEncoder:
         return size
 
 class NullDecoder:
+    def __init__(self, arg=None):
+        return
+
     def decode(self, cell):
         return cell
 
