@@ -19,7 +19,7 @@ import schnorr
 
 global_group = schnorr.verdict_1024()
 
-cell_length = 24
+cell_length = 2048
 empty_cell = bytes(0 for x in range(cell_length))
 
 class XorNet:

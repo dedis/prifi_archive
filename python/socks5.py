@@ -123,14 +123,14 @@ def create_server(ip,port):
                         dst_addr=None
                         dst_port=None
                         if atyp=="\x01":#IPV4
-                                dst_addr,dst_port=sock.recv(4),sock.recv(2)
+                                dst_addr,dst_port=sock.recv(4,socket.MSG_WAITALL),sock.recv(2,socket.MSG_WAITALL)
                                 dst_addr=".".join([str(ord(i)) for i in dst_addr])
                         elif atyp=="\x03":#Domain
                                 addr_len=ord(sock.recv(1))#域名的长度
-                                dst_addr,dst_port=sock.recv(addr_len),sock.recv(2)
+                                dst_addr,dst_port=sock.recv(addr_len,socket.MSG_WAITALL),sock.recv(2,socket.MSG_WAITALL)
                                 dst_addr="".join([unichr(ord(i)) for i in dst_addr])
                         elif atyp=="\x04":#IPV6
-                                dst_addr,dst_port=sock.recv(16),sock.recv(2)
+                                dst_addr,dst_port=sock.recv(16,socket.MSG_WAITALL),sock.recv(2,socket.MSG_WAITALL)
                                 tmp_addr=[]
                                 for i in xrange(len(dst_addr)/2):
                                         tmp_addr.append(unichr(ord(dst_addr[2*i])*256+ord(dst_addr[2*i+1])))

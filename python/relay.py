@@ -32,7 +32,7 @@ def socks_relay_down(cno, conn, downstream):
 
         # close the connection to socks relay
         if n == 0:
-            print("socks relay down: cno {} closed".format(cno))
+            print("socks_relay_down: cno {} closed".format(cno))
             conn.close()
             return
 
@@ -47,6 +47,7 @@ def socks_relay_up(cno, conn, upstream):
             conn.close()
             return
 
+        print("socks_relay_up: {} bytes on cno {}".format(dlen, cno))
         n = conn.send(buf)
 
 
@@ -134,8 +135,8 @@ def main():
             threading.Thread(target=socks_relay_up, args=(cno, conn, upstream,)).start()
             conns[cno] = upstream
 
-        print("upstream sending {} bytes on cno {}".format(uplen, cno))
-        upstream.put(outb[6:6+uplen])
+        print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
+        conns[cno].put(outb[6:6+uplen])
 
 if __name__ == "__main__":
     main()

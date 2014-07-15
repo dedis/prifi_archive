@@ -17,7 +17,7 @@ from certify.null import NullAccumulator, NullCertifier
 
 from elgamal import PublicKey, PrivateKey
 
-def read_relay(conn):
+def read_relay(conn, close):
     slot_idx = 0
 
     while True:
@@ -34,13 +34,24 @@ def read_relay(conn):
         if cno != 0 or dlen != 0:
             print("downstream from relay: cno {} dlen {}".format(cno, dlen))
 
+        # see if any connections were closed by client
+        try:
+            while True:
+                ccno = close.get_nowait()
+                print("client closed conn {}".format(ccno))
+                conns[ccno].conn.close()
+                conns[ccno] = None
+        except queue.Empty:
+            pass
+
         # pass along if necessary
-        # XXX make concurrency-safe
         if cno > 0 and cno < len(conns) and conns[cno] is not None:
             if dlen > 0:
                 n = conns[cno].conn.send(buf)
             else:
                 print("upstream closed conn {}".format(cno))
+                # XXX: not concurrency safe
+                inputs.remove(conns[cno])
                 conns[cno].conn.close()
                 conns[cno] = None
 
@@ -76,6 +87,7 @@ def main():
     global conns
     global slot_keys
     global nym_private_key
+    global inputs
 
     p = argparse.ArgumentParser(description="Basic DC-net client")
     p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
@@ -120,19 +132,21 @@ def main():
     ssock.bind(("", opts.port))
     ssock.listen(5)
 
+    close_queue = queue.Queue()
+    upstream_queue = queue.Queue()
+    conns = [None]
+
     # connect to the relay
     relay_host = relay_address[0]
     relay_port = int(relay_address[1])
     rsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     rsock.connect((relay_host, relay_port))
-    rthread = threading.Thread(target=read_relay, args=(rsock,))
+    rthread = threading.Thread(target=read_relay, args=(rsock, close_queue,))
     rthread.start()
 
     inputs = [ssock]
     outputs = []
 
-    upstream_queue = queue.Queue()
-    conns = [None]
 
     while True:
         readable, writable, exceptional = select.select(inputs, outputs, inputs)
@@ -157,9 +171,8 @@ def main():
                 upstream_queue.put(upstream)
                 print("client upstream: {} bytes on cno {}".format(n, cno))
                 if n == 0:
-                    conn.close()
-                    conns[cno] = None
                     inputs.remove(rinput)
+                    close_queue.put(cno)
 
 if __name__ == "__main__":
     main()
