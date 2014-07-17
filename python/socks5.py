@@ -1,174 +1,138 @@
-#!/usr/bin/python2.7
-#encoding=utf-8
-
 import socket
-from threading import Thread
-import sys
-import signal
-import traceback
+import threading
+from Crypto.Util.number import bytes_to_long, long_to_bytes
 
-SOCKTIMEOUT=5#客户端连接超时(秒)
-RESENDTIMEOUT=300#转发超时(秒)
+VERSION = b'\x05'
 
-VER="\x05"
-METHOD="\x00"
+METH_NO_AUTH = b'\x00'
+METH_GSS = b'\x01'
+METH_USER_PASS = b'\x02'
+METH_NONE = b'\xff'
 
-SUCCESS="\x00"
-SOCKFAIL="\x01"
-NETWORKFAIL="\x02"
-HOSTFAIL="\x04"
-REFUSED="\x05"
-TTLEXPIRED="\x06"
-UNSUPPORTCMD="\x07"
-ADDRTYPEUNSPPORT="\x08"
-UNASSIGNED="\x09"
+ADDR_IPv4 = b'\x01'
+ADDR_DOMAIN = b'\x03'
+ADDR_IPv6 = b'\x04'
 
-_LOGGER=None
+CMD_CONNECT = b'\x01'
+CMD_BIND = b'\x01'
+CMD_ASSOCIATE = b'\x01'
 
-class Log:
-        WARN="[WARN:]"
-        INFO="[INFO:]"
-        ERROR="[ERROR:]"
-        def write(self,message,level):
-                pass
-                
-class SimpleLog(Log):
-        import sys
-        def __init__(self,output=sys.stdout):
-                self.__output=output
-                self.show_log=True
-                
-        def write(self,message,level=Log.INFO):
-                if self.show_log:
-                        self.__output.write("%s\t%s\n" %(level,message))
-                        
-def getLogger(output=sys.stdout):
-        global _LOGGER
-        if not _LOGGER:
-                _LOGGER=SimpleLog(output)
-        return _LOGGER
-                
-
-class SocketTransform(Thread):
-        def __init__(self,src,dest_ip,dest_port,bind=False):
-                Thread.__init__(self)
-                self.dest_ip=dest_ip
-                self.dest_port=dest_port
-                self.src=src
-                self.bind=bind
-                self.setDaemon(True)
-
-        def run(self):
-                try:
-                        self.resend()
-                except Exception,e:
-                        getLogger().write("Error on SocketTransform %s" %(e.message,),Log.ERROR)
-                        #getLogger().write(traceback.format_exc(),Log.ERROR)
-                        self.sock.close()
-                        self.dest.close()
-
-        def resend(self):
-                self.sock=self.src
-                self.dest=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-                self.dest.connect((self.dest_ip,self.dest_port))
-                if self.bind:
-                        getLogger().write("Waiting for the client")
-                        self.sock,info=sock.accept()
-                        getLogger().write("Client connected")
-                getLogger().write("Starting Resending")
-                self.sock.settimeout(RESENDTIMEOUT)
-                self.dest.settimeout(RESENDTIMEOUT)
-                Resender(self.sock,self.dest).start()
-                Resender(self.dest,self.sock).start()
+REP_SUCCEEDED = b'\x00'
+REP_GENERAL_FAILURE = b'\x01'
+REP_CONNECTION_NOT_ALLOWED = b'\x02'
+REP_NETWORK_UNREACHABLE = b'\x03'
+REP_HOST_UNREACHABLE = b'\x04'
+REP_CONNECTION_REFUSED = b'\x05'
+REP_TTL_EXPIRED = b'\x06'
+REP_COMMAND_NOT_SUPPORTED = b'\x07'
+REP_ADDR_TYPE_NOT_SUPPORTED = b'\x08'
 
 
-class Resender(Thread):
-        def __init__(self,src,dest):
-                Thread.__init__(self)
-                self.src=src
-                self.setDaemon(True)
-                self.dest=dest
-
-        def run(self):
-                try:
-                        self.resend(self.src,self.dest)
-                except Exception,e:
-                        getLogger().write("Connection lost %s" %(e.message,),Log.ERROR)
-                        self.src.close()
-                        self.dest.close()
-
-        def resend(self,src,dest):
-                data=src.recv(10)
-                while data:
-                        dest.sendall(data)
-                        data=src.recv(10)
-                src.close()
-                dest.close()
-                getLogger().write("Client quit normally\n")
+def read_socks_addr(conn, atyp):
+    if atyp == ADDR_IPv4:
+        return socket.inet_ntop(socket.AF_INET, conn.recv(4, socket.MSG_WAITALL))
+    elif atyp == ADDR_DOMAIN:
+        addr_len = bytes_to_long(conn.recv(1))
+        return conn.recv(addr_len, socket.MSG_WAITALL).decode("UTF-8")
+    elif atyp == ADDR_IPv6:
+        return socket.inet_ntop(socket.AF_INET6, conn.recv(16, socket.MSG_WAITALL))
+    else:
+        return None
 
 
-def create_server(ip,port):
-        transformer=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        transformer.bind((ip,port))
-        signal.signal(signal.SIGTERM,OnExit(transformer).exit)
-        transformer.listen(1000)
+def socks_reply(err=None, addr=None):
+    rep = REP_SUCCEEDED if err is None else REP_GENERAL_FAILURE
+    if addr is not None:
+        ip, port = addr
+        try:
+            atyp = ADDR_IPv4
+            addr = socket.inet_pton(socket.AF_INET, ip) + long_to_bytes(port, 2)
+        except:
+            atyp = ADDR_IPv4
+            addr = bytearray(6)
+            rep = REP_ADDR_TYPE_NOT_SUPPORTED
+    else:
+        atyp = ADDR_IPv4
+        addr = bytearray(6)
+    return VERSION + rep + b'\x00' + atyp + addr
+
+
+def socks_forward(src, dst):
+    buf, total = bytearray(256), 0
+    try:
+        n = src.recv_into(buf)
+        while n > 0:
+            total += n
+            dst.sendall(buf[:n])
+            n = src.recv_into(buf)
+        src.close()
+        dst.close()
+    except:
+        pass
+    print("Forwarded {} bytes on connection".format(total))
+
+
+def new_connection(conn, addr):
+    # we only support version 5 and NoAuth for now
+    ver, nmethods = conn.recv(1), conn.recv(1);
+    if ver != VERSION:
+        print("SocksVersionNotSupported: {}".format(ver))
+        return
+    nmethods = bytes_to_long(nmethods)
+    methods = conn.recv(nmethods, socket.MSG_WAITALL);
+    for meth in methods:
+        if meth == bytes_to_long(METH_NO_AUTH):
+            break
+    else:
+        print("AuthenticationMethodNotSupported")
+        conn.sendall(VERSION + METH_NONE)
+        return
+
+    # continue using NoAuth
+    conn.sendall(VERSION + METH_NO_AUTH)
+
+    ver, cmd = conn.recv(1), conn.recv(1);
+    rsv, atyp = conn.recv(1), conn.recv(1);
+
+    upstream_addr = read_socks_addr(conn, atyp)
+    upstream_port = bytes_to_long(conn.recv(2, socket.MSG_WAITALL))
+
+    if cmd == CMD_CONNECT:
+        try:
+            upstream = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            upstream.connect((upstream_addr, upstream_port))
+        except Exception as e:
+            print("Unable to connect to upstream host")
+            conn.sendall(socks_reply(err=REP_GENERAL_FAILURE))
+            conn.close()
+            return
+
+        print("New connection to {}:{}".format(upstream_addr, upstream_port))
+        conn.sendall(socks_reply(addr=conn.getsockname()))
+
+        # start forwarding streams in both directions
+        threading.Thread(target=socks_forward, args=(conn,upstream,)).start()
+        threading.Thread(target=socks_forward, args=(upstream,conn,)).start()
+
+    else:
+        print("CommandNotSupported: {}".format(cmd))
+        conn.sendall(socks_reply(err=REP_COMMAND_NOT_SUPPORTED))
+        conn.close()
+
+
+def main():
+    ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    ssock.bind(("0.0.0.0", 8080))
+    ssock.listen(5)
+    try:
         while True:
-                sock,addr_info=transformer.accept()
-                sock.settimeout(SOCKTIMEOUT)
-                getLogger().write("Got one client connection")
-                try:
-                        ver,nmethods,methods=(sock.recv(1),sock.recv(1),sock.recv(1))
-                        sock.sendall(VER+METHOD)
-                        ver,cmd,rsv,atyp=(sock.recv(1),sock.recv(1),sock.recv(1),sock.recv(1))
-                        dst_addr=None
-                        dst_port=None
-                        if atyp=="\x01":#IPV4
-                                dst_addr,dst_port=sock.recv(4,socket.MSG_WAITALL),sock.recv(2,socket.MSG_WAITALL)
-                                dst_addr=".".join([str(ord(i)) for i in dst_addr])
-                        elif atyp=="\x03":#Domain
-                                addr_len=ord(sock.recv(1))#域名的长度
-                                dst_addr,dst_port=sock.recv(addr_len,socket.MSG_WAITALL),sock.recv(2,socket.MSG_WAITALL)
-                                dst_addr="".join([unichr(ord(i)) for i in dst_addr])
-                        elif atyp=="\x04":#IPV6
-                                dst_addr,dst_port=sock.recv(16,socket.MSG_WAITALL),sock.recv(2,socket.MSG_WAITALL)
-                                tmp_addr=[]
-                                for i in xrange(len(dst_addr)/2):
-                                        tmp_addr.append(unichr(ord(dst_addr[2*i])*256+ord(dst_addr[2*i+1])))
-                                dst_addr=":".join(tmp_addr)
-                        dst_port=ord(dst_port[0])*256+ord(dst_port[1])
-                        getLogger().write("Client wants to connect to %s:%d" %(dst_addr,dst_port))
-                        server_sock=sock
-                        server_ip="".join([chr(int(i)) for i in ip.split(".")])
-
-                        if cmd=="\x02":#BIND
-                                #Unimplement
-                                sock.close()
-                        elif cmd=="\x03":#UDP
-                                #Unimplement
-                                sock.close()
-                        elif cmd=="\x01":#CONNECT
-                                sock.sendall(VER+SUCCESS+"\x00"+"\x01"+server_ip+chr(port/256)+chr(port%256))
-                                getLogger().write("Starting transform thread")
-                                SocketTransform(server_sock,dst_addr,dst_port).start()
-                        else:#Unspport Command
-                                sock.sendall(VER+UNSPPORTCMD+server_ip+chr(port/256)+chr(port%256))
-                                sock.close()
-                except Exception,e:
-                        getLogger().write("Error on starting transform:"+e.message,Log.ERROR)
-                        sock.close()
-
-class OnExit:
-        def __init__(self,sock):
-                self.sock=sock
-
-        def exit(self):
-                self.sock.close()
+            handler = threading.Thread(target=new_connection, args=ssock.accept())
+            handler.daemon = True
+            handler.start()
+    except KeyboardInterrupt:
+        pass
+    ssock.close()
 
 
 if __name__=='__main__':
-        try:
-                ip="0.0.0.0"
-                port=8080
-                create_server(ip,port)
-        except Exception,e:
-                getLogger().write("Error on create server:"+e.message,Log.ERROR)
+    main()
