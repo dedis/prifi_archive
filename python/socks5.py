@@ -1,5 +1,6 @@
+import asyncio
 import socket
-import threading
+import time
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 VERSION = b'\x05'
@@ -14,8 +15,8 @@ ADDR_DOMAIN = b'\x03'
 ADDR_IPv6 = b'\x04'
 
 CMD_CONNECT = b'\x01'
-CMD_BIND = b'\x01'
-CMD_ASSOCIATE = b'\x01'
+CMD_BIND = b'\x02'
+CMD_ASSOCIATE = b'\x03'
 
 REP_SUCCEEDED = b'\x00'
 REP_GENERAL_FAILURE = b'\x01'
@@ -28,111 +29,172 @@ REP_COMMAND_NOT_SUPPORTED = b'\x07'
 REP_ADDR_TYPE_NOT_SUPPORTED = b'\x08'
 
 
-def read_socks_addr(conn, atyp):
+@asyncio.coroutine
+def read_socks_addr(client_reader, atyp):
     if atyp == ADDR_IPv4:
-        return socket.inet_ntop(socket.AF_INET, conn.recv(4, socket.MSG_WAITALL))
+        addr = yield from client_reader.readexactly(4)
+        return socket.inet_ntop(socket.AF_INET, addr)
     elif atyp == ADDR_DOMAIN:
-        addr_len = bytes_to_long(conn.recv(1))
-        return conn.recv(addr_len, socket.MSG_WAITALL).decode("UTF-8")
+        addr_len = yield from client_reader.readexactly(1)
+        addr_len = bytes_to_long(addr_len)
+        addr = yield from client_reader.readexactly(addr_len)
+        return addr.decode("UTF-8")
     elif atyp == ADDR_IPv6:
-        return socket.inet_ntop(socket.AF_INET6, conn.recv(16, socket.MSG_WAITALL))
+        addr = yield from client_reader.readexactly(16)
+        return socket.inet_ntop(socket.AF_INET6, addr)
     else:
         return None
-
 
 def socks_reply(err=None, addr=None):
     rep = REP_SUCCEEDED if err is None else REP_GENERAL_FAILURE
     if addr is not None:
-        ip, port = addr
         try:
             atyp = ADDR_IPv4
+            ip, port = addr
             addr = socket.inet_pton(socket.AF_INET, ip) + long_to_bytes(port, 2)
         except:
-            atyp = ADDR_IPv4
-            addr = bytearray(6)
-            rep = REP_ADDR_TYPE_NOT_SUPPORTED
+            try:
+                atyp = ADDR_IPv6
+                ip, port, flow_info, scope_id = addr
+                addr = socket.inet_pton(socket.AF_INET6, ip) + long_to_bytes(port, 2)
+            except:
+                atyp = ADDR_IPv4
+                addr = bytearray(6)
+                rep = REP_ADDR_TYPE_NOT_SUPPORTED
     else:
         atyp = ADDR_IPv4
         addr = bytearray(6)
     return VERSION + rep + b'\x00' + atyp + addr
 
 
-def socks_forward(src, dst):
-    buf, total = bytearray(256), 0
+@asyncio.coroutine
+def socks_forward(reader, writer):
+    total = 0
     try:
-        n = src.recv_into(buf)
-        while n > 0:
-            total += n
-            dst.sendall(buf[:n])
-            n = src.recv_into(buf)
-        src.close()
-        dst.close()
+        data = yield from reader.read(256)
+        while data:
+            total += len(data)
+            yield from writer.drain()
+            writer.write(data)
+            data = yield from reader.read(256)
     except:
         pass
+    writer.close()
     print("Forwarded {} bytes on connection".format(total))
 
-
-def new_connection(conn, addr):
+@asyncio.coroutine
+def socks_accept(client_reader, client_writer):
     # we only support version 5 and NoAuth for now
-    ver, nmethods = conn.recv(1), conn.recv(1);
+    ver = yield from client_reader.readexactly(1)
+    nmethods = yield from client_reader.readexactly(1)
     if ver != VERSION:
         print("SocksVersionNotSupported: {}".format(ver))
         return
     nmethods = bytes_to_long(nmethods)
-    methods = conn.recv(nmethods, socket.MSG_WAITALL);
+    methods = yield from client_reader.readexactly(nmethods)
     for meth in methods:
         if meth == bytes_to_long(METH_NO_AUTH):
             break
     else:
         print("AuthenticationMethodNotSupported")
-        conn.sendall(VERSION + METH_NONE)
+        client_writer.write(VERSION + METH_NONE)
         return
 
     # continue using NoAuth
-    conn.sendall(VERSION + METH_NO_AUTH)
+    client_writer.write(VERSION + METH_NO_AUTH)
 
-    ver, cmd = conn.recv(1), conn.recv(1);
-    rsv, atyp = conn.recv(1), conn.recv(1);
+    ver = yield from client_reader.readexactly(1)
+    cmd = yield from client_reader.readexactly(1)
+    rsv = yield from client_reader.readexactly(1)
+    atyp = yield from client_reader.readexactly(1)
 
-    upstream_addr = read_socks_addr(conn, atyp)
-    upstream_port = bytes_to_long(conn.recv(2, socket.MSG_WAITALL))
+    upstream_addr = yield from read_socks_addr(client_reader, atyp)
+    upstream_port = yield from client_reader.readexactly(2)
+    upstream_port = bytes_to_long(upstream_port)
 
     if cmd == CMD_CONNECT:
         try:
-            upstream = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            upstream.connect((upstream_addr, upstream_port))
-        except Exception as e:
+            upstream_reader, upstream_writer = yield from asyncio.open_connection(upstream_addr, upstream_port)
+        except:
             print("Unable to connect to upstream host")
-            conn.sendall(socks_reply(err=REP_GENERAL_FAILURE))
-            conn.close()
+            client_writer.write(socks_reply(err=REP_GENERAL_FAILURE))
+            client_writer.close()
             return
 
         print("New connection to {}:{}".format(upstream_addr, upstream_port))
-        conn.sendall(socks_reply(addr=conn.getsockname()))
+        sockname = client_writer.transport.get_extra_info('sockname')
+        client_writer.write(socks_reply(addr=sockname))
 
         # start forwarding streams in both directions
-        threading.Thread(target=socks_forward, args=(conn,upstream,)).start()
-        threading.Thread(target=socks_forward, args=(upstream,conn,)).start()
+        asyncio.async(socks_forward(client_reader, upstream_writer))
+        asyncio.async(socks_forward(upstream_reader, client_writer))
 
     else:
         print("CommandNotSupported: {}".format(cmd))
-        conn.sendall(socks_reply(err=REP_COMMAND_NOT_SUPPORTED))
-        conn.close()
+        client_writer.write(socks_reply(err=REP_COMMAND_NOT_SUPPORTED))
+        client_writer.close()
 
 
 def main():
-    ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    ssock.bind(("0.0.0.0", 8080))
-    ssock.listen(5)
+    loop = asyncio.get_event_loop()
+    server = asyncio.start_server(socks_accept, host=None, port=8080)
     try:
-        while True:
-            handler = threading.Thread(target=new_connection, args=ssock.accept())
-            handler.daemon = True
-            handler.start()
+        loop.run_until_complete(server)
+        loop.run_forever()
     except KeyboardInterrupt:
         pass
-    ssock.close()
+    server.close()
+    loop.close()
 
 
 if __name__=='__main__':
     main()
+
+
+@asyncio.coroutine
+def test_client(i, reader, writer):
+    connect = VERSION + b'\x01' + METH_NO_AUTH
+    writer.write(connect)
+
+    ver_meth = yield from reader.readexactly(2)
+    assert ver_meth == VERSION + METH_NO_AUTH
+
+    addr = "www.google.com".encode("UTF-8")
+    request = (VERSION + CMD_CONNECT + b'\x00' + ADDR_DOMAIN +
+             long_to_bytes(len(addr)) + addr + long_to_bytes(80, 2))
+    writer.write(request)
+
+    ver_rep_res = yield from reader.readexactly(3)
+    assert ver_rep_res == VERSION + REP_SUCCEEDED + b'\x00'
+
+    atyp = yield from reader.readexactly(1)
+    addr = yield from read_socks_addr(reader, atyp)
+    port = yield from reader.readexactly(2)
+    
+    payload = 'GET / HTTP/1.0\r\n\r\n'.encode("UTF-8")
+    writer.write(payload)
+
+    total, start = 0, time.time()
+    data = yield from reader.read(256)
+    while data:
+        total += len(data)
+        data = yield from reader.read(256)
+    writer.close()
+    duration = time.time() - start
+    print("Client-{}: {} bytes ({} bps)".format(i, total, 8 * total / duration))
+
+@asyncio.coroutine
+def test_connect(i):
+    reader, writer = yield from asyncio.open_connection('localhost', 8080)
+    asyncio.async(test_client(i, reader, writer))
+    print("Client-{} connected".format(i))
+
+def test():
+    nclients = 500
+    loop = asyncio.get_event_loop()
+    for i in range(nclients):
+        asyncio.async(test_connect(i))
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
