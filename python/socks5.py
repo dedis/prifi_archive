@@ -1,6 +1,5 @@
 import asyncio
 import socket
-import time
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 VERSION = b'\x05'
@@ -77,8 +76,8 @@ def socks_forward(reader, writer):
             yield from writer.drain()
             writer.write(data)
             data = yield from reader.read(256)
-    except:
-        pass
+    except Exception as e:
+        print(e)
     writer.close()
     print("Forwarded {} bytes on connection".format(total))
 
@@ -150,51 +149,3 @@ def main():
 if __name__=='__main__':
     main()
 
-
-@asyncio.coroutine
-def test_client(i, reader, writer):
-    connect = VERSION + b'\x01' + METH_NO_AUTH
-    writer.write(connect)
-
-    ver_meth = yield from reader.readexactly(2)
-    assert ver_meth == VERSION + METH_NO_AUTH
-
-    addr = "www.google.com".encode("UTF-8")
-    request = (VERSION + CMD_CONNECT + b'\x00' + ADDR_DOMAIN +
-             long_to_bytes(len(addr)) + addr + long_to_bytes(80, 2))
-    writer.write(request)
-
-    ver_rep_res = yield from reader.readexactly(3)
-    assert ver_rep_res == VERSION + REP_SUCCEEDED + b'\x00'
-
-    atyp = yield from reader.readexactly(1)
-    addr = yield from read_socks_addr(reader, atyp)
-    port = yield from reader.readexactly(2)
-    
-    payload = 'GET / HTTP/1.0\r\n\r\n'.encode("UTF-8")
-    writer.write(payload)
-
-    total, start = 0, time.time()
-    data = yield from reader.read(256)
-    while data:
-        total += len(data)
-        data = yield from reader.read(256)
-    writer.close()
-    duration = time.time() - start
-    print("Client-{}: {} bytes ({} bps)".format(i, total, 8 * total / duration))
-
-@asyncio.coroutine
-def test_connect(i):
-    reader, writer = yield from asyncio.open_connection('localhost', 8080)
-    asyncio.async(test_client(i, reader, writer))
-    print("Client-{} connected".format(i))
-
-def test():
-    nclients = 500
-    loop = asyncio.get_event_loop()
-    for i in range(nclients):
-        asyncio.async(test_connect(i))
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        pass
