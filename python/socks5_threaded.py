@@ -123,7 +123,8 @@ def new_connection(conn, addr):
 
 def main():
     ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    ssock.bind(("0.0.0.0", 8080))
+    print("Starting threaded SOCKS5 server on 8081")
+    ssock.bind(("0.0.0.0", 8081))
     ssock.listen(5)
     try:
         while True:

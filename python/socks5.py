@@ -76,8 +76,9 @@ def socks_forward(reader, writer):
             yield from writer.drain()
             writer.write(data)
             data = yield from reader.read(256)
-    except Exception as e:
-        print(e)
+        writer.write_eof()
+    except:
+        pass
     writer.close()
     print("Forwarded {} bytes on connection".format(total))
 
@@ -136,6 +137,7 @@ def socks_accept(client_reader, client_writer):
 
 def main():
     loop = asyncio.get_event_loop()
+    print("Starting asyncio SOCKS5 server on 8080")
     server = asyncio.start_server(socks_accept, host=None, port=8080)
     try:
         loop.run_until_complete(server)
