@@ -110,14 +110,12 @@ class RequestDecoder(RequestChecker):
 class Optimizer:
     """ Class for efficiently computing optimal (or at least good) parameters
     for request encoders """
-    def __init__(self, n, p):
+    def __init__(self, n=None, p=None):
         """ p is the desired probability that any single bit will be a trap bit.
         n is the number of clients. """
-        # pn has no special properties, it just makes the algebra cleaner
-        self.pn = (p * (n + 1) / n) ** (1 / (n + 1))
         # the max number of request bits per client - this is the highest
         # factorial we will need to compute
-        rmax = math.ceil(15 * n - 15 * n * self.pn - 1)
+        rmax = 8 * 200
         # dynamic programming table for factorials
         self.factable = [1] * rmax
         for i in range(1, rmax):
@@ -152,9 +150,13 @@ class Optimizer:
     def nCr(self, n, r):
         """ From an (n) element set, the number of unordered (C)ombinations of
         (r) elements that can be chosen from it """
-        rf = self.dpf(r)
-        part = self.partFact(n - r, n)
-        return part // rf
+        small = min(r, n - r)
+        smallf = self.dpf(small)
+        if n >= len(self.factable):
+            part = self.partFact(n - small, n)
+        else:
+            part = self.dpf(n) // self.dpf(n - small)
+        return part // smallf
 
     def nPr(self, n, r):
         """ From an (n) element set, the number of (P)ermutations of (r)
@@ -177,7 +179,7 @@ class Optimizer:
     def findb(self, n, p, hp):
         """ Experimentally determine the smallest number of bits required to
         have a probability of hash collisions (two pseudonyms with the same
-        encoded cell contents) below hp.
+        encoded cell contents) below hp. Returns 0,0 if not possible.
         inputs:
           n: the number of pseudonyms
           p: the desired probability that an arbitrary bit is a trap bit
@@ -188,12 +190,13 @@ class Optimizer:
             request cell
           b: the size in bits of the request cell
         """
-        self.pn = (p * (n + 1) / n) ** (1 / (n + 1))
+        br = math.log(p) / n
         for b in range(math.ceil(n / 8) * 8, math.ceil(n / 8) * 8 * 15, 8):
-            r = math.ceil(b - b * self.pn - 1)
+            r = math.ceil(br / math.log((b-1) / b))
             h = self.pno(n, r, b)
             if h > 1 - hp:
                 return r, b
+        return 0,0
 
 class Test(unittest.TestCase):
     def setUp(self):
