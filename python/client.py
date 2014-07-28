@@ -1,12 +1,9 @@
 import argparse
+import asyncio
 import json
 import os
-import queue
 import random
-import select
-import socket
 import sys
-import threading
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
@@ -17,19 +14,24 @@ from certify.null import NullAccumulator, NullCertifier
 
 from elgamal import PublicKey, PrivateKey
 
-def read_relay(conn, close):
+@asyncio.coroutine
+def open_relay(host, port):
+    try:
+        relay_reader, relay_writer = yield from asyncio.open_connection(host, port)
+    except:
+        print("Unable to connect to relay on {}:{}".format(host, port))
+    asyncio.async(read_relay(relay_reader, relay_writer, upstream_queue, close_queue))
+
+@asyncio.coroutine
+def read_relay(reader, writer, upstream, close):
     slot_idx = 0
 
     while True:
-        # read full header
-        header = bytearray(6)
-        n = conn.recv_into(header, flags=socket.MSG_WAITALL)
+        header = yield from reader.readexactly(6)
         cno = bytes_to_long(header[:4])
         dlen = bytes_to_long(header[4:])
 
-        # and the payload
-        buf = bytearray(dlen)
-        n = conn.recv_into(buf, flags=socket.MSG_WAITALL)
+        buf = yield from reader.readexactly(dlen)
 
         if cno != 0 or dlen != 0:
             print("downstream from relay: cno {} dlen {}".format(cno, dlen))
@@ -39,20 +41,18 @@ def read_relay(conn, close):
             while True:
                 ccno = close.get_nowait()
                 print("client closed conn {}".format(ccno))
-                conns[ccno].conn.close()
                 conns[ccno] = None
-        except queue.Empty:
+        except asyncio.QueueEmpty:
             pass
 
         # pass along if necessary
         if cno > 0 and cno < len(conns) and conns[cno] is not None:
             if dlen > 0:
-                n = conns[cno].conn.send(buf)
+                conns[cno].write(buf)
+                yield from conns[cno].drain()
             else:
                 print("upstream closed conn {}".format(cno))
-                # XXX: not concurrency safe
-                inputs.remove(conns[cno])
-                conns[cno].conn.close()
+                conns[cno].close()
                 conns[cno] = None
 
         # prepare next upstream
@@ -61,33 +61,47 @@ def read_relay(conn, close):
         cleartext = bytearray(dcnet.cell_length)
         if slot.element == nym_private_key.element:
             try:
-                cleartext = upstream_queue.get_nowait()
-            except queue.Empty:
+                cleartext = upstream.get_nowait()
+            except asyncio.QueueEmpty:
                 pass
         # XXX pull XOR out into util
         ciphertext = long_to_bytes(
                 bytes_to_long(ciphertext) ^ bytes_to_long(cleartext),
                 blocksize=dcnet.cell_length)
-        n = conn.send(ciphertext)
+        writer.write(ciphertext)
+        yield from writer.drain()
         slot_idx = (slot_idx + 1) % len(slot_keys)
 
-class ClientConn:
-    
-    def __init__(self, cno, conn):
-        self.cno = cno
-        self.conn = conn
 
-    def fileno(self):
-        return self.conn.fileno()
+@asyncio.coroutine
+def handle_client(reader, writer):
+    cno = len(conns)
+    conns.append(writer)
+    print("new client: cno {}".format(cno))
+    
+    while True:
+        buf = yield from reader.read(dcnet.cell_length - 6)
+        data = bytearray(dcnet.cell_length)
+        data[:4] = long_to_bytes(cno, 4)
+        data[4:6] = long_to_bytes(len(buf), 2)
+        data[6:6+len(buf)] = buf
+
+        print("client upstream: {} bytes on cno {}".format(len(buf), cno))
+        yield from upstream_queue.put(data)
+        if len(buf) == 0:
+            writer.close()
+            yield from close_queue.put(cno)
+            return
+
 
 def main():
     global client
     # XXX hacky globals to work for now
-    global upstream_queue
     global conns
+    global upstream_queue
+    global close_queue
     global slot_keys
     global nym_private_key
-    global inputs
 
     p = argparse.ArgumentParser(description="Basic DC-net client")
     p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
@@ -127,52 +141,29 @@ def main():
     client.add_nyms(slot_keys)
     client.sync(None, [])
 
-    # listen for connections
-    ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    ssock.bind(("", opts.port))
-    ssock.listen(5)
-
-    close_queue = queue.Queue()
-    upstream_queue = queue.Queue()
     conns = [None]
+    close_queue = asyncio.Queue()
+    upstream_queue = asyncio.Queue()
 
     # connect to the relay
     relay_host = relay_address[0]
     relay_port = int(relay_address[1])
-    rsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    rsock.connect((relay_host, relay_port))
-    rthread = threading.Thread(target=read_relay, args=(rsock, close_queue,))
-    rthread.start()
+    asyncio.async(open_relay(relay_host, relay_port))
 
-    inputs = [ssock]
-    outputs = []
+    # listen for connections
+    loop = asyncio.get_event_loop()
+    print("Starting client on {}".format(opts.port))
+    server = asyncio.start_server(handle_client, host=None,
+            port=opts.port, backlog=1024)
+    try:
+        loop.run_until_complete(server)
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    server.close()
+    loop.close()
 
-
-    while True:
-        readable, writable, exceptional = select.select(inputs, outputs, inputs)
-        for rinput in readable:
-
-            # new connection
-            if rinput is ssock:
-                sock, addr = ssock.accept()
-                cno = len(conns)
-                conn = ClientConn(cno, sock)
-                conns.append(conn)
-                inputs.append(conn)
-                print("new client: cno {}".format(cno))
-
-            # upstream data from client
-            else:
-                cno, conn = rinput.cno, rinput.conn
-                upstream = memoryview(bytearray(dcnet.cell_length))
-                n = conn.recv_into(upstream[6:])
-                upstream[:4] = long_to_bytes(cno, 4)
-                upstream[4:6] = long_to_bytes(n, 2)
-                upstream_queue.put(upstream)
-                print("client upstream: {} bytes on cno {}".format(n, cno))
-                if n == 0:
-                    inputs.remove(rinput)
-                    close_queue.put(cno)
 
 if __name__ == "__main__":
     main()
+

@@ -1,12 +1,9 @@
 import argparse
+import asyncio
 import json
 import os
-import queue
 import random
-import requests
-import select
 import socket
-import threading
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
@@ -18,37 +15,97 @@ from certify.null import NullAccumulator, NullCertifier
 from elgamal import PublicKey, PrivateKey
 
 # XXX define elsewhere
-downcellmax = 64*1024
+downcellmax = 64*1024 - 1
 socks_address = ("localhost", 8080)
 
-def socks_relay_down(cno, conn, downstream):
+@asyncio.coroutine
+def socks_relay_down(cno, reader, writer, downstream):
     while True:
-        buf = memoryview(bytearray(downcellmax))
-        n = conn.recv_into(buf[6:])
-        print("socks_relay_down: {} bytes on cno {}".format(n, cno))
-        buf[:4] = long_to_bytes(cno, 4)
-        buf[4:6] = long_to_bytes(n, 2)
-        downstream.put(buf[:6+n])
+        buf = yield from reader.read(downcellmax)
+        data = long_to_bytes(cno, 4) + long_to_bytes(len(buf), 2) + buf
+
+        print("socks_relay_down: {} bytes on cno {}".format(len(buf), cno))
+        yield from downstream.put(data)
 
         # close the connection to socks relay
-        if n == 0:
+        if len(buf) == 0:
             print("socks_relay_down: cno {} closed".format(cno))
-            conn.close()
+            writer.close()
             return
 
-def socks_relay_up(cno, conn, upstream):
+@asyncio.coroutine
+def socks_relay_up(cno, reader, writer, upstream):
     while True:
-        buf = upstream.get()
+        buf = yield from upstream.get()
         dlen = len(buf)
 
         # client closed connection
         if dlen == 0:
             print("sock_relay_up: closing stream {}".format(cno))
-            conn.close()
+            writer.close()
             return
 
         print("socks_relay_up: {} bytes on cno {}".format(dlen, cno))
-        n = conn.send(buf)
+        writer.write(buf)
+        yield from writer.drain()
+
+
+@asyncio.coroutine
+def main_loop(tsocks, csocks, conns, downstream):
+    loop = asyncio.get_event_loop()
+
+    while True:
+        # see if there's anything to send
+        try:
+            downbuf = downstream.get_nowait()
+        except asyncio.QueueEmpty:
+            downbuf = bytearray(6)
+
+        # send downstream to all clients
+        # XXX restructure to do away with extra parsing here
+        cno = bytes_to_long(downbuf[:4])
+        dlen = bytes_to_long(downbuf[4:6])
+        if dlen > 0:
+            print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
+        for csock in csocks:
+            yield from loop.sock_sendall(csock, downbuf)
+
+        # get trustee ciphertexts
+        relay.decode_start()
+        for tsock in tsocks:
+            tslice = yield from loop.sock_recv(tsock, dcnet.cell_length)
+            while len(tslice) < dcnet.cell_length:
+                tslice += yield from loop.sock_recv(tsock,
+                        dcnet.cell_length - len(tslice))
+            relay.decode_trustee(tslice)
+
+        # and client upstream ciphertexts
+        for csock in csocks:
+            cslice = yield from loop.sock_recv(csock, dcnet.cell_length)
+            while len(cslice) < dcnet.cell_length:
+                cslice += yield from loop.sock_recv(csock,
+                        dcnet.cell_length - len(cslice))
+            relay.decode_client(cslice)
+
+        # decode the actual upstream
+        outb = relay.decode_cell()
+        cno = bytes_to_long(outb[:4])
+        uplen = bytes_to_long(outb[4:6])
+
+        if cno == 0:
+            continue
+        conn = conns.get(cno)
+        if conn == None:
+            # new connection to local socks server
+            upstream = asyncio.Queue()
+            socks_reader, socks_writer = yield from asyncio.open_connection(*socks_address)
+            asyncio.async(socks_relay_down(cno, socks_reader, socks_writer, downstream))
+            asyncio.async(socks_relay_up(cno, socks_reader, socks_writer, upstream))
+            conns[cno] = upstream
+            print("new connection: cno {}".format(cno))
+
+        print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
+        yield from conns[cno].put(outb[6:6+uplen])
 
 
 def main():
@@ -73,70 +130,39 @@ def main():
     relay.sync(None)
 
     # server socket
+    print("Starting relay on {}".format(opts.port))
     ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    ssock.bind(("", opts.port))
-    ssock.listen(5)
+    ssock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    ssock.bind(("0.0.0.0", opts.port))
+    ssock.listen(1024)
 
     # make sure everybody connects
     # XXX don't rely on connection order hack
+    print(("Waiting for {} trustees and {} " +
+            "clients").format(n_trustees, n_clients))
     tsocks = [None] * n_trustees
     for i in range(n_trustees):
         sock, addr = ssock.accept()
+        sock.setblocking(0)
         tsocks[i] = sock
     csocks = [None] * n_clients
     for i in range(n_clients):
         sock, addr = ssock.accept()
+        sock.setblocking(0)
         csocks[i] = sock
 
-    downstream = queue.Queue()
+    downstream_queue = asyncio.Queue()
     conns = {}
 
-    while True:
-        # see if there's anything to send
-        try:
-            downbuf = downstream.get_nowait()
-        except queue.Empty:
-            downbuf = bytearray(6)
+    asyncio.async(main_loop(tsocks, csocks, conns, downstream_queue))
 
-        # send downstream to all clients
-        # XXX restructure to do away with extra parsing here
-        cno = bytes_to_long(downbuf[:4])
-        dlen = bytes_to_long(downbuf[4:6])
-        if dlen > 0:
-            print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
-        for csock in csocks:
-            n = csock.send(downbuf)
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    loop.close()
 
-        # get trustee ciphertexts
-        relay.decode_start()
-        for tsock in tsocks:
-            tslice = tsock.recv(dcnet.cell_length, socket.MSG_WAITALL)
-            relay.decode_trustee(tslice)
-
-        # and client upstream ciphertexts
-        for csock in csocks:
-            cslice = csock.recv(dcnet.cell_length, socket.MSG_WAITALL)
-            relay.decode_client(cslice)
-
-        # decode the actual upstream
-        outb = relay.decode_cell()
-        cno = bytes_to_long(outb[:4])
-        uplen = bytes_to_long(outb[4:6])
-
-        if cno == 0:
-            continue
-        conn = conns.get(cno)
-        if conn == None:
-            # new connection to local socks server
-            conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            conn.connect(socks_address)
-            upstream = queue.Queue()
-            threading.Thread(target=socks_relay_down, args=(cno, conn, downstream,)).start()
-            threading.Thread(target=socks_relay_up, args=(cno, conn, upstream,)).start()
-            conns[cno] = upstream
-
-        print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
-        conns[cno].put(outb[6:6+uplen])
 
 if __name__ == "__main__":
     main()
