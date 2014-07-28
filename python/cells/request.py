@@ -6,6 +6,10 @@ from Crypto.Util.number import long_to_bytes, bytes_to_long
 import unittest
 import math
 import functools
+import numpy
+import matplotlib
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 clients = 10
 trap_flip_risk = .1
@@ -18,11 +22,18 @@ def request_cell_length():
     return b
 
 class RequestBase():
-    def __init__(self, clients, trap_flip_risk, hash_collision_risk=0.01):
-        opt = Optimizer(clients, trap_flip_risk)
-        self.request_bits, self.cell_bit_length = opt.findb(clients,
+    def __init__(self, clients, trap_flip_risk,
+                 hash_collision_risk=0.01,
+                 cell_bit_length=None,
+                 bits_per_nym=None):
+        if cell_bit_length == None:
+            opt = Optimizer(clients, trap_flip_risk)
+            self.request_bits, self.cell_bit_length = opt.findb(clients,
                                                             trap_flip_risk,
                                                             hash_collision_risk)
+        else:
+            self.request_bits = bits_per_nym
+            self.cell_bit_length = cell_bit_length
 
     def cell_from_seeds(self, seeds):
         """ Generates a request cell for the client with the provided seeds """
@@ -37,7 +48,7 @@ class RequestBase():
         return bytes_to_long(Bits(cell).tobytes())
 
 class RequestChecker(RequestBase):
-    def __init__(self, seedlist):
+    def __init__(self, seedlist, cell_bit_length=None, bits_per_nym=None):
         """ seeds is a list of lists of trap secrets, such that seeds[nid][tid]
         is the shared secret between nym nid and trustee tid
         Attributes
@@ -46,17 +57,16 @@ class RequestChecker(RequestBase):
           bloom (dict: Bits -> int): Maps encoded cells to the index of the
             nym whose request it is
         """
-        super().__init__(clients, trap_flip_risk, hash_collision_risk)
+        super().__init__(clients, trap_flip_risk, hash_collision_risk,
+                         cell_bit_length, bits_per_nym)
         self.bloom = {}
         self.full = 0
         for i in range(len(seedlist)):
             key = self.cell_from_seeds(seedlist[i])
-            print("Adding key {0} for val {1} to bloom".format(bin(key), i))
             if key in self.bloom.keys():
                 print("Ouch, a hash collision!")
             self.bloom[key] = i
             self.full |= key
-        print("Full: {0}".format(bin(self.full)))
         # long to bytes apparently can't handle negatives, so use bits intsead
         self.trapmask = ~Bits(uint=self.full, length=self.cell_bit_length)
         self.trapcount = sum((~self.full >> i) & 0x1 \
@@ -198,6 +208,23 @@ class Optimizer:
                 return r, b
         return 0,0
 
+    def tradeoff_axes(self, n, steps=20):
+        """ Generate the arguments to plot_surface for tests of various p and hp
+        values and n clients. Steps is the number of points between 0 and 1 to
+        test.
+        """
+        xs = [x * 1/steps for x in range(1, steps)]
+        ys = [y * 1/steps for y in range(1, steps)]
+        X, Y = numpy.meshgrid(xs, ys)
+        zs = numpy.array([[0] * (steps - 1)] * (steps - 1))
+        for x in range(steps - 1):
+            for y in range(steps - 1):
+                hp = X[x][y]
+                p = Y[x][y]
+                _, b = self.findb(n, p, hp)
+                zs[x][y] = b
+        return X, Y, zs
+
 class Test(unittest.TestCase):
     def setUp(self):
         self.e = RequestEncoder([1, 2, 3])
@@ -212,7 +239,7 @@ class Test(unittest.TestCase):
     def test_encode(self):
         ecell = self.e.encode()
         self.assertEqual(self.c.full, bytes_to_long(ecell))
-    
+
     def test_decode(self):
         ecell = self.e.encode()
         self.assertEqual(self.d.decode(ecell), [0])
@@ -220,7 +247,7 @@ class Test(unittest.TestCase):
     def test_check(self):
         ecell = self.e.encode()
         self.assertTrue(self.c.check(ecell))
-    
+
     def test_flter_bloom(self):
         """ Tests that the result of multiple insertions of encoded()'s is a
         superset of the encoded cells, for multiple random sets """
@@ -251,5 +278,72 @@ class Test(unittest.TestCase):
                                 "encs: {0}\n cell: {1}"
                                 .format([i.encode() for i in encs], cell))
 
+def expected_trap_bits(clients, bit_length, request_bits):
+    return bit_length * ((bit_length - 1) / bit_length) ** (request_bits * clients)
+
+def graph_trap_bits(request_bits=3, trials=5):
+    xs = [] # Bit length
+    ys = [] # Client number
+    zs = [] # Experimental numbers of trap bits
+    ezs = [] # Percentage error
+    mzs = [] # Number of bits difference from expected
+    for clients in range(20, 200, 10):
+        for cell_bit_length in range(-(-clients // 8) * 8, 8 * clients, 8 * -(-clients // 8)):
+            expected = expected_trap_bits(clients, cell_bit_length, request_bits)
+            for _ in range(trials):
+                random.seed()
+                seedlist = [random.sample(range(1, 100), 10) for _ in range(clients)]
+                c = RequestChecker(seedlist, cell_bit_length, request_bits)
+                xs.append(cell_bit_length)
+                ys.append(clients)
+                zs.append(c.trapcount)
+                mzs.append(zs[-1] - expected)
+                if c.trapcount > 0:
+                    ezs.append((c.trapcount - expected) / c.trapcount)
+                else:
+                    ezs.append(0)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    # Set up the predicted wireframe
+    Xs = numpy.arange(1, 1200, 40)
+    Ys = numpy.arange(1, 200, 20)
+    Xs, Ys = numpy.meshgrid(Xs, Ys)
+    tzs = Xs * ((Xs - 1) / Xs) ** (Ys * request_bits)
+    # Plot the predicted wireframe
+    ax.plot_wireframe(Xs, Ys, tzs)
+    # Plot the experimental results
+    ax.scatter(xs, ys, zs)
+    # Uncomment to plot error margins instead
+    # ax.scatter(xs, ys, ezs)
+    plt.title("Number of Trap Bits, r = 3")
+    plt.xlabel("Request Cell Bit Length")
+    plt.ylabel("Number of Clients")
+    print("Stdev: {0} Mean error: {1} Median error: {2}".format(numpy.std(mzs), numpy.mean(ezs), numpy.median(ezs)))
+    plt.show()
+
+def graph_tradeoffs():
+    opt = Optimizer()
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+    r = lambda: random.randint(0,255)
+    proxies = []
+    labels = []
+    for n in range(10, 100, 10):
+        # Assign each n a random color
+        clr = '#%02X%02X%02X' % (r(),r(),r())
+        xs, ys, nzs = opt.tradeoff_axes(n, 10)
+        ax.plot_surface(xs, ys, nzs, color=clr, alpha=0.5, rstride=1, cstride=1)
+        proxies.append(matplotlib.lines.Line2D([0], [0], c=clr))
+        labels.append("{0} clients".format(n))
+    # Makes the legend match what the layers of the graph look like
+    ax.legend(reversed(proxies), reversed(labels))
+    plt.legend()
+    plt.title("Number of bits required to achieve security properties")
+    plt.xlabel("Probability of any hash collisions")
+    plt.ylabel("Proportion of bits that are traps")
+    plt.show()
+
 if __name__ == '__main__':
+    graph_trap_bits()
+    graph_tradeoffs()
     unittest.main()
