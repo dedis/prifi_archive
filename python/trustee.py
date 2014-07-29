@@ -8,6 +8,8 @@ import sys
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
+import system_config
+
 from dcnet import global_group
 
 from cells.null import NullDecoder, NullEncoder
@@ -19,21 +21,26 @@ def main():
     global trustee
 
     p = argparse.ArgumentParser(description="Basic DC-net trustee")
-    p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
+    p.add_argument("-p", "--port", type=int, metavar="N", required=True, dest="port")
     p.add_argument("config_dir")
     p.add_argument("private_data")
     opts = p.parse_args()
 
     # load the public system data
-    with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        clients = data["clients"]
-        client_keys = [PublicKey(global_group, c["key"]) for c in clients]
+    # XXX error handling
+    system = system_config.load(os.path.join(opts.config_dir, "system.json"))
+    client_keys = system.clients.keys
+    trustee_ids = system.trustees.ids
 
-        trustees = data["servers"]
-        trustee_ids = [t["id"] for t in trustees]
-
-        relay_address = data["relays"][0]["ip"].split(":")
+#    with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
+#        data = json.load(fp)
+#        clients = data["clients"]
+#        client_keys = [PublicKey(global_group, c["key"]) for c in clients]
+#
+#        trustees = data["servers"]
+#        trustee_ids = [t["id"] for t in trustees]
+#
+#        relay_address = data["relays"][0]["ip"].split(":")
 
     # and session data
     with open(os.path.join(opts.config_dir, "session.json"), "r", encoding="utf-8") as fp:
