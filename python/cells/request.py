@@ -4,7 +4,7 @@ import random
 from bitstring import Bits
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 import unittest
-import request_tuning as opt
+import cells.request_tuning as opt
 
 clients = 10
 trap_flip_risk = .1
