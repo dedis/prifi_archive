@@ -475,6 +475,7 @@ class Client:
 
 class Test(unittest.TestCase):
     def setUp(self):
+        t0 = time.time()
         self.encoder = NullEncoder
         self.decoder = NullDecoder
         self.checker = NullChecker
@@ -491,18 +492,26 @@ class Test(unittest.TestCase):
         self.trustee_count = 3
         self.client_count = 10
 
+        self.to_chk = []
+        self.client_ciphertext = []
+
+        t1 = time.time()
         self.trustee_dhkeys, self.trustee_keys = self.gen_keys(self.trustee_count)
         self.client_dhkeys, self.client_keys = self.gen_keys(self.client_count)
         self.nym_dhkeys, self.nym_keys = self.gen_keys(self.client_count)
 
+        t2 = time.time()
         self.trustees = self.spawn_trustees()
         self.clients = self.spawn_clients()
         self.relay = self.spawn_relay()
 
-        self.to_chk = []
-        self.client_ciphertext = []
+        t3 = time.time()
 
         self.start_interval()
+        t4 = time.time()
+        print("Startup took {0}:\n Init: {1}".format(t4 - t0, t1 - t0) + \
+              "\n key generation: {0}\n Spawning: {1}\n Starting: {2}"
+              .format(t2 - t1, t3 - t2, t4 - t3))
 
     def test_send_check(self):
         self.test_send_integrity()
