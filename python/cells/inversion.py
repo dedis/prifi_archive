@@ -51,11 +51,14 @@ class InversionBase():
 
     def trap_noise(self, count, kind="Cells"):
         """ Generate num_chunks terms of the noise sequence
+          inputs:
+            count: Number of CELLS of unit to generate
+            kind: "Cells" or "Chunks"
           outputs:
             noise (Bits list): List of chunk_size-bit noise chunks
         """
         noises = {}
-        noise = [0] * count
+        noise = [Bits(cell_bit_length)] * count
         for i in range(len(self.noise_states)):
             noises[i] = []
             random.setstate(self.noise_states[i])
@@ -63,11 +66,17 @@ class InversionBase():
             for celldx in range(count):
                 noises[i].append(random.getrandbits(cell_bit_length))
                 debug(2, " xoring {0} into {1}".format(noises[i][-1], noise[celldx]))
-                noise[celldx] ^= noises[i][-1]
+                noise[celldx] ^= Bits(uint=noises[i][-1], length=cell_bit_length)
             self.noise_states[i] = random.getstate()
-        noise = [long_to_bytes(n) for n in noise]
+        noise = [n.tobytes() for n in noise]
         if kind == "Chunks":
-            noise = [bits_to_chunks(Bits(n)) for n in noise]
+            for i in range(len(noise)):
+                assert(len(Bits(noise[i])) == cell_bit_length)
+                chunks = bits_to_chunks(Bits(noise[i]))
+                assert(len(chunks) == chunks_per_cell + invert_header_chunks), \
+                    "Wrong number of chunks in chunk {0}: Expected {1} got {2}"\
+                    .format(i, invert_header_chunks + chunks_per_cell, len(chunks))
+                noise[i] = chunks
             debug(2, "Cell noises: {0}\n noise: {1}".format(noises, noise))
         else:
             debug(2, "Cell noises: {0}\n noise: {1}".format(noises,
@@ -227,6 +236,9 @@ class InversionEncoder(InversionBase):
         noise = noise[invert_header_chunks:]
         header_positions = positions[:invert_header_chunks]
         positions = positions[invert_header_chunks:]
+        assert(len(chunks) == len(positions) == len(noise)), \
+            "Lengths mismatch: Chunks: {0} Positions: {1} noise: {2}" \
+            .format(len(chunks), len(positions), len(noise))
         for i in range(len(chunks)):
             debug(4, "i: {0}. chunk: {1}. Position: {2}. noise: {3}."
                   .format(i, chunks[i], positions[i], noise[i]))
