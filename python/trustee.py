@@ -5,6 +5,7 @@ import random
 import requests
 import socket
 import sys
+from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
 from dcnet import global_group
@@ -27,8 +28,11 @@ def main():
     with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
         data = json.load(fp)
         clients = data["clients"]
-        client_ids = [c["id"] for c in clients]
         client_keys = [PublicKey(global_group, c["key"]) for c in clients]
+
+        trustees = data["servers"]
+        trustee_ids = [t["id"] for t in trustees]
+
         relay_address = data["relays"][0]["ip"].split(":")
 
     # and session data
@@ -47,6 +51,12 @@ def main():
         data = json.load(fp)
         trustee_id = data["id"]
         private_key = PrivateKey(global_group, data["private_key"])
+
+    try:
+        node = trustee_ids.index(trustee_id)
+    except ValueError:
+        sys.exit("Trustee is not in system config")
+
     trustee = dcnet.Trustee(private_key, client_keys)
     trustee.add_nyms(slot_keys)
     trustee.sync(None)
@@ -54,13 +64,15 @@ def main():
     # connect to the relay
     relay_host = relay_address[0]
     relay_port = int(relay_address[1])
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((relay_host, relay_port))
+    conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    conn.connect((relay_host, relay_port))
+    conn.send(long_to_bytes(0x80 | node, 1))
 
     # stream the ciphertext to the relay
     while True:
         ciphertext = trustee.produce_ciphertext()
-        n = sock.send(ciphertext)
+        n = conn.send(ciphertext)
+
 
 if __name__ == "__main__":
     main()

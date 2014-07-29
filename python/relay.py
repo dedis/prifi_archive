@@ -4,6 +4,7 @@ import json
 import os
 import random
 import socket
+import sys
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
@@ -21,7 +22,13 @@ socks_address = ("localhost", 8080)
 @asyncio.coroutine
 def socks_relay_down(cno, reader, writer, downstream):
     while True:
-        buf = yield from reader.read(downcellmax)
+        try:
+            buf = yield from reader.read(downcellmax)
+        except OSError as e:
+            print("socks_relay_down: {}".format(e))
+            writer.close()
+            return
+
         data = long_to_bytes(cno, 4) + long_to_bytes(len(buf), 2) + buf
 
         print("socks_relay_down: {} bytes on cno {}".format(len(buf), cno))
@@ -46,8 +53,13 @@ def socks_relay_up(cno, reader, writer, upstream):
             return
 
         print("socks_relay_up: {} bytes on cno {}".format(dlen, cno))
-        writer.write(buf)
-        yield from writer.drain()
+        try:
+            writer.write(buf)
+            yield from writer.drain()
+        except OSError as e:
+            print("socks_relay_up: {}".format(e))
+            writer.close()
+            return
 
 
 @asyncio.coroutine
@@ -62,7 +74,6 @@ def main_loop(tsocks, csocks, conns, downstream):
             downbuf = bytearray(6)
 
         # send downstream to all clients
-        # XXX restructure to do away with extra parsing here
         cno = bytes_to_long(downbuf[:4])
         dlen = bytes_to_long(downbuf[4:6])
         if dlen > 0:
@@ -97,6 +108,7 @@ def main_loop(tsocks, csocks, conns, downstream):
         conn = conns.get(cno)
         if conn == None:
             # new connection to local socks server
+            # XXX should cnos be reused
             upstream = asyncio.Queue()
             socks_reader, socks_writer = yield from asyncio.open_connection(*socks_address)
             asyncio.async(socks_relay_down(cno, socks_reader, socks_writer, downstream))
@@ -116,13 +128,11 @@ def main():
     p.add_argument("config_dir")
     opts = p.parse_args()
 
-    # load addresses and public keys from system config
+    # load public keys from system config
     with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
         data = json.load(fp)
-        client_keys = [PublicKey(global_group, c["key"]) for c in data["clients"]]
-        trustee_keys = [PublicKey(global_group, t["key"]) for t in data["servers"]]
-        n_clients = len(client_keys)
-        n_trustees = len(trustee_keys)
+        n_clients = len(data["clients"])
+        n_trustees = len(data["servers"])
 
     # start up a new relay
     relay = dcnet.Relay(n_trustees, NullAccumulator(), NullDecoder())
@@ -137,25 +147,36 @@ def main():
     ssock.listen(1024)
 
     # make sure everybody connects
-    # XXX don't rely on connection order hack
-    print(("Waiting for {} trustees and {} " +
-            "clients").format(n_trustees, n_clients))
-    tsocks = [None] * n_trustees
-    for i in range(n_trustees):
-        sock, addr = ssock.accept()
-        sock.setblocking(0)
-        tsocks[i] = sock
+    print(("Waiting for {} clients and {} " +
+            "trustees").format(n_clients, n_trustees))
+    ccli, ctru = 0, 0
     csocks = [None] * n_clients
-    for i in range(n_clients):
-        sock, addr = ssock.accept()
-        sock.setblocking(0)
-        csocks[i] = sock
+    tsocks = [None] * n_trustees
+    while ccli < n_clients or ctru < n_trustees:
+        conn, addr = ssock.accept()
+        buf = bytes_to_long(conn.recv(1))
+        istru, node = buf & 0x80, buf & 0x7f
+        conn.setblocking(0)
+
+        if istru and ctru < n_trustees:
+            if tsocks[node] is not None:
+                sys.exit("Trustee connected twice")
+            tsocks[node] = conn
+            ctru += 1
+        elif ccli < n_clients:
+            if csocks[node] is not None:
+                sys.exit("Clients connected twice")
+            csocks[node] = conn
+            ccli += 1
+        else:
+            sys.exit("Illegal node number")
+    print("All clients and trustees connected")
 
     downstream_queue = asyncio.Queue()
     conns = {}
 
+    # start the main relay loop
     asyncio.async(main_loop(tsocks, csocks, conns, downstream_queue))
-
     loop = asyncio.get_event_loop()
     try:
         loop.run_forever()

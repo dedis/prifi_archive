@@ -15,11 +15,12 @@ from certify.null import NullAccumulator, NullCertifier
 from elgamal import PublicKey, PrivateKey
 
 @asyncio.coroutine
-def open_relay(host, port):
+def open_relay(host, port, node):
     try:
         relay_reader, relay_writer = yield from asyncio.open_connection(host, port)
     except:
-        print("Unable to connect to relay on {}:{}".format(host, port))
+        sys.exit("Unable to connect to relay on {}:{}".format(host, port))
+    relay_writer.write(long_to_bytes(node, 1))
     asyncio.async(read_relay(relay_reader, relay_writer, upstream_queue, close_queue))
 
 @asyncio.coroutine
@@ -40,16 +41,23 @@ def read_relay(reader, writer, upstream, close):
         try:
             while True:
                 ccno = close.get_nowait()
-                print("client closed conn {}".format(ccno))
-                conns[ccno] = None
+                if conns[ccno]:
+                    print("client closed conn {}".format(ccno))
+                    conns[ccno].close()
+                    conns[ccno] = None
         except asyncio.QueueEmpty:
             pass
 
         # pass along if necessary
         if cno > 0 and cno < len(conns) and conns[cno] is not None:
             if dlen > 0:
-                conns[cno].write(buf)
-                yield from conns[cno].drain()
+                try:
+                    conns[cno].write(buf)
+                    yield from conns[cno].drain()
+                except OSError:
+                    print("dropped {} bytes on {}".format(dlen, cno))
+                    conns[cno].close()
+                    conns[cno] = None
             else:
                 print("upstream closed conn {}".format(cno))
                 conns[cno].close()
@@ -80,7 +88,12 @@ def handle_client(reader, writer):
     print("new client: cno {}".format(cno))
     
     while True:
-        buf = yield from reader.read(dcnet.cell_length - 6)
+        try:
+            buf = yield from reader.read(dcnet.cell_length - 6)
+        except OSError:
+            yield from close_queue.put(cno)
+            return
+            
         data = bytearray(dcnet.cell_length)
         data[:4] = long_to_bytes(cno, 4)
         data[4:6] = long_to_bytes(len(buf), 2)
@@ -89,7 +102,6 @@ def handle_client(reader, writer):
         print("client upstream: {} bytes on cno {}".format(len(buf), cno))
         yield from upstream_queue.put(data)
         if len(buf) == 0:
-            writer.close()
             yield from close_queue.put(cno)
             return
 
@@ -112,8 +124,12 @@ def main():
     # load the public system data
     with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
         data = json.load(fp)
+        clients = data["clients"]
+        client_ids = [c["id"] for c in clients]
+
         trustees = data["servers"]
         trustee_keys = [PublicKey(global_group, t["key"]) for t in trustees]
+
         relay_address = data["relays"][0]["ip"].split(":")
 
     # and session data
@@ -136,6 +152,11 @@ def main():
         data = json.load(fp)
         nym_private_key = PrivateKey(global_group, data["private_key"])
 
+    try:
+        node = client_ids.index(client_id)
+    except ValueError:
+        sys.exit("Client is not in system config")
+
     client = dcnet.Client(private_key, trustee_keys, NullCertifier(), NullEncoder())
     client.add_own_nym(nym_private_key)
     client.add_nyms(slot_keys)
@@ -148,7 +169,7 @@ def main():
     # connect to the relay
     relay_host = relay_address[0]
     relay_port = int(relay_address[1])
-    asyncio.async(open_relay(relay_host, relay_port))
+    asyncio.async(open_relay(relay_host, relay_port, node))
 
     # listen for connections
     loop = asyncio.get_event_loop()

@@ -56,7 +56,6 @@ def main():
         loop.run_until_complete(clients)
         throughput = [8 * t / d for t, d in clients.result()] 
         total, latency = zip(*clients.result())
-        assert all(x > 50000 for x in total)
         print("{} clients:".format(opts.nclients))
         print("\tthroughput: {} {} {}".format(min(throughput), max(throughput), sum(throughput) / opts.nclients))
         print("\tlatency: {} {} {}".format(min(latency), max(latency), sum(latency) / opts.nclients))
