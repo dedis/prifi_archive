@@ -121,7 +121,7 @@ class Trustee:
         """ Generate cells_count cells' worth of ciphertext for each nym in
         self.nym_keys. Returns as a list of lists of ciphertext cells
         """
-        cell_count = 100
+        cell_count = 10
         cells_for_slots = {}
         for ndx in range(len(self.nym_keys)):
             ciphertext = []
@@ -219,6 +219,7 @@ class Relay:
         decoder = self.rdecoder(trap_secrets)
         nyms = sorted(decoder.decode(long_to_bytes(self.interval_req_cell)))
         print("Nyms requesting more space: {0}".format(nyms))
+        # TODO: Update scheduling
         return nyms
 
     def process_ciphertext(self, ciphertexts):
@@ -263,6 +264,9 @@ class Relay:
         for slotdx in cleartext.keys():
             slot_texts = cleartext[slotdx]
             offset = self.current_cell[slotdx]
+            assert(len(cleartext[slotdx]) <= len(self.cells_for_slots[0][slotdx]) - offset), \
+                "Not enough trustee ciphertext for slot {0}'s {1} cells"\
+                    .format(slotdx, len(cleartext[slotdx]))
             cells = len(slot_texts)
             for celldx in range(cells):
                 # For each cell:
@@ -342,7 +346,9 @@ class Client:
 
         self.interval = -1
         self.data_queue = {}
+        self.interval_requests = 0
         self.requesters = {}
+        self.requests_in_processing = {}
 
         self.certifier = certifier
         self.encoder = encoder
@@ -359,6 +365,7 @@ class Client:
           trap_keys (PublicKey list): Public trap key per trustee
         """
         self.interval += 1
+        self.interval_requests = 0
         self.xornet = XorNet(self.secrets, self.interval)
 
         self.trap_seeds = {}
@@ -432,7 +439,12 @@ class Client:
     def request(self, nyms):
         cleartext = 0
         for nym_idx in nyms:
-            self.requesters[nym_idx] = self.rencoders[nym_idx].encode(long_to_bytes(cleartext))
+            rcode = bytes_to_long(self.rencoders[nym_idx]\
+                                  .encode(long_to_bytes(cleartext)))
+            # For now, ignore it if we already received confirmation of the
+            # request this round
+            if self.interval_requests & rcode != rcode:
+                self.requesters[nym_idx] = rcode
 
     def produce_ciphertexts(self):
         """ Produce ciphertext for all (everybody's) nyms, optionally encoding
@@ -461,15 +473,27 @@ class Client:
                         bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
                 cells.append(ciphertext)
             if nym_idx in self.requesters:
+                # Remove it from the requests queue
                 nymreq = self.requesters.pop(nym_idx)
-                rcell |= bytes_to_long(nymreq)
+                # Store it by code for later checking
+                self.requests_in_processing[nymreq] = nym_idx
+                rcell |= nymreq
             cells_for_slots[nym_idx] = cells
         rciphertext = self.xornet.produce_ciphertext(rcelldx)
         cells_for_slots[rcelldx] = [long_to_bytes(rcell ^ bytes_to_long(rciphertext))]
         return self.certifier.certify(cells_for_slots)
 
     def process_cleartext(self, cleartext):
-        self.interval_requests = cleartext[rcelldx]
+        self.interval_requests |= cleartext[rcelldx][0]
+        to_pop = []
+        for rcode in self.requests_in_processing:
+            if rcode & self.interval_requests != rcode:
+                self.request([self.requests_in_processing[rcode]])
+            else:
+                to_pop.append(rcode)
+                # TODO: Update cell size for that nym
+        for rcode in to_pop:
+            self.requests_in_processing.pop(rcode)
         return self.certifier.verify([cleartext[x] for x in range(len(cleartext) - 1)])
 
 
@@ -523,12 +547,27 @@ class Test(unittest.TestCase):
         self.send()
 
     def test_request_check(self):
-        self.request()
+        for cldx in range(len(self.clients)):
+            self.clients[cldx].request([cldx])
+        self.handle_interval_ciphertext()
         self.check()
 
     def test_request_integrity(self):
-        self.assertEqual(self.request(),
-                         [x for x in range(len(self.clients))])
+        rd = 1
+        outstanding = []
+        while outstanding != True:
+            random.seed()
+            requesters = random.sample(range(len(self.clients)), 2)
+            for cldx in requesters:
+                self.clients[cldx].request([cldx])
+            outstanding = self.all_clients_done()
+            print("Round {0}, waiting on {1}".format(rd, outstanding))
+            rd += 1
+            self.handle_interval_ciphertext()
+        self.check()
+        nyms = self.relay.process_request_cell(self.trap_secrets)
+        for x in range(len(self.clients)):
+            self.assertIn(x, nyms)
 
     def gen_keys(self, count):
         dhkeys = []
@@ -540,6 +579,15 @@ class Test(unittest.TestCase):
             pkeys.append(dh.public_key())
 
         return dhkeys, pkeys
+
+    def all_clients_done(self):
+        remaining = []
+        for cdx in range(len(self.clients)):
+            if len(self.clients[cdx].requesters) > 0:
+                remaining.append(cdx)
+        if len(remaining) > 0:
+            return remaining
+        return True
 
     def spawn_trustees(self):
         trustees = []
@@ -623,14 +671,6 @@ class Test(unittest.TestCase):
                              msg="Slot {0} got {1}; expected{2}.\n Whole ct: {3}"
                              .format(i, cleartext[i][0], m, cleartext))
         print("Sending {0} took {1}".format(m, t1))
-
-    def request(self):
-        for cldx in range(len(self.clients)):
-            self.clients[cldx].request([cldx])
-        self.handle_interval_ciphertext()
-        self.check()
-        nyms = self.relay.process_request_cell(self.trap_secrets)
-        return nyms
 
     def check(self):
         t0 = time.time()
