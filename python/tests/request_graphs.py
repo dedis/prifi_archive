@@ -6,7 +6,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import cells.request_tuning as opt
 from cells.request import RequestChecker
 
-def tradeoff_axes(X, Y, n, steps=20):
+def tradeoff_axes(n, steps=20):
     """ Generate the arguments to plot_surface for tests of various p and hp
     values and n clients.
     inputs:
@@ -15,14 +15,32 @@ def tradeoff_axes(X, Y, n, steps=20):
         test.
 
     """
-    zs = numpy.array([[0] * (steps - 1)] * (steps - 1))
+    xs = [x * 1/steps for x in range(1, steps + 1)]
+    ys = [y * 1 / steps for y in range(1, steps + 1)]
+    X, Y = numpy.meshgrid(xs, ys)
+    zs = numpy.array([[float('nan')] * steps] * steps)
     for x in range(len(X)):
         for y in range(len(Y[0])):
             hp = X[x][y]
             p = Y[x][y]
             _, b = opt.findb(n, p, hp)
             zs[x][y] = b
-    return zs
+    return X, Y, zs
+
+def tradeoff_scatter(n, steps=20):
+    xs = []
+    ys = []
+    zs = []
+    for x in range(1, steps + 1):
+        hp = x * 1/steps
+        for y in range(1, steps + 1):
+            p = y * 0.4 / steps
+            _, b = opt.findb(n, p, hp)
+            if b != float('nan'):
+                xs.append(hp)
+                ys.append(p)
+                zs.append(b)
+    return xs, ys, zs
 
 ## Graphing
 def expected_trap_bits(n, bit_length, request_bits):
@@ -72,18 +90,17 @@ def graph_trap_bits(request_bits=3, trials=5):
 def graph_tradeoffs():
     fig = plt.figure()
     ax = fig.gca(projection='3d')
-    r = lambda: random.randint(0,255)
+    r = lambda n: random.random() * 2.5 * n
     steps = 10
-    xs = [x * 1/steps for x in range(1, steps)]
-    ys = [y * 1/steps for y in range(1, steps)]
-    X, Y = numpy.meshgrid(xs, ys)
     proxies = []
     labels = []
     for n in range(10, 100, 10):
         # Assign each n a random color
-        clr = '#%02X%02X%02X' % (r(),r(),r())
-        nzs = tradeoff_axes(X, Y, n, 10)
-        ax.plot_surface(X, Y, nzs, color=clr, alpha=0.5, rstride=1, cstride=1)
+        clr = '#%02X%02X%02X' % (r(n), r(n), r(n))
+        xs, ys, nzs = tradeoff_axes(n, steps)
+        ax.plot_surface(xs, ys, nzs, color=clr, alpha=0.8, rstride=1, cstride=1, linewidth=0.1)
+#         xs, ys, zs = tradeoff_scatter(n, steps)
+#         ax.scatter(xs, ys, zs, c=clr)
         proxies.append(matplotlib.lines.Line2D([0], [0], c=clr))
         labels.append("{0} clients".format(n))
     # Makes the legend match what the layers of the graph look like
@@ -93,3 +110,6 @@ def graph_tradeoffs():
     plt.xlabel("Probability of any hash collisions")
     plt.ylabel("Proportion of bits that are traps")
     plt.show()
+
+if __name__ == '__main__':
+    graph_tradeoffs()

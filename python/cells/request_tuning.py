@@ -29,14 +29,15 @@ def findb(n, p, hp):
       b: the size in bits of the request cell
     """
     br = math.log(p) / n
-    for b in range(math.ceil(n / 8) * 8, math.ceil(n / 8) * 8 * 15, 8):
+    for b in range(8, math.ceil(n / 8) * 8 * 15, 8):
+#     for b in range(8, math.ceil(n / 8) * 8, 4):
         r = math.ceil(br / math.log((b-1) / b))
         h = __pno(n, r, b)
         if h > 1 - hp:
             r = r
             b = b
             return r, b
-    return 0,0
+    return float('nan'), float('nan')
 ## Low level helper functions
 
 def __dpf(n):
