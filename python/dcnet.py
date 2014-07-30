@@ -347,6 +347,7 @@ class Client:
         self.interval = -1
         self.data_queue = {}
         self.interval_requests = 0
+        self.nym_req_attempts = {}
         self.requesters = {}
         self.requests_in_processing = {}
 
@@ -378,6 +379,7 @@ class Client:
                     .append(trap_key.exchange(nym_key))
             self.encoders[idx] = self.encoder(self.trap_seeds[nym_key])
             self.rencoders[idx] = self.rencoder(self.trap_seeds[nym_key])
+            self.nym_req_attempts[idx] = 0
 
     def add_own_nym(self, nym_key):
         """ Add nym_key (PrivateKey) to nyms_in_processing. Once its PublicKey
@@ -437,14 +439,17 @@ class Client:
         self.data_queue[nym_idx].append(data)
 
     def request(self, nyms):
-        cleartext = 0
         for nym_idx in nyms:
-            rcode = bytes_to_long(self.rencoders[nym_idx]\
-                                  .encode(long_to_bytes(cleartext)))
+            enc = self.rencoders[nym_idx]
+            full_code = bytes_to_long(enc.encode(long_to_bytes(0)))
             # For now, ignore it if we already received confirmation of the
             # request this round
-            if self.interval_requests & rcode != rcode:
-                self.requesters[nym_idx] = rcode
+            if self.interval_requests & full_code != full_code:
+                if self.nym_req_attempts[nym_idx] != 0:
+                    rcode = bytes_to_long(enc.encode(long_to_bytes(self.interval_requests)))
+                else:
+                    rcode = full_code
+                self.requesters[nym_idx] = rcode, full_code
 
     def produce_ciphertexts(self):
         """ Produce ciphertext for all (everybody's) nyms, optionally encoding
@@ -474,9 +479,9 @@ class Client:
                 cells.append(ciphertext)
             if nym_idx in self.requesters:
                 # Remove it from the requests queue
-                nymreq = self.requesters.pop(nym_idx)
+                nymreq, nymcode = self.requesters.pop(nym_idx)
                 # Store it by code for later checking
-                self.requests_in_processing[nymreq] = nym_idx
+                self.requests_in_processing[nymcode] = nym_idx
                 rcell |= nymreq
             cells_for_slots[nym_idx] = cells
         rciphertext = self.xornet.produce_ciphertext(rcelldx)
@@ -487,8 +492,10 @@ class Client:
         self.interval_requests |= cleartext[rcelldx][0]
         to_pop = []
         for rcode in self.requests_in_processing:
+            nymdx = self.requests_in_processing[rcode]
             if rcode & self.interval_requests != rcode:
-                self.request([self.requests_in_processing[rcode]])
+                self.request([nymdx])
+                self.nym_req_attempts[nymdx] += 1
             else:
                 to_pop.append(rcode)
                 # TODO: Update cell size for that nym
@@ -555,18 +562,19 @@ class Test(unittest.TestCase):
     def test_request_integrity(self):
         rd = 1
         outstanding = []
+        all_requesters = {}
         while outstanding != True:
             random.seed()
             requesters = random.sample(range(len(self.clients)), 2)
             for cldx in requesters:
+                all_requesters[cldx] = None
                 self.clients[cldx].request([cldx])
-            outstanding = self.all_clients_done()
-            print("Round {0}, waiting on {1}".format(rd, outstanding))
             rd += 1
             self.handle_interval_ciphertext()
+            outstanding = self.all_clients_done()
         self.check()
-        nyms = self.relay.process_request_cell(self.trap_secrets)
-        for x in range(len(self.clients)):
+        nyms = self.relay.process_request_cell(self.composite_secrets)
+        for x in all_requesters:
             self.assertIn(x, nyms)
 
     def gen_keys(self, count):
@@ -674,13 +682,13 @@ class Test(unittest.TestCase):
 
     def check(self):
         t0 = time.time()
-        self.trap_secrets = [trustee.publish_trap_secrets() \
+        trap_secrets = [trustee.publish_trap_secrets() \
                              for trustee in self.trustees]
-        composite_secrets = [[self.trap_secrets[i][j] \
+        self.composite_secrets = [[trap_secrets[i][j] \
                               for i in range(self.trustee_count)] \
-                                for j in range(len(self.trap_secrets[0]))]
+                                for j in range(len(trap_secrets[0]))]
         for i in range(self.trustee_count):
-            self.trustees[i].store_trap_secrets(composite_secrets)
+            self.trustees[i].store_trap_secrets(self.composite_secrets)
             self.assertTrue(self.trustees[i].check_interval_traps(self.to_chk),
                             msg="Trustee {0} rejected ciphertext {1}"
                             .format(i, self.to_chk))

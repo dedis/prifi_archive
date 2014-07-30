@@ -86,9 +86,18 @@ class RequestEncoder(RequestBase):
 
     def encode(self, cell=None):
         """ Encodes a request for a cell into the shared request cell.
-            The argument is ignored.
+            If cell is specified, probabilistically return a subset of the 1
+            bits in self.cell that are 0 in cell.
             """
         return self.cell.tobytes()
+        if cell == None or bytes_to_long(cell) == 0:
+            return self.cell.tobytes()
+        else:
+            missing = BitArray((Bits(cell) & self.cell) ^ self.cell)
+            for idx in range(len(missing)):
+                if missing[idx]:
+                    missing[idx] = random.choice([True, False])
+            return missing.tobytes()
 
     def decoded_size(self, size):
         return NotImplemented
