@@ -7,14 +7,6 @@ import shutil
 import config_utils
 from config_utils import Config
 
-class SystemConfig:
-    def __init__(self, version, group_id, relay, clients, trustees):
-        self.version = version
-        self.group_id = group_id
-        self.relay = relay
-        self.clients = clients
-        self.trustees = trustees
-
 
 def generate(clients, trustees):
     version = 1

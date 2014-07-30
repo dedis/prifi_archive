@@ -6,8 +6,7 @@ import sys
 import time
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
-import system_config
-
+import config
 import dcnet
 
 from cells.null import NullDecoder, NullEncoder
@@ -160,8 +159,8 @@ def main():
     p.add_argument("config_dir")
     opts = p.parse_args()
 
-    system = system_config.load(os.path.join(opts.config_dir, "system.json"))
-    nclients, ntrustees = len(system.clients.ids), len(system.trustees.ids)
+    system_config = config.load(config.SystemConfig, os.path.join(opts.config_dir, "system.json"))
+    nclients, ntrustees = len(system_config.clients.ids), len(system_config.trustees.ids)
 
     # start up a new relay
     relay = dcnet.Relay(ntrustees, NullAccumulator(), NullDecoder())

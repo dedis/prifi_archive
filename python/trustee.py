@@ -4,10 +4,7 @@ import socket
 import sys
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
-import config_utils
-import system_config
-import session_config
-
+import config
 import dcnet
 
 def main():
@@ -18,22 +15,22 @@ def main():
     opts = p.parse_args()
 
     # XXX error handling
-    system = system_config.load(os.path.join(opts.config_dir, "system.json"))
-    session = session_config.load(os.path.join(opts.config_dir, "session.json"))
-    private = config_utils.load_private(opts.private_data)
+    system_config = config.load(config.SystemConfig, os.path.join(opts.config_dir, "system.json"))
+    session_config = config.load(config.SessionConfig, os.path.join(opts.config_dir, "session.json"))
+    private = config.load(config.Private, opts.private_data)
 
     try:
-        node = 0x80 | system.trustees.ids.index(private.id)
+        node = 0x80 | system_config.trustees.ids.index(private.id)
     except ValueError:
         sys.exit("Trustee is not in system config")
 
-    trustee = dcnet.Trustee(private.secret, system.clients.keys)
-    trustee.add_nyms(session.clients.keys)
+    trustee = dcnet.Trustee(private.secret, system_config.clients.keys)
+    trustee.add_nyms(session_config.clients.keys)
     trustee.sync(None)
 
     # connect to the relay
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    conn.connect((system.relay.host, system.relay.port))
+    conn.connect((system_config.relay.host, system_config.relay.port))
     conn.send(long_to_bytes(node, 1))
 
     # stream the ciphertext to the relay

@@ -6,11 +6,7 @@ import random
 import sys
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
-import config_utils
-import system_config
-import session_config
-import pseudonym_config
-
+import config
 import dcnet
 
 from cells.null import NullDecoder, NullEncoder
@@ -123,26 +119,25 @@ def main():
     p.add_argument("private_data")
     opts = p.parse_args()
 
-    system = system_config.load(os.path.join(opts.config_dir, "system.json"))
-    session = session_config.load(os.path.join(opts.config_dir, "session.json"))
-    pseudonym = pseudonym_config.load(os.path.join(opts.config_dir, "pseudonym.json"))
-
-    private = config_utils.load_private(opts.private_data)
-    session_private = config_utils.load_private(os.path.join(opts.config_dir,
-            "{}-{}.json".format(private.id, session.session_id)))
+    system_config = config.load(config.SystemConfig, os.path.join(opts.config_dir, "system.json"))
+    session_config = config.load(config.SessionConfig, os.path.join(opts.config_dir, "session.json"))
+    pseudonym_config = config.load(config.PseudonymConfig, os.path.join(opts.config_dir, "pseudonym.json"))
+    private = config.load(config.Private, opts.private_data)
+    session_private = config.load(config.Private, os.path.join(opts.config_dir,
+            "{}-{}.json".format(private.id, session_config.session_id)))
 
     # XXX hack for now
-    slot_keys = pseudonym.slots.keys
+    slot_keys = pseudonym_config.slots.keys
     nym_private_key = session_private.secret
 
     try:
-        node = system.clients.ids.index(private.id)
+        node = system_config.clients.ids.index(private.id)
     except ValueError:
         sys.exit("Client is not in system config")
 
-    client = dcnet.Client(private.secret, system.trustees.keys, NullCertifier(), NullEncoder())
+    client = dcnet.Client(private.secret, system_config.trustees.keys, NullCertifier(), NullEncoder())
     client.add_own_nym(session_private.secret)
-    client.add_nyms(pseudonym.slots.keys)
+    client.add_nyms(pseudonym_config.slots.keys)
     client.sync(None, [])
 
     conns = [None]
@@ -150,7 +145,7 @@ def main():
     upstream_queue = asyncio.Queue()
 
     # connect to the relay and start reading
-    asyncio.async(open_relay(system.relay.host, system.relay.port, node))
+    asyncio.async(open_relay(system_config.relay.host, system_config.relay.port, node))
 
     # listen for connections
     loop = asyncio.get_event_loop()
