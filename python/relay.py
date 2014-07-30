@@ -1,14 +1,13 @@
 import argparse
 import asyncio
-import json
 import os
-import random
 import socket
 import sys
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
+import system_config
+
 import dcnet
-from dcnet import global_group
 
 from cells.null import NullDecoder, NullEncoder
 from certify.null import NullAccumulator, NullCertifier
@@ -63,7 +62,7 @@ def socks_relay_up(cno, reader, writer, upstream):
 
 
 @asyncio.coroutine
-def main_loop(tsocks, csocks, conns, downstream):
+def main_loop(tsocks, csocks, upstreams, downstream):
     loop = asyncio.get_event_loop()
 
     while True:
@@ -105,38 +104,34 @@ def main_loop(tsocks, csocks, conns, downstream):
 
         if cno == 0:
             continue
-        conn = conns.get(cno)
+        conn = upstreams.get(cno)
         if conn == None:
             # new connection to local socks server
-            # XXX should cnos be reused
             upstream = asyncio.Queue()
             socks_reader, socks_writer = yield from asyncio.open_connection(*socks_address)
             asyncio.async(socks_relay_down(cno, socks_reader, socks_writer, downstream))
             asyncio.async(socks_relay_up(cno, socks_reader, socks_writer, upstream))
-            conns[cno] = upstream
+            upstreams[cno] = upstream
             print("new connection: cno {}".format(cno))
 
         print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
-        yield from conns[cno].put(outb[6:6+uplen])
+        yield from upstreams[cno].put(outb[6:6+uplen])
 
 
 def main():
     global relay
 
     p = argparse.ArgumentParser(description="Basic DC-net relay")
-    p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
+    p.add_argument("-p", "--port", type=int, metavar="port", required=True, dest="port")
     p.add_argument("config_dir")
     opts = p.parse_args()
 
-    # load public keys from system config
-    with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        n_clients = len(data["clients"])
-        n_trustees = len(data["servers"])
+    system = system_config.load(os.path.join(opts.config_dir, "system.json"))
+    nclients, ntrustees = len(system.clients.ids), len(system.trustees.ids)
 
     # start up a new relay
-    relay = dcnet.Relay(n_trustees, NullAccumulator(), NullDecoder())
-    relay.add_nyms(n_clients)
+    relay = dcnet.Relay(ntrustees, NullAccumulator(), NullDecoder())
+    relay.add_nyms(nclients)
     relay.sync(None)
 
     # server socket
@@ -147,23 +142,22 @@ def main():
     ssock.listen(1024)
 
     # make sure everybody connects
-    print(("Waiting for {} clients and {} " +
-            "trustees").format(n_clients, n_trustees))
+    print(("Waiting for {} clients and {} " + "trustees").format(nclients, ntrustees))
     ccli, ctru = 0, 0
-    csocks = [None] * n_clients
-    tsocks = [None] * n_trustees
-    while ccli < n_clients or ctru < n_trustees:
+    csocks = [None] * nclients
+    tsocks = [None] * ntrustees
+    while ccli < nclients or ctru < ntrustees:
         conn, addr = ssock.accept()
         buf = bytes_to_long(conn.recv(1))
         istru, node = buf & 0x80, buf & 0x7f
         conn.setblocking(0)
 
-        if istru and ctru < n_trustees:
+        if istru and ctru < ntrustees:
             if tsocks[node] is not None:
                 sys.exit("Trustee connected twice")
             tsocks[node] = conn
             ctru += 1
-        elif ccli < n_clients:
+        elif ccli < nclients:
             if csocks[node] is not None:
                 sys.exit("Clients connected twice")
             csocks[node] = conn
@@ -172,11 +166,11 @@ def main():
             sys.exit("Illegal node number")
     print("All clients and trustees connected")
 
-    downstream_queue = asyncio.Queue()
-    conns = {}
+    downstream = asyncio.Queue()
+    upstreams = {}
 
     # start the main relay loop
-    asyncio.async(main_loop(tsocks, csocks, conns, downstream_queue))
+    asyncio.async(main_loop(tsocks, csocks, upstreams, downstream))
     loop = asyncio.get_event_loop()
     try:
         loop.run_forever()

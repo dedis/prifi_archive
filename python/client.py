@@ -6,13 +6,15 @@ import random
 import sys
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
+import config_utils
+import system_config
+import session_config
+import pseudonym_config
+
 import dcnet
-from dcnet import global_group
 
 from cells.null import NullDecoder, NullEncoder
 from certify.null import NullAccumulator, NullCertifier
-
-from elgamal import PublicKey, PrivateKey
 
 @asyncio.coroutine
 def open_relay(host, port, node):
@@ -116,60 +118,39 @@ def main():
     global nym_private_key
 
     p = argparse.ArgumentParser(description="Basic DC-net client")
-    p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
+    p.add_argument("-p", "--port", type=int, metavar="port", required=True, dest="port")
     p.add_argument("config_dir")
     p.add_argument("private_data")
     opts = p.parse_args()
 
-    # load the public system data
-    with open(os.path.join(opts.config_dir, "system.json"), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        clients = data["clients"]
-        client_ids = [c["id"] for c in clients]
+    system = system_config.load(os.path.join(opts.config_dir, "system.json"))
+    session = session_config.load(os.path.join(opts.config_dir, "session.json"))
+    pseudonym = pseudonym_config.load(os.path.join(opts.config_dir, "pseudonym.json"))
 
-        trustees = data["servers"]
-        trustee_keys = [PublicKey(global_group, t["key"]) for t in trustees]
+    private = config_utils.load_private(opts.private_data)
+    session_private = config_utils.load_private(os.path.join(opts.config_dir,
+            "{}-{}.json".format(private.id, session.session_id)))
 
-        relay_address = data["relays"][0]["ip"].split(":")
-
-    # and session data
-    with open(os.path.join(opts.config_dir, "session.json"), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        session_id = data["session-id"]
-        nym_keys = [PublicKey(global_group, c["dhkey"]) for c in data["clients"]]
-
-    # load the post-shuffle slots
-    with open(os.path.join(opts.config_dir, "shuffle.json"), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        slot_keys = [PublicKey(global_group, s) for s in data["slots"]]
-
-    # start new client using id and key from private_data
-    with open(opts.private_data, "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        client_id = data["id"]
-        private_key = PrivateKey(global_group, data["private_key"])
-    with open(os.path.join(opts.config_dir, "{}-{}.json".format(client_id, session_id)), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        nym_private_key = PrivateKey(global_group, data["private_key"])
+    # XXX hack for now
+    slot_keys = pseudonym.slots.keys
+    nym_private_key = session_private.secret
 
     try:
-        node = client_ids.index(client_id)
+        node = system.clients.ids.index(private.id)
     except ValueError:
         sys.exit("Client is not in system config")
 
-    client = dcnet.Client(private_key, trustee_keys, NullCertifier(), NullEncoder())
-    client.add_own_nym(nym_private_key)
-    client.add_nyms(slot_keys)
+    client = dcnet.Client(private.secret, system.trustees.keys, NullCertifier(), NullEncoder())
+    client.add_own_nym(session_private.secret)
+    client.add_nyms(pseudonym.slots.keys)
     client.sync(None, [])
 
     conns = [None]
     close_queue = asyncio.Queue()
     upstream_queue = asyncio.Queue()
 
-    # connect to the relay
-    relay_host = relay_address[0]
-    relay_port = int(relay_address[1])
-    asyncio.async(open_relay(relay_host, relay_port, node))
+    # connect to the relay and start reading
+    asyncio.async(open_relay(system.relay.host, system.relay.port, node))
 
     # listen for connections
     loop = asyncio.get_event_loop()
