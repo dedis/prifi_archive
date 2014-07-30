@@ -3,6 +3,7 @@ import asyncio
 import os
 import socket
 import sys
+import time
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import system_config
@@ -30,12 +31,12 @@ def socks_relay_down(cno, reader, writer, downstream):
 
         data = long_to_bytes(cno, 4) + long_to_bytes(len(buf), 2) + buf
 
-        print("socks_relay_down: {} bytes on cno {}".format(len(buf), cno))
+#        print("socks_relay_down: {} bytes on cno {}".format(len(buf), cno))
         yield from downstream.put(data)
 
         # close the connection to socks relay
         if len(buf) == 0:
-            print("socks_relay_down: cno {} closed".format(cno))
+#            print("socks_relay_down: cno {} closed".format(cno))
             writer.close()
             return
 
@@ -47,16 +48,16 @@ def socks_relay_up(cno, reader, writer, upstream):
 
         # client closed connection
         if dlen == 0:
-            print("sock_relay_up: closing stream {}".format(cno))
+#            print("sock_relay_up: closing stream {}".format(cno))
             writer.close()
             return
 
-        print("socks_relay_up: {} bytes on cno {}".format(dlen, cno))
+#        print("socks_relay_up: {} bytes on cno {}".format(dlen, cno))
         try:
             writer.write(buf)
             yield from writer.drain()
         except OSError as e:
-            print("socks_relay_up: {}".format(e))
+#            print("socks_relay_up: {}".format(e))
             writer.close()
             return
 
@@ -65,7 +66,29 @@ def socks_relay_up(cno, reader, writer, upstream):
 def main_loop(tsocks, csocks, upstreams, downstream):
     loop = asyncio.get_event_loop()
 
+    begin = time.time()
+    period = 3
+    report = begin + period
+    totupcells = 0
+    totupbytes = 0
+    totdowncells = 0
+    totdownbytes = 0
+
+    window = 2
+    inflight = 0
+
     while True:
+        # do some basic benchmarking
+        now = time.time()
+        if now > report:
+            duration = now - begin
+            print(("{} sec: {} cells, {} cells/sec, {} upbytes, {} upbytes/sec, " +
+                    "{} downbytes, {} downbytes/sec").format(duration, totupcells,
+                    totupcells / duration, totupbytes, totupbytes / duration,
+                    totdownbytes, totdownbytes / duration))
+            
+            report = now + period
+
         # see if there's anything to send
         try:
             downbuf = downstream.get_nowait()
@@ -75,10 +98,17 @@ def main_loop(tsocks, csocks, upstreams, downstream):
         # send downstream to all clients
         cno = bytes_to_long(downbuf[:4])
         dlen = bytes_to_long(downbuf[4:6])
-        if dlen > 0:
-            print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
+#        if dlen > 0:
+#            print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
         for csock in csocks:
             yield from loop.sock_sendall(csock, downbuf)
+
+        totdowncells += 1
+        totdownbytes += dlen
+
+        inflight += 1
+        if inflight < window:
+            continue
 
         # get trustee ciphertexts
         relay.decode_start()
@@ -102,6 +132,10 @@ def main_loop(tsocks, csocks, upstreams, downstream):
         cno = bytes_to_long(outb[:4])
         uplen = bytes_to_long(outb[4:6])
 
+        inflight -= 1
+        totupcells += 1
+        totupbytes += dcnet.cell_length
+
         if cno == 0:
             continue
         conn = upstreams.get(cno)
@@ -112,9 +146,9 @@ def main_loop(tsocks, csocks, upstreams, downstream):
             asyncio.async(socks_relay_down(cno, socks_reader, socks_writer, downstream))
             asyncio.async(socks_relay_up(cno, socks_reader, socks_writer, upstream))
             upstreams[cno] = upstream
-            print("new connection: cno {}".format(cno))
+#            print("new connection: cno {}".format(cno))
 
-        print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
+#        print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
         yield from upstreams[cno].put(outb[6:6+uplen])
 
 
