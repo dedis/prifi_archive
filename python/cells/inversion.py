@@ -104,7 +104,7 @@ class InversionBase():
             for pos in positions])
         if len(noise) > 1:
             noise = BitArray().join(noise)
-        return bytes_to_long((pos_mask & noise).tobytes())
+        return pos_mask & noise
 
 class InversionChecker(InversionBase):
     def check(self, cell, fast=True):
@@ -116,27 +116,29 @@ class InversionChecker(InversionBase):
             cell (Bits list): The chunks output of encode
             output: True if it all matches, False otherwise.
         """
-        cipherchunks = bits_to_chunks(Bits(cell))
+        cell = Bits(uint=bytes_to_long(cell), length=cell_bit_length)
+        cipherchunks = bits_to_chunks(cell)
         if (len(cipherchunks) < 1):
             print("Warning: Attempt to check empty ciphertext")
             return True
         [noise] = self.trap_noise(1, "Chunks")
         positions = self.trap_positions(len(cipherchunks))
+        assert(len(cipherchunks) == len(noise) == len(positions)), \
+            "Cipherchunks len: {0} Noise len: {1}. pos len: {2}"\
+            .format(len(cipherchunks), len(noise), len(positions))
         if fast:
             mask = self.cell_trap_mask(noise, positions)
-            masked = mask & bytes_to_long(cell)
+            masked = mask & cell
             debug(2, "mask: {0} cell: {1}\nmskd: {2}\nnois: {3}"
-                  .format(Bits(long_to_bytes(mask)),
-                          Bits(cell),
-                          Bits(long_to_bytes(masked)), noise))
-            return mask & bytes_to_long(cell) == mask
+                  .format(mask, cell, masked, noise))
+            return mask & cell == mask
         debug(2, "Checking: Noise: {0}.\n Positions: {1}.\n Chunks: {2}"
               .format(noise, positions, cipherchunks))
         for i in range(len(cipherchunks)):
             back_chunk = noise[i]
             this_bit = positions[i]
             debug(3, "cell: {0}. back_chunk: {1}. this_bit: {2}."
-                  .format(Bits(cell), back_chunk, this_bit) + \
+                  .format(cell, back_chunk, this_bit) + \
                   " num chks: {1}. cipherchunks: {0}"
                   .format(cipherchunks, len(cipherchunks)))
             if back_chunk[this_bit] != cipherchunks[i][this_bit]:
