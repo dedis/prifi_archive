@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from Crypto.Hash import SHA256
 import random
-from bitstring import Bits
+from bitstring import Bits, BitArray
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 import unittest
 import cells.request_tuning as opt
@@ -38,7 +38,7 @@ class RequestBase():
         flip = random.sample(range(0, self.cell_bit_length), self.request_bits)
         for bit in flip:
             cell[bit] = True
-        return bytes_to_long(Bits(cell).tobytes())
+        return Bits(cell)
 
 class RequestChecker(RequestBase):
     def __init__(self, seedlist, cell_bit_length=None, bits_per_nym=None):
@@ -53,7 +53,7 @@ class RequestChecker(RequestBase):
         super().__init__(clients, trap_flip_risk, hash_collision_risk,
                          cell_bit_length, bits_per_nym)
         self.bloom = {}
-        self.full = 0
+        self.full = Bits(uint=0, length=self.cell_bit_length)
         for i in range(len(seedlist)):
             key = self.cell_from_seeds(seedlist[i])
             if key in self.bloom.keys():
@@ -61,8 +61,9 @@ class RequestChecker(RequestBase):
             self.bloom[key] = i
             self.full |= key
         # long to bytes apparently can't handle negatives, so use bits intsead
-        self.trapmask = ~Bits(uint=self.full, length=self.cell_bit_length)
-        self.trapcount = sum((~self.full >> i) & 0x1 \
+        self.trapmask = ~self.full
+        self.trapcount = sum((~self.full >> i) & Bits(uint=1,
+                                                      length=self.cell_bit_length) \
                              for i in range(self.cell_bit_length))
 
     def trap_noise(self, count):
@@ -87,7 +88,7 @@ class RequestEncoder(RequestBase):
         """ Encodes a request for a cell into the shared request cell.
             The argument is ignored.
             """
-        return long_to_bytes(self.cell)
+        return self.cell.tobytes()
 
     def decoded_size(self, size):
         return NotImplemented
@@ -100,11 +101,13 @@ class RequestDecoder(RequestChecker):
         """ Takes a request cell containing one or more requests for slots and
         grants all of them """
         nyms = []
-        lcell = bytes_to_long(cell)
+        bcell = Bits(cell)
         for key in self.bloom.keys():
             print("Cell: {0}\n key: {1}\n and: {2} = key? {3} thus: {4}"
-                  .format(bin(lcell), bin(key), bin(lcell & key), lcell & key == key, self.bloom[key]))
-            if lcell & key == key:
+                  .format(bcell.bin, key.bin,
+                          (bcell & key).bin,
+                          bcell & key == key, self.bloom[key]))
+            if bcell & key == key:
                 nyms.append(self.bloom[key])
                 print("Appended {0}. now nyms is {1}"
                       .format(self.bloom[key], nyms))
@@ -123,7 +126,7 @@ class Test(unittest.TestCase):
 
     def test_encode(self):
         ecell = self.e.encode()
-        self.assertEqual(self.c.full, bytes_to_long(ecell))
+        self.assertEqual(self.c.full, Bits(ecell))
 
     def test_decode(self):
         ecell = self.e.encode()
@@ -148,13 +151,13 @@ class Test(unittest.TestCase):
             samplesize = random.randint(1, len(nymseeds))
             nyms = sorted(random.sample(range(len(nymseeds)), samplesize))
             these_encs = [encs[i] for i in nyms]
-            cell = 0
+            cell = Bits(uint=0, length=d.cell_bit_length)
             for enc in these_encs:
-                cell |= bytes_to_long(enc.encode())
+                cell |= Bits(enc.encode())
             self.assertEqual(d.full | cell, d.full)
-            self.assertTrue(d.check(long_to_bytes(cell)))
+            self.assertTrue(d.check(cell.tobytes()))
             print("DONE CHECKING NOW DECODING")
-            decoded = sorted(d.decode(long_to_bytes(cell)))
+            decoded = sorted(d.decode(cell.tobytes()))
             print("DONE CHECKING NOW VERIFYING")
             for elt in nyms:
                 self.assertTrue(elt in decoded,
