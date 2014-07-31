@@ -14,6 +14,7 @@ factable = [1] * rmax
 for i in range(1, rmax):
     factable[i] = factable[i - 1] * i
 
+@functools.lru_cache()
 def findb(n, p, hp):
     """ Experimentally determine the smallest number of bits required to
     have a probability of hash collisions (two pseudonyms with the same
@@ -29,13 +30,11 @@ def findb(n, p, hp):
       b: the size in bits of the request cell
     """
     br = math.log(p) / n
-    for b in range(8, math.ceil(n / 8) * 8 * 15, 8):
-#     for b in range(8, math.ceil(n / 8) * 8, 4):
+#     for b in range(8, math.ceil(n / 8) * 8 * 15, 8):
+    for b in range(8, math.ceil(n / 8) * 8 + 1, 8):
         r = math.ceil(br / math.log((b-1) / b))
         h = __pno(n, r, b)
         if h > 1 - hp:
-            r = r
-            b = b
             return r, b
     return float('nan'), float('nan')
 ## Low level helper functions
