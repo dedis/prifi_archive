@@ -6,6 +6,7 @@ from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 @asyncio.coroutine
 def test_client(i, dest, port, socks):
+    start = time.time()
     reader, writer = yield from asyncio.open_connection(dest, port)
 
     if socks:
@@ -25,13 +26,13 @@ def test_client(i, dest, port, socks):
         assert ver_rep_res == socks5.VERSION + socks5.REP_SUCCEEDED + b'\x00'
 
         atyp = yield from reader.readexactly(1)
-        addr = yield from socks5.read_socks_addr(reader, atyp)
+        addr = yield from socks5.read_addr(reader, atyp)
         port = yield from reader.readexactly(2)
     
     payload = 'GET / HTTP/1.0\r\n\r\n'.encode("UTF-8")
     writer.write(payload)
 
-    total, start = 0, time.time()
+    total = 0
     data = yield from reader.read(256)
     while data:
         total += len(data)
@@ -42,7 +43,7 @@ def test_client(i, dest, port, socks):
 
 def main():
     p = argparse.ArgumentParser(description="SOCKS5 client for benchmarking")
-    p.add_argument("-c", "--clients", type=int, metavar="N", default=256, dest="nclients")
+    p.add_argument("-c", "--clients", type=int, metavar="clients", default=256, dest="nclients")
     p.add_argument("dest", type=str, metavar="destination")
     p.add_argument("port", type=int, metavar="port")
     p.add_argument("--socks", action="store_true", default=True, dest="socks")
@@ -55,10 +56,9 @@ def main():
     try:
         loop.run_until_complete(clients)
         throughput = [8 * t / d for t, d in clients.result()] 
-        total, latency = zip(*clients.result())
-        print("{} clients:".format(opts.nclients))
-        print("\tthroughput: {} {} {}".format(min(throughput), max(throughput), sum(throughput) / opts.nclients))
-        print("\tlatency: {} {} {}".format(min(latency), max(latency), sum(latency) / opts.nclients))
+        latency = [d for t, d in clients.result()] 
+        print("{} clients: {} bytes/sec, {}s latency".format(opts.nclients,
+                sum(throughput) / opts.nclients, sum(latency) / opts.nclients))
     except KeyboardInterrupt:
         pass
 
