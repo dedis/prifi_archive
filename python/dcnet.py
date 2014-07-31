@@ -218,7 +218,6 @@ class Relay:
     def process_request_cell(self, trap_secrets):
         decoder = self.rdecoder(trap_secrets)
         nyms = sorted(decoder.decode(long_to_bytes(self.interval_req_cell)))
-        print("Nyms requesting more space: {0}".format(nyms))
         # TODO: Update scheduling
         return nyms
 
@@ -379,7 +378,6 @@ class Client:
                     .append(trap_key.exchange(nym_key))
             self.encoders[idx] = self.encoder(self.trap_seeds[nym_key])
             self.rencoders[idx] = self.rencoder(self.trap_seeds[nym_key])
-            self.nym_req_attempts[idx] = 0
 
     def add_own_nym(self, nym_key):
         """ Add nym_key (PrivateKey) to nyms_in_processing. Once its PublicKey
@@ -445,9 +443,11 @@ class Client:
             # For now, ignore it if we already received confirmation of the
             # request this round
             if self.interval_requests & full_code != full_code:
-                if self.nym_req_attempts[nym_idx] != 0:
+                if self.nym_req_attempts.get(nym_idx, 0) > 0:
                     rcode = bytes_to_long(enc.encode(long_to_bytes(self.interval_requests)))
+                    self.nym_req_attempts[nym_idx] += 1
                 else:
+                    self.nym_req_attempts[nym_idx] = 1
                     rcode = full_code
                 self.requesters[nym_idx] = rcode, full_code
 
@@ -495,7 +495,6 @@ class Client:
             nymdx = self.requests_in_processing[rcode]
             if rcode & self.interval_requests != rcode:
                 self.request([nymdx])
-                self.nym_req_attempts[nymdx] += 1
             else:
                 to_pop.append(rcode)
                 # TODO: Update cell size for that nym
