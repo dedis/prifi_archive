@@ -602,10 +602,7 @@ class Test(unittest.TestCase):
 
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-#         ax.hist(rds, 50, normed=1, histtype='step', cumulative=-1)
         ax.scatter(fracs, traps, rds, c="blue")
-#         y = mlab.normpdf(bincenters, mu, sigma)
-#         l = ax.plot(bincenters, y, 'r--', linewidth=1)
         plt.title("Rounds required")
         plt.xlabel('Proportion of clients requesting')
         plt.ylabel('Proportion of bits that are trap bits')
