@@ -236,13 +236,17 @@ def save(obj, filename):
 
 def main():
     p = argparse.ArgumentParser(description="Generate system configuration")
-    p.add_argument("-c", "--clients", type=int, metavar="N", default=10, dest="clients")
-    p.add_argument("-t", "--trustees", type=int, metavar="N", default=3, dest="trustees")
+    p.add_argument("-c", "--clients", type=int, metavar="clients", default=10, dest="clients")
+    p.add_argument("-t", "--trustees", type=int, metavar="trustees", default=3, dest="trustees")
+    p.add_argument("-s", "--seed", type=str, metavar="seed", default=None, dest="seed")
     p.add_argument("output_dir")
     opts = p.parse_args()
 
     shutil.rmtree(opts.output_dir, True)
     os.mkdir(opts.output_dir)
+
+    if opts.seed is not None:
+        random.seed(opts.seed)
 
     system_config, privates = SystemConfig.generate(opts.clients, opts.trustees)
     session_config, session_privates = SessionConfig.generate(system_config)
