@@ -32,15 +32,15 @@ def read_relay(reader, writer, upstream, close):
 
         buf = yield from reader.readexactly(dlen)
 
-        if cno != 0 or dlen != 0:
-            print("downstream from relay: cno {} dlen {}".format(cno, dlen))
+        #if cno != 0 or dlen != 0:
+        #    print("downstream from relay: cno {} dlen {}".format(cno, dlen))
 
         # see if any connections were closed by client
         try:
             while True:
                 ccno = close.get_nowait()
                 if conns[ccno]:
-                    print("client closed conn {}".format(ccno))
+                    #print("client closed conn {}".format(ccno))
                     conns[ccno].close()
                     conns[ccno] = None
         except asyncio.QueueEmpty:
@@ -53,11 +53,10 @@ def read_relay(reader, writer, upstream, close):
                     conns[cno].write(buf)
                     yield from conns[cno].drain()
                 except OSError:
-                    print("dropped {} bytes on {}".format(dlen, cno))
                     conns[cno].close()
                     conns[cno] = None
             else:
-                print("upstream closed conn {}".format(cno))
+                #print("upstream closed conn {}".format(cno))
                 conns[cno].close()
                 conns[cno] = None
 
@@ -83,7 +82,7 @@ def read_relay(reader, writer, upstream, close):
 def handle_client(reader, writer):
     cno = len(conns)
     conns.append(writer)
-    print("new client: cno {}".format(cno))
+    #print("new client: cno {}".format(cno))
     
     while True:
         try:
@@ -97,7 +96,7 @@ def handle_client(reader, writer):
         data[4:6] = long_to_bytes(len(buf), 2)
         data[6:6+len(buf)] = buf
 
-        print("client upstream: {} bytes on cno {}".format(len(buf), cno))
+        #print("client upstream: {} bytes on cno {}".format(len(buf), cno))
         yield from upstream_queue.put(data)
         if len(buf) == 0:
             yield from close_queue.put(cno)

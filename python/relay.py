@@ -30,12 +30,12 @@ def socks_relay_down(cno, reader, writer, downstream):
 
         data = long_to_bytes(cno, 4) + long_to_bytes(len(buf), 2) + buf
 
-#        print("socks_relay_down: {} bytes on cno {}".format(len(buf), cno))
+        #print("socks_relay_down: {} bytes on cno {}".format(len(buf), cno))
         yield from downstream.put(data)
 
         # close the connection to socks relay
         if len(buf) == 0:
-#            print("socks_relay_down: cno {} closed".format(cno))
+            #print("socks_relay_down: cno {} closed".format(cno))
             writer.close()
             return
 
@@ -47,16 +47,16 @@ def socks_relay_up(cno, reader, writer, upstream):
 
         # client closed connection
         if dlen == 0:
-#            print("sock_relay_up: closing stream {}".format(cno))
+            #print("sock_relay_up: closing stream {}".format(cno))
             writer.close()
             return
 
-#        print("socks_relay_up: {} bytes on cno {}".format(dlen, cno))
+        #print("socks_relay_up: {} bytes on cno {}".format(dlen, cno))
         try:
             writer.write(buf)
             yield from writer.drain()
         except OSError as e:
-#            print("socks_relay_up: {}".format(e))
+            print("socks_relay_up: {}".format(e))
             writer.close()
             return
 
@@ -97,8 +97,8 @@ def main_loop(tsocks, csocks, upstreams, downstream):
         # send downstream to all clients
         cno = bytes_to_long(downbuf[:4])
         dlen = bytes_to_long(downbuf[4:6])
-#        if dlen > 0:
-#            print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
+        #if dlen > 0:
+        #    print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
         for csock in csocks:
             yield from loop.sock_sendall(csock, downbuf)
 
@@ -145,9 +145,9 @@ def main_loop(tsocks, csocks, upstreams, downstream):
             asyncio.async(socks_relay_down(cno, socks_reader, socks_writer, downstream))
             asyncio.async(socks_relay_up(cno, socks_reader, socks_writer, upstream))
             upstreams[cno] = upstream
-#            print("new connection: cno {}".format(cno))
+            #print("new connection: cno {}".format(cno))
 
-#        print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
+        #print("upstream from clients: {} bytes on cno {}".format(uplen, cno))
         yield from upstreams[cno].put(outb[6:6+uplen])
 
 
