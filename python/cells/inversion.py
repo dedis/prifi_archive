@@ -126,29 +126,9 @@ class InversionChecker(InversionBase):
         assert(len(cipherchunks) == len(noise) == len(positions)), \
             "Cipherchunks len: {0} Noise len: {1}. pos len: {2}"\
             .format(len(cipherchunks), len(noise), len(positions))
-        if fast:
-            mask = self.cell_trap_mask(noise, positions)
-            masked = mask & cell
-            debug(2, "mask: {0} cell: {1}\nmskd: {2}\nnois: {3}"
-                  .format(mask, cell, masked, noise))
-            return mask & cell == mask
-        debug(2, "Checking: Noise: {0}.\n Positions: {1}.\n Chunks: {2}"
-              .format(noise, positions, cipherchunks))
-        for i in range(len(cipherchunks)):
-            back_chunk = noise[i]
-            this_bit = positions[i]
-            debug(3, "cell: {0}. back_chunk: {1}. this_bit: {2}."
-                  .format(cell, back_chunk, this_bit) + \
-                  " num chks: {1}. cipherchunks: {0}"
-                  .format(cipherchunks, len(cipherchunks)))
-            if back_chunk[this_bit] != cipherchunks[i][this_bit]:
-                print("Mismatch on chunk {0} at {1}:"
-                      .format(i, this_bit))
-                print("Got {0}({1}), expected {2}({3})"
-                      .format(cipherchunks[i], cipherchunks[i][this_bit],
-                              back_chunk, back_chunk[this_bit]))
-                return False
-        return True
+        mask = self.cell_trap_mask(noise, positions)
+        masked = mask & cell
+        return mask & cell == mask
 
 class InversionEncoder(InversionBase):
     """ Class for encoding cells according to the inversion scheme.
