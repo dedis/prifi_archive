@@ -1,11 +1,14 @@
 import argparse
 import asyncio
+import random
 import socks5
 import time
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 @asyncio.coroutine
 def test_client(i, dest, port, socks):
+    yield from asyncio.sleep(random.random())
+
     start = time.time()
     reader, writer = yield from asyncio.open_connection(dest, port)
 
@@ -57,8 +60,10 @@ def main():
         loop.run_until_complete(clients)
         throughput = [8 * t / d for t, d in clients.result()] 
         latency = [d for t, d in clients.result()] 
-        print("{} clients: {} bytes/sec, {}s latency".format(opts.nclients,
-                sum(throughput) / opts.nclients, sum(latency) / opts.nclients))
+        total = [t for t, d in clients.result()]
+        print("{} clients: {} bytes, {} bytes/sec, {}s latency".format(opts.nclients,
+                sum(total) / opts.nclients, sum(throughput) / opts.nclients,
+                sum(latency) / opts.nclients))
     except KeyboardInterrupt:
         pass
 
