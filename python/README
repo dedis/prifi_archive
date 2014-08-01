@@ -1,0 +1,52 @@
+###
+Dependencies
+###
+
+Requires either Python 3.4 or the asyncio module for Python 3.3.
+
+###
+Generate configuration
+###
+
+"python3 config.py -h" for options. The script generates all necessary
+configuration files and places them in the specified "config_dir".
+
+NOTE: For simplicity in testing, assumes relay is running on localhost:12345.
+If that is not the case, "system.json" will need to be edited manually.
+
+###
+Start the proxy
+###
+
+"python3 socks5.py" starts a SOCKS5 server on port 8080.
+"python3 echo_server.py -p 8080" may also be useful for test/debugging setups
+    as it bypasses the socks components.
+
+###
+Start the relay
+###
+
+"python3 relay.py -p 12345 config_dir" to work with the default configuration.
+
+###
+Clients and trustees
+###
+
+"python3 client.py/trustee.py -p {port} config_dir config_dir/{id}.json"
+    where {port} is any open port and {id} is the "id" field for the client/
+    trustee in "system.json"
+
+To avoid starting all clients/trustees manually for a local configuration,
+    "python3 supervisor.py config_dir" handles spawning the processes. The
+    "--local" flag allows starting a subset of clients manually.
+
+###
+Connections
+###
+
+If running "echo_server.py" and the backend, a simple "netcat" to one of the
+clients works fine.
+
+For "socks5.py", there's "test_client.py" which generates socks requests at
+a given rate. Starting Chrome with the --proxy-server="socks5://{ip}:{port}"
+flag also works to produce socks connections.
