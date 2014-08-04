@@ -13,22 +13,22 @@ from cells.null import NullDecoder, NullEncoder
 from certify.null import NullAccumulator, NullCertifier
 
 @asyncio.coroutine
-def open_relay(host, port, node):
+def open_relay(host, port, node_id):
     try:
         relay_reader, relay_writer = yield from asyncio.open_connection(host, port)
     except:
         sys.exit("Unable to connect to relay on {}:{}".format(host, port))
-    relay_writer.write(long_to_bytes(node, 1))
+    relay_writer.write(long_to_bytes(node_id, 1))
     asyncio.async(read_relay(relay_reader, relay_writer, upstream_queue, close_queue))
 
 @asyncio.coroutine
 def read_relay(reader, writer, upstream, close):
-    slot_idx = 0
-
     while True:
-        header = yield from reader.readexactly(6)
+        # XXX get rid of "magic" numbers
+        header = yield from reader.readexactly(8)
         cno = bytes_to_long(header[:4])
-        dlen = bytes_to_long(header[4:])
+        dlen = bytes_to_long(header[4:6])
+        nxt = bytes_to_long(header[6:])
 
         buf = yield from reader.readexactly(dlen)
 
@@ -61,10 +61,9 @@ def read_relay(reader, writer, upstream, close):
                 conns[cno] = None
 
         # prepare next upstream
-        slot = slot_keys[slot_idx]
         ciphertext = client.produce_ciphertexts()
         cleartext = bytearray(dcnet.cell_length)
-        if slot.element == nym_private_key.element:
+        if nxt == slot_index:
             try:
                 cleartext = upstream.get_nowait()
             except asyncio.QueueEmpty:
@@ -75,7 +74,6 @@ def read_relay(reader, writer, upstream, close):
                 blocksize=dcnet.cell_length)
         writer.write(ciphertext)
         yield from writer.drain()
-        slot_idx = (slot_idx + 1) % len(slot_keys)
 
 
 @asyncio.coroutine
@@ -109,8 +107,7 @@ def main():
     global conns
     global upstream_queue
     global close_queue
-    global slot_keys
-    global nym_private_key
+    global slot_index
 
     p = argparse.ArgumentParser(description="Basic DC-net client")
     p.add_argument("-p", "--port", type=int, metavar="port", required=True, dest="port")
@@ -125,12 +122,8 @@ def main():
     session_private = config.load(config.Private, os.path.join(opts.config_dir,
             "{}-{}.json".format(private.id, session_config.session_id)))
 
-    # XXX hack for now
-    slot_keys = pseudonym_config.slots.keys
-    nym_private_key = session_private.secret
-
     try:
-        node = system_config.clients.ids.index(private.id)
+        node_id = system_config.clients.ids.index(private.id)
     except ValueError:
         sys.exit("Client is not in system config")
 
@@ -139,12 +132,19 @@ def main():
     client.add_nyms(pseudonym_config.slots.keys)
     client.sync(None, [])
 
+    # XXX move this logic into dcnet.Client
+    slot_elements = [key.element for key in pseudonym_config.slots.keys]
+    try:
+        slot_index = slot_elements.index(session_private.secret.element)
+    except ValueError:
+        sys.exit("Client is not in pseudonym config")
+
     conns = [None]
     close_queue = asyncio.Queue()
     upstream_queue = asyncio.Queue()
 
     # connect to the relay and start reading
-    asyncio.async(open_relay(system_config.relay.host, system_config.relay.port, node))
+    asyncio.async(open_relay(system_config.relay.host, system_config.relay.port, node_id))
 
     # listen for connections
     loop = asyncio.get_event_loop()

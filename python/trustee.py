@@ -34,9 +34,15 @@ def main():
     conn.send(long_to_bytes(node, 1))
 
     # stream the ciphertext to the relay
-    while True:
-        ciphertext = trustee.produce_ciphertext()
-        n = conn.send(ciphertext)
+    try:
+        while True:
+            # XXX ignore nxt for now
+            nxt = bytes_to_long(conn.recv(2, socket.MSG_WAITALL))
+            ciphertext = trustee.produce_ciphertext()
+            n = conn.send(ciphertext)
+    except KeyboardInterrupt:
+        pass
+    conn.close()
 
 
 if __name__ == "__main__":

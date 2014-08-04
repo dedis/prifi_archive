@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import itertools
 import os
 import socket
 import sys
@@ -28,10 +29,8 @@ def socks_relay_down(cno, reader, writer, downstream):
             writer.close()
             return
 
-        data = long_to_bytes(cno, 4) + long_to_bytes(len(buf), 2) + buf
-
         #print("socks_relay_down: {} bytes on cno {}".format(len(buf), cno))
-        yield from downstream.put(data)
+        yield from downstream.put((cno, buf))
 
         # close the connection to socks relay
         if len(buf) == 0:
@@ -62,8 +61,13 @@ def socks_relay_up(cno, reader, writer, upstream):
 
 
 @asyncio.coroutine
-def main_loop(tsocks, csocks, upstreams, downstream):
+def main_loop(tsocks, csocks, upstreams, downstream, scheduler):
     loop = asyncio.get_event_loop()
+
+    # branch off two schedulers so trustees can get out ahead
+    # XXX tee() can use a lot of memory if one copy gets too far ahead. This
+    #   shouldn't be a problem here, but is worth noting
+    client_scheduler, trustee_scheduler = itertools.tee(scheduler)
 
     begin = time.time()
     period = 3
@@ -73,8 +77,11 @@ def main_loop(tsocks, csocks, upstreams, downstream):
     totdowncells = 0
     totdownbytes = 0
 
-    window = 2
-    inflight = 0
+    client_window = 2
+    client_inflight = 0
+
+    trustee_window = 10
+    trustee_inflight = 0
 
     while True:
         # do some basic benchmarking
@@ -88,25 +95,45 @@ def main_loop(tsocks, csocks, upstreams, downstream):
             
             report = now + period
 
-        # see if there's anything to send
+        # request future cell from trustees
         try:
-            downbuf = downstream.get_nowait()
+            nxt = long_to_bytes(next(trustee_scheduler), 2)
+        except StopIteration:
+            sys.exit("Scheduler stopped short")
+
+        for tsock in tsocks:
+            yield from loop.sock_sendall(tsock, nxt)
+
+        trustee_inflight += 1
+        if trustee_inflight < trustee_window:
+            continue
+
+        # see if there's anything to send down to clients
+        try:
+            cno, downbuf = downstream.get_nowait()
         except asyncio.QueueEmpty:
-            downbuf = bytearray(6)
+            cno, downbuf = 0, bytearray(0)
+
+        #if len(downbuf) > 0:
+        #    print("downstream to clients: {} bytes on cno {}".format(len(downbuf), cno))
 
         # send downstream to all clients
-        cno = bytes_to_long(downbuf[:4])
-        dlen = bytes_to_long(downbuf[4:6])
-        #if dlen > 0:
-        #    print("downstream to clients: {} bytes on cno {}".format(dlen, cno))
+        cno = long_to_bytes(cno, 4)
+        dlen = long_to_bytes(len(downbuf), 2)
+        try:
+            nxt = long_to_bytes(next(client_scheduler), 2)
+        except StopIteration:
+            sys.exit("Scheduler stopped short")
+
+        dbuf = cno + dlen + nxt + downbuf
         for csock in csocks:
-            yield from loop.sock_sendall(csock, downbuf)
+            yield from loop.sock_sendall(csock, dbuf)
 
         totdowncells += 1
-        totdownbytes += dlen
+        totdownbytes += len(downbuf)
 
-        inflight += 1
-        if inflight < window:
+        client_inflight += 1
+        if client_inflight < client_window:
             continue
 
         # get trustee ciphertexts
@@ -131,7 +158,8 @@ def main_loop(tsocks, csocks, upstreams, downstream):
         cno = bytes_to_long(outb[:4])
         uplen = bytes_to_long(outb[4:6])
 
-        inflight -= 1
+        client_inflight -= 1
+        trustee_inflight -= 1
         totupcells += 1
         totupbytes += dcnet.cell_length
 
@@ -199,11 +227,12 @@ def main():
             sys.exit("Illegal node number")
     print("All clients and trustees connected")
 
-    downstream = asyncio.Queue()
     upstreams = {}
+    downstream = asyncio.Queue()
+    scheduler = itertools.cycle(range(nclients))
 
     # start the main relay loop
-    asyncio.async(main_loop(tsocks, csocks, upstreams, downstream))
+    asyncio.async(main_loop(tsocks, csocks, upstreams, downstream, scheduler))
     loop = asyncio.get_event_loop()
     try:
         loop.run_forever()
