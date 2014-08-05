@@ -47,6 +47,7 @@ def read_relay(reader, writer, upstream, close):
             pass
 
         # pass along if necessary
+        cno -= cno_offset
         if cno > 0 and cno < len(conns) and conns[cno] is not None:
             if dlen > 0:
                 try:
@@ -79,6 +80,8 @@ def read_relay(reader, writer, upstream, close):
 @asyncio.coroutine
 def handle_client(reader, writer):
     cno = len(conns)
+    if cno >= cno_limit:
+        sys.exit("Client reached connection limit ({})".format(cno_limit))
     conns.append(writer)
     #print("new client: cno {}".format(cno))
     
@@ -90,7 +93,7 @@ def handle_client(reader, writer):
             return
             
         data = bytearray(dcnet.cell_length)
-        data[:4] = long_to_bytes(cno, 4)
+        data[:4] = long_to_bytes(cno + cno_offset, 4)
         data[4:6] = long_to_bytes(len(buf), 2)
         data[6:6+len(buf)] = buf
 
@@ -108,6 +111,8 @@ def main():
     global upstream_queue
     global close_queue
     global slot_index
+    global cno_limit
+    global cno_offset
 
     p = argparse.ArgumentParser(description="Basic DC-net client")
     p.add_argument("-p", "--port", type=int, metavar="port", required=True, dest="port")
@@ -138,6 +143,9 @@ def main():
         slot_index = slot_elements.index(session_private.secret.element)
     except ValueError:
         sys.exit("Client is not in pseudonym config")
+    nslots = len(pseudonym_config.slots.keys)
+    cno_limit = (1 << 16) // nslots
+    cno_offset = cno_limit * slot_index
 
     conns = [None]
     close_queue = asyncio.Queue()
