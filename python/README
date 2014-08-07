@@ -1,52 +1,81 @@
-###
-Dependencies
-###
-
+### IMPLEMENTATION/BUILD NOTES ###
 Requires either Python 3.4 or the asyncio module for Python 3.3.
 
-###
-Generate configuration
-###
+### SETUP/INITIALIZATION ASSUMPTIONS ###
+The current system assumes that all necessary configurations have been
+generated for the current interval:
+    system_config
+    session_config
+    pseudonym_config
+    interval_config [TODO]
 
-"python3 config.py -h" for options. The script generates all necessary
-configuration files and places them in the specified "config_dir".
+As a result, the system "picks up" at the beginning of an interval and, for
+now, executes only in the context of a single interval.
 
-NOTE: For simplicity in testing, assumes relay is running on localhost:12345.
-If that is not the case, "system.json" will need to be edited manually.
+See "python3 config.py -h" for configuration generation.
 
-###
-Start the proxy
-###
+### OVERALL FLOW ###
+The RELAY is the central hub to which CLIENTs and TRUSTEEs connect.
 
-"python3 socks5.py" starts a SOCKS5 server on port 8080.
-"python3 echo_server.py -p 8080" may also be useful for test/debugging setups
-    as it bypasses the socks components.
+Once all clients and trustees are connected, the relay begins a continuous
+stream of dc-net exchanges. Communication is:
+    Relay -> Trustee: [NextSlot (2 bytes)]
+    Relay -> Client: [Conn# (4 bytes) | Len (2) | NextSlot (2) | Payload]
+If the Conn# corresponds to a connection through this client, the Payload
+is forwarded to the appropriate connection. Otherwise, it is ignored.
 
-###
-Start the relay
-###
+About Conn#: Each dc-net client listens for local connections (web browser,
+etc.) to proxy through the dc-net. When a new connection is made, it is
+assigned a Conn# from a per-pseudonym space. This Conn# is attached to all
+messages to allow multiplexing multiple connections through the dc-net.
 
-"python3 relay.py -p 12345 config_dir" to work with the default configuration.
+About NextSlot: The slot scheduling algorithm runs on the relay to regulate
+client transmissions (prevent collisions, optimize usage). The NextSlot field
+is an integer referring to the index within the pseudonym_config of the client
+whose turn it is to transmit a cell. [XXX Request slots]
 
-###
-Clients and trustees
-###
+After receiving a downstream, clients and trustees respond with a dc-net cell
+for the requested pseduonym. Client dc-net cells may contain data on behalf of
+a local connection. These messages take the following form (before XORing, of
+course):
+    [Conn# (4 bytes) | Len (2) | Payload | 0-Padding, if needed]
+If the client has no data to transmit, it will transmit its dc-net ciphertext
+unmodified.
 
-"python3 client.py/trustee.py -p {port} config_dir config_dir/{id}.json"
-    where {port} is any open port and {id} is the "id" field for the client/
-    trustee in "system.json"
+When the relay has received a cell from all clients and trustees, it decodes
+the cell and determines whether there is any data contained within. If no
+clients have transmitted any data, the cell will decode to all 0s and no action
+is required by the relay. If the cell contains data (i.e. Conn# > 0), the relay
+extracts the Payload and forwards it to the actual processing logic (i.e.
+SOCKS5 server), using Conn# for de-multiplexing. A Conn# > 0 and Len == 0
+indicates a request by the client to close the connection.
 
-To avoid starting all clients/trustees manually for a local configuration,
-    "python3 supervisor.py config_dir" handles spawning the processes. The
-    "--local" flag allows starting a subset of clients manually.
+When the relay receives downstream data (i.e. from SOCKS server), it packages
+it up and forwards the data to all clients, returning to the first step of the
+process described in this section.
 
-###
-Connections
-###
+### USAGE ###
+Start the proxy:
+    "python3 socks5.py" starts a SOCKS5 server on port 8080.
+    "python3 echo_server.py -p 8080" is a useful alternative for testing/
+        debugging (i.e. echo dc-net output back into the dc-net)
 
-If running "echo_server.py" and the backend, a simple "netcat" to one of the
-clients works fine.
+Start the relay:
+    "python3 relay.py -p 12345 {config_dir}"
 
-For "socks5.py", there's "test_client.py" which generates socks requests at
-a given rate. Starting Chrome with the --proxy-server="socks5://{ip}:{port}"
-flag also works to produce socks connections.
+Start clients and trustees:
+    "python3 client.py/trustee.py -p {port} {config_dir} {config_dir}/{id}.json"
+        where {port} is any open port and {id} is the "id" field for the client/
+        trustee in "system.json"
+
+    To avoid starting all clients/trustees manually for a local configuration,
+        "python3 supervisor.py {config_dir}" handles spawning the processes. The
+        "--local" flag allows starting a subset of clients manually.
+
+Connect to one or more clients:
+    If running "echo_server.py" as the endpoint, a simple "netcat" to one of the
+    clients works fine.
+
+    For "socks5.py", there's "test_client.py" which generates SOCKS requests at
+    a given rate. Starting Chrome with the --proxy-server="socks5://{ip}:{port}"
+    flag also produces SOCKS connections.
