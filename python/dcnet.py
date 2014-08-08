@@ -23,12 +23,14 @@ cell_length = 256
 empty_cell = bytes(0 for x in range(cell_length))
 
 class XorNet:
-    def __init__(self, secrets):
+    def __init__(self, secrets, interval):
         self.secrets = secrets
+        self.interval = interval
         streams = []
         for secret in secrets:
             h = SHA256.new()
             h.update(secret)
+            h.update(long_to_bytes(self.interval))
             seed = h.digest()[:16]
             aes = AES.new(seed, AES.MODE_CTR, counter = Counter.new(128))
             streams.append(aes)
@@ -60,16 +62,10 @@ class Trustee:
         self.interval += 1
         trap_key = PrivateKey(global_group)
         self.trap_keys.append(trap_key)
-        self.xornet = XorNet(self.secrets)
+        self.xornet = XorNet(self.secrets, self.interval)
 
     def produce_ciphertext(self):
         return self.xornet.produce_ciphertext()
-
-    def produce_ciphertext(self, nyms):
-        cells_for_nyms = []
-        for ndx in nyms:
-            cells_for_nyms.append(self.xornet.produce_ciphertext(ndx))
-        return cells_for_nyms
 
 class Relay:
     def __init__(self, trustees, accumulator, decoder):
@@ -105,12 +101,14 @@ class Client:
         for key in self.trustee_keys:
             self.secrets.append(long_to_bytes(self.key.exchange(key)))
 
+        self.interval = -1
         self.pub_nym_keys = []
         self.certifier = certifier
         self.encoder = encoder
 
     def sync(self, client_set, trap_keys):
-        self.xornet = XorNet(self.secrets)
+        self.interval += 1
+        self.xornet = XorNet(self.secrets, self.interval)
 
     def add_own_nym(self, nym_key):
         pass
