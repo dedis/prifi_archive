@@ -15,24 +15,18 @@ from Crypto.Hash import SHA256
 
 cell_bit_length = 24 * 8  # Bits per cell
 chunk_size = 8  # bits per chunk
-# number of chunks of data (length field included) that can fit in a cell
+# number of chunks of data that can fit in a cell
 chunks_per_cell = math.floor((cell_bit_length) / +\
                              (1 + 1 / chunk_size + chunk_size))
-# number of bytes needed to represent the length in bits of the data
-length_field_size = math.ceil(math.log2(chunks_per_cell * chunk_size) / 8)
-# number of chunks needed to represent the length in bits of the data
-length_field_chunks = math.ceil(length_field_size * 8 / chunk_size)
 # number of bytes needed to represent the inversion bits
 invert_header_size = math.ceil(math.ceil(chunks_per_cell / (chunk_size - 1)) * \
                                chunk_size / 8)
 # number of chunks needed to represent the inversion bits
 invert_header_chunks = math.ceil(invert_header_size * 8 / chunk_size)
 # maximum number of bytes of data that encode can be called on
-max_in_size = (chunks_per_cell - length_field_chunks) * chunk_size // 8
+max_in_size = chunks_per_cell * chunk_size // 8
 debug(1, "cell_bit_length: {0} ".format(cell_bit_length) + \
 "chunk_size: {0} ".format(chunk_size) + \
-"length_field_size: {0} ".format(length_field_size) + \
-"length_field_chunks: {0} ".format(length_field_chunks) + \
 "chunks_per_cell: {0} ".format(chunks_per_cell) + \
 "invert_header_size: {0} ".format(invert_header_size) + \
 "invert_header_chunks {0} ".format(invert_header_chunks) + \
@@ -127,7 +121,6 @@ class InversionChecker(InversionBase):
             "Cipherchunks len: {0} Noise len: {1}. pos len: {2}"\
             .format(len(cipherchunks), len(noise), len(positions))
         mask = self.cell_trap_mask(noise, positions)
-        masked = mask & cell
         return mask & cell == mask
 
 class InversionEncoder(InversionBase):
@@ -160,22 +153,17 @@ class InversionEncoder(InversionBase):
         assert self.encoded_size(len(cell)) <= cell_bit_length // 8, \
                "encoded size for {0} byte cell is {1} but only {2} will fit" \
                .format(len(cell), self.encoded_size(len(cell)), max_in_size)
-        length_b = Bits(uint=len(cell) * 8, length=length_field_size * 8)
-        length_p = Bits([False] * \
-                        (length_field_chunks * chunk_size - len(length_b)) + \
-                        length_b)
-        chunks = bits_to_chunks(length_p + Bits(cell),
-                                padchunks=True, padcell=True)
+        chunks = bits_to_chunks(Bits(cell), padchunks=True, padcell=True)
         assert(len(chunks) >= 1)
         [noise] = self.trap_noise(1, "Chunks")
-        positions = self.trap_positions(len(chunks) + invert_header_chunks)
+        positions = self.trap_positions(len(chunks) + invert_header_size)
         header_chunks, enc = self.__encode_chunks(noise, positions, chunks)
         joined = self.__join_encoded(header_chunks, enc)
         masked = self.__trap_mask_cell(noise, positions, joined)
-        debug(2, "Length: {0}\n ByteLength: {1}"
-                  .format(len(cell) * 8, length_b) + \
-              "\n  Cell: {0}\n len+cell bits: {1}"
-                      .format(Bits(cell), length_p + Bits(cell)) + \
+        debug(2, "Length: {0}\n"
+                  .format(len(cell) * 8) + \
+              "\n  Cell: {0}\n"
+                      .format(Bits(cell)) + \
               "\n joined: {0}\n masked: {1}".format(Bits(joined), Bits(masked)))
         return masked
 
@@ -191,7 +179,7 @@ class InversionEncoder(InversionBase):
     def encoded_size(self, size):
         """ The size in bytes of the encoded version of a decoded string that
         is size bytes long """
-        chunks = math.ceil(8 * size / chunk_size) + length_field_chunks
+        chunks = math.ceil(8 * size / chunk_size)
         if chunks < chunks_per_cell:
             chunks = chunks_per_cell
         return math.ceil(chunks * chunk_size / 8) + \
@@ -253,7 +241,7 @@ class InversionEncoder(InversionBase):
         debug(3, " Chunks: {0}.\n Invert Header: {1}."
                   .format(bits_to_chunks(Bits(inv_B + enc_B)), Bits(header)) + \
               "\n Full header: {0}\n enc: {1}\n Together: {2}"
-                      .format(inv_h + data_chunks[:length_field_chunks],
+                      .format(inv_h + data_chunks[:invert_header_size],
                               data_chunks, Bits(inv_B + enc_B)))
         return inv_B + enc_B
 
@@ -265,7 +253,7 @@ class InversionDecoder:
     def decode(self, cell):
         """ Takes the output of encode and returns it decoded (in bytes).
         """
-        _, cipherheader, cipherchunks = encoded_bytes_to_header_chunks(cell)
+        cipherheader, cipherchunks = encoded_bytes_to_header_chunks(cell)
         plain_chunks = self.__decode_chunks(cipherheader, cipherchunks)
         joined = BitArray().join(plain_chunks)
         return joined.tobytes()
@@ -319,9 +307,7 @@ def encoded_bytes_to_header_chunks(cell, trim=True):
     """
     # Separate the inversion bits
     header_chunks = bits_to_chunks(Bits(cell)[:invert_header_chunks * chunk_size])
-    offset = invert_header_size + length_field_size
-    # Separate the length field from the data chunks
-    length_chunks = bits_to_chunks(Bits(cell[invert_header_size:offset]))
+    offset = invert_header_size
     # Decode the inversion bits
     header_decoded_chunks = []
     for i in range(len(header_chunks)):
@@ -332,18 +318,7 @@ def encoded_bytes_to_header_chunks(cell, trim=True):
             header_decoded_chunks[-1] = ~header_decoded_chunks[-1]
     # De-chunk so the inversion bits are a single bitstring
     header = BitArray().join(header_decoded_chunks)
-    # Decode the length field
-    for i in range(len(length_chunks)):
-        if header[0] == 1:
-            length_chunks[i] = ~length_chunks[i]
-        # Trim the length field bits from the inversion header
-        header = header[1:]
-    # parse the length field
-    length = BitArray().join(length_chunks).unpack("uint")[0]
-    if trim:
-        cipherchunks = bits_to_chunks(Bits(cell[offset:])[:length])
-    else:
-        cipherchunks = bits_to_chunks(Bits(cell[offset:]))
+    cipherchunks = bits_to_chunks(Bits(cell[offset:]))
     # Trim any extra inversion header bits
     cipherheader = Bits(header[:len(cipherchunks)])
     debug(3, "Full initial header was: {0}".format(Bits(cell[:offset])) + \
@@ -355,10 +330,8 @@ def encoded_bytes_to_header_chunks(cell, trim=True):
           "\n cipherchunks {0}".format(cipherchunks) + \
           "\n len cipherchunks: {0}.".format(len(cipherchunks)) + \
           "\n Original was: {0}".format(Bits(cell)) + \
-          "\n length bin: {0}".format(Bits(cell[invert_header_size:offset])) + \
-          "\n length: {0}".format(length) + \
-          "\n length chunks: {0}".format(length_chunks))
-    return length, cipherheader, cipherchunks
+          "\n length bin: {0}".format(Bits(cell[invert_header_size:offset])))
+    return cipherheader, cipherchunks
 
 
 ###### Tests ######
@@ -382,6 +355,7 @@ class Test(unittest.TestCase):
     def encode_check_decode(self, message="", msg_b=None):
         if msg_b == None:
             msg_b = bytes(message, "utf-8")
+        size = len(msg_b)
         encoded = Bits(self.e.encode(msg_b))
         noise = Bits(self.decode_helper.trap_noise(1)[0])
         debug(2, "Encoded: {0}-len {1}\n  noise: {2}-len {3}"
@@ -391,7 +365,7 @@ class Test(unittest.TestCase):
               .format(len(encoded), encoded, len(noise),
                       noise, to_decode))
         new_text_b = self.d.decode(to_decode.tobytes())
-        self.assertEqual(new_text_b, msg_b,
+        self.assertEqual(new_text_b[:size], msg_b,
                          msg="[x] Failed decoding:\n Expected {0}\n but got {1}"
                               .format(msg_b, new_text_b))
         self.assertTrue(self.c.check(to_decode.tobytes()),
