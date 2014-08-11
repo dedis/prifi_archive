@@ -26,7 +26,7 @@ def main():
 
     trustee = dcnet.Trustee(private.secret, system_config.clients.keys)
     trustee.add_nyms(session_config.clients.keys)
-    trustee.sync(None)
+    trustee.sync(None, None)
 
     # connect to the relay
     conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -36,9 +36,8 @@ def main():
     # stream the ciphertext to the relay
     try:
         while True:
-            # XXX ignore nxt for now
             nxt = bytes_to_long(conn.recv(2, socket.MSG_WAITALL))
-            ciphertext = trustee.produce_ciphertext()
+            ciphertext = trustee.produce_ciphertext(nxt)
             n = conn.send(ciphertext)
     except KeyboardInterrupt:
         pass

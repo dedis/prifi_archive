@@ -58,7 +58,7 @@ process described in this section.
 Start the proxy:
     "python3 socks5.py" starts a SOCKS5 server on port 8080.
     "python3 echo_server.py -p 8080" is a useful alternative for testing/
-        debugging (i.e. echo dc-net output back into the dc-net)
+        debugging (i.e. echo dc-net output back as the downstream)
 
 Start the relay:
     "python3 relay.py -p 12345 {config_dir}"

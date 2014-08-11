@@ -62,17 +62,7 @@ def read_relay(reader, writer, upstream, close):
                 conns[cno] = None
 
         # prepare next upstream
-        ciphertext = client.produce_ciphertexts()
-        cleartext = bytearray(dcnet.cell_length)
-        if nxt == slot_index:
-            try:
-                cleartext = upstream.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
-        # XXX pull XOR out into util
-        ciphertext = long_to_bytes(
-                bytes_to_long(ciphertext) ^ bytes_to_long(cleartext),
-                blocksize=dcnet.cell_length)
+        ciphertext = client.produce_ciphertexts(nxt)
         writer.write(ciphertext)
         yield from writer.drain()
 
@@ -110,7 +100,6 @@ def main():
     global conns
     global upstream_queue
     global close_queue
-    global slot_index
     global cno_limit
     global cno_offset
 
@@ -132,24 +121,21 @@ def main():
     except ValueError:
         sys.exit("Client is not in system config")
 
-    client = dcnet.Client(private.secret, system_config.trustees.keys, NullCertifier(), NullEncoder())
-    client.add_own_nym(session_private.secret)
-    client.add_nyms(pseudonym_config.slots.keys)
-    client.sync(None, [])
-
-    # XXX move this logic into dcnet.Client
-    slot_elements = [key.element for key in pseudonym_config.slots.keys]
-    try:
-        slot_index = slot_elements.index(session_private.secret.element)
-    except ValueError:
-        sys.exit("Client is not in pseudonym config")
-    nslots = len(pseudonym_config.slots.keys)
-    cno_limit = (1 << 16) // nslots
-    cno_offset = cno_limit * slot_index
-
     conns = [None]
     close_queue = asyncio.Queue()
     upstream_queue = asyncio.Queue()
+
+    client = dcnet.Client(private.secret, system_config.trustees.keys, NullCertifier(), NullEncoder())
+    client.set_message_queue(upstream_queue)
+    client.add_own_nym(session_private.secret)
+    client.add_nyms(pseudonym_config.slots.keys)
+    client.sync(None, [])
+    assert client.nym_index >= 0
+
+    # XXX abstract this away
+    nslots = len(pseudonym_config.slots.keys)
+    cno_limit = (1 << 16) // nslots
+    cno_offset = cno_limit * client.nym_index
 
     # connect to the relay and start reading
     asyncio.async(open_relay(system_config.relay.host, system_config.relay.port, node_id))

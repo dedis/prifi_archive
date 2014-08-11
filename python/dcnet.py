@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import queue
 import random
 import time
 from Crypto.Cipher import AES
@@ -58,13 +59,12 @@ class Trustee:
     def add_nyms(self, nym_keys):
         self.nym_keys.extend(nym_keys)
 
-    def sync(self, client_set):
+    def sync(self, client_set, trap_key):
         self.interval += 1
-        trap_key = PrivateKey(global_group)
         self.trap_keys.append(trap_key)
         self.xornet = XorNet(self.secrets, self.interval)
 
-    def produce_ciphertext(self):
+    def produce_ciphertext(self, nym_index):
         return self.xornet.produce_ciphertext()
 
 class Relay:
@@ -106,18 +106,38 @@ class Client:
         self.certifier = certifier
         self.encoder = encoder
 
+    def set_message_queue(self, messages):
+        self.message_queue = messages
+
     def sync(self, client_set, trap_keys):
         self.interval += 1
         self.xornet = XorNet(self.secrets, self.interval)
 
     def add_own_nym(self, nym_key):
-        pass
+        self.own_nym = nym_key
 
     def add_nyms(self, nym_keys):
-        self.pub_nym_keys.extend(nym_keys)
+        self.pub_nym_keys = nym_keys
+        elements = [key.element for key in self.pub_nym_keys]
+        try:
+            self.nym_index = elements.index(self.own_nym.element)
+        except ValueError:
+            self.nym_index = -1
 
-    def produce_ciphertexts(self):
-        return self.xornet.produce_ciphertext()
+    def produce_ciphertexts(self, nym_index):
+        ciphertext = self.xornet.produce_ciphertext()
+        cleartext = bytearray(cell_length)
+        if nym_index == self.nym_index:
+            try:
+                cleartext = self.message_queue.get_nowait()
+            except:  # XXX make generic to queues
+                pass
+        # XXX pull XOR out into util
+        ciphertext = long_to_bytes(
+                bytes_to_long(ciphertext) ^ bytes_to_long(cleartext),
+                blocksize=cell_length)
+        return ciphertext
+
 
 def gen_keys(count):
     dhkeys = []
@@ -139,6 +159,7 @@ def main():
     trustee_dhkeys, trustee_keys = gen_keys(trustee_count)
     client_dhkeys, client_keys = gen_keys(client_count)
     nym_dhkeys, nym_keys = gen_keys(client_count)
+    trap_dhkeys, trap_keys = gen_keys(trustee_count)
 
     trustees = []
     for idx in range(trustee_count):
@@ -154,6 +175,7 @@ def main():
         client = Client(client_dhkeys[idx], trustee_keys, certifier, NullEncoder())
         client.add_own_nym(nym_dhkeys[idx])
         client.add_nyms(nym_keys)
+        client.set_message_queue(queue.Queue())
         clients.append(client)
 
     accumulator = NullAccumulator()
@@ -169,10 +191,8 @@ def main():
     relay.add_nyms(client_count)
     relay.sync(None)
 
-    trap_keys = []
-    for trustee in trustees:
-        trustee.sync(None)
-        trap_keys.append(trustee.trap_keys[-1].public_key())
+    for i, trustee in enumerate(trustees):
+        trustee.sync(None, trap_dhkeys[i])
 
     for client in clients:
         client.sync(None, trap_keys)
@@ -182,14 +202,14 @@ def main():
         relay.decode_start()
         for idx in range(len(trustees)):
             trustee = trustees[idx]
-            ciphertext = trustee.produce_ciphertext()
+            ciphertext = trustee.produce_ciphertext(i)
             relay.decode_trustee(ciphertext)
 
         for client in clients:
-            ciphertext = client.produce_ciphertexts()
+            ciphertext = client.produce_ciphertexts(i)
             relay.decode_client(ciphertext)
 
-        cleartexts.append(relay.decode_cell())
+        cleartexts.append(relay.decode_cell().decode("utf-8"))
     print(cleartexts)
 
     print(time.time() - t0)
@@ -197,22 +217,23 @@ def main():
         client.process_cleartext(cleartext)
     t0 = time.time()
 
+    for client in clients:
+        message = bytes("Hello", "utf-8")
+        message += bytes(cell_length - len(message))
+        client.message_queue.put(message)
+
     cleartexts = []
     for i in range(len(clients)):
         relay.decode_start()
         for idx in range(len(trustees)):
             trustee = trustees[idx]
-            ciphertext = trustee.produce_ciphertext()
+            ciphertext = trustee.produce_ciphertext(i)
             relay.decode_trustee(ciphertext)
 
-        for i, client in enumerate(clients):
-            ciphertext = client.produce_ciphertexts()
-            cleartext = long_to_bytes(0)
-            if i == 0:
-                cleartext = bytes("Hello", "UTF-8")
-            ciphertext = long_to_bytes(
-                    bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
+        for client in clients:
+            ciphertext = client.produce_ciphertexts(i)
             relay.decode_client(ciphertext)
+
         cleartexts.append(relay.decode_cell())
     print(cleartexts)
 
