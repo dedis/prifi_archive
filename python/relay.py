@@ -22,6 +22,7 @@ socks_address = ("localhost", 8080)
 @asyncio.coroutine
 def socks_relay_down(cno, reader, writer, downstream):
     while True:
+        yield from asyncio.sleep(0.00000001)
         try:
             buf = yield from reader.read(downcellmax)
         except OSError as e:
@@ -41,6 +42,7 @@ def socks_relay_down(cno, reader, writer, downstream):
 @asyncio.coroutine
 def socks_relay_up(cno, reader, writer, upstream):
     while True:
+        yield from asyncio.sleep(0.00000001)
         buf = yield from upstream.get()
         dlen = len(buf)
 
@@ -84,6 +86,8 @@ def main_loop(tsocks, csocks, upstreams, downstream, scheduler):
     trustee_inflight = 0
 
     while True:
+        yield from asyncio.sleep(0.00000001)
+
         # do some basic benchmarking
         now = time.time()
         if now > report:
@@ -229,7 +233,7 @@ def main():
 
     upstreams = {}
     downstream = asyncio.Queue()
-    scheduler = itertools.cycle(range(nclients))
+    scheduler = itertools.cycle(range(1))
 
     # start the main relay loop
     asyncio.async(main_loop(tsocks, csocks, upstreams, downstream, scheduler))

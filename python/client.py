@@ -24,6 +24,8 @@ def open_relay(host, port, node_id):
 @asyncio.coroutine
 def read_relay(reader, writer, upstream, close):
     while True:
+        yield from asyncio.sleep(0.00000001)
+
         # XXX get rid of "magic" numbers
         header = yield from reader.readexactly(8)
         cno = bytes_to_long(header[:4])
@@ -76,6 +78,8 @@ def handle_client(reader, writer):
     #print("new client: cno {}".format(cno))
     
     while True:
+        yield from asyncio.sleep(0.00000001)
+
         try:
             buf = yield from reader.read(dcnet.cell_length - 6)
         except OSError:
