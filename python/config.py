@@ -134,10 +134,10 @@ class SystemConfig:
         return cls(version, group_id, relay, clients, trustees)
 
     @classmethod
-    def generate(cls, nclients, ntrustees):
+    def generate(cls, nclients, ntrustees, rhost, rport):
         version = 1
         group_id = 1
-        relay = Relay("localhost", 12345)
+        relay = Relay(rhost, rport)
         clients, client_privates = Clients.generate(nclients)
         trustees, trustee_privates = Trustees.generate(ntrustees)
         privates = client_privates + trustee_privates
@@ -238,6 +238,7 @@ def main():
     p = argparse.ArgumentParser(description="Generate system configuration")
     p.add_argument("-c", "--clients", type=int, metavar="clients", default=10, dest="clients")
     p.add_argument("-t", "--trustees", type=int, metavar="trustees", default=3, dest="trustees")
+    p.add_argument("-r", "--relay", type=str, metavar="host:port", default="localhost:12345", dest="relay")
     p.add_argument("-s", "--seed", type=str, metavar="seed", default=None, dest="seed")
     p.add_argument("output_dir")
     opts = p.parse_args()
@@ -247,8 +248,11 @@ def main():
 
     if opts.seed is not None:
         random.seed(opts.seed)
+    # XXX error checking
+    rhost, rport = opts.relay.split(":")
+    rport = int(rport)
 
-    system_config, privates = SystemConfig.generate(opts.clients, opts.trustees)
+    system_config, privates = SystemConfig.generate(opts.clients, opts.trustees, rhost, rport)
     session_config, session_privates = SessionConfig.generate(system_config)
     pseudonym_config = PseudonymConfig.generate(session_config)
 
