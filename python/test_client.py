@@ -59,7 +59,7 @@ def main():
             opts.socks)) for i in range(opts.nclients)))
     try:
         loop.run_until_complete(clients)
-        throughput = [8 * t / d for t, d in clients.result()] 
+        throughput = [t / d for t, d in clients.result()] 
         latency = [d for t, d in clients.result()] 
         total = [t for t, d in clients.result()]
         print("{} clients: {} bytes, {} bytes/sec, {}s latency".format(opts.nclients,
