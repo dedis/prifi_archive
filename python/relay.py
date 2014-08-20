@@ -233,7 +233,7 @@ def main():
 
     upstreams = {}
     downstream = asyncio.Queue()
-    scheduler = itertools.cycle(range(1))
+    scheduler = itertools.cycle(range(nclients))
 
     # start the main relay loop
     asyncio.async(main_loop(tsocks, csocks, upstreams, downstream, scheduler))
