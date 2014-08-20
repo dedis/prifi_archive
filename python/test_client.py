@@ -19,10 +19,11 @@ def test_client(i, dest, port, socks):
         ver_meth = yield from reader.readexactly(2)
         assert ver_meth == socks5.VERSION + socks5.METH_NO_AUTH
 
-        addr = "www.google.com".encode("UTF-8")
+        # XXX hardcoded, fix this
+        addr = "remote.lld-danny.safer".encode("UTF-8")
         request = (socks5.VERSION + socks5.CMD_CONNECT + b'\x00' +
                 socks5.ADDR_DOMAIN + long_to_bytes(len(addr)) + addr +
-                long_to_bytes(80, 2))
+                long_to_bytes(8080, 2))
         writer.write(request)
 
         ver_rep_res = yield from reader.readexactly(3)
