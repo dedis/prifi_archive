@@ -18,6 +18,7 @@ def main():
     system_config = config.load(config.SystemConfig, os.path.join(opts.config_dir, "system.json"))
     client_ids = system_config.clients.ids
     trustee_ids = system_config.trustees.ids
+    ap_ids = system_config.aps.ids
 
     sesion_config = config.load(config.SessionConfig, os.path.join(opts.config_dir, "session.json"))
 
@@ -27,21 +28,31 @@ def main():
 
     nclients = max(len(client_ids) - opts.local, 0)
     ntrustees = len(trustee_ids)
+    naps = len(ap_ids)
 
     try:
         # spawn n client processes
         print("Launching {} clients, {} trustees".format(nclients, ntrustees))
         port = system_config.relay.port
-        executable = "trustee.py"
         procs = []
-        for i, id in enumerate(trustee_ids + client_ids[:nclients]):
+        executable = "../client.py"
+        for i, id in enumerate(client_ids[:nclients]):
             port += 1
-            if i == len(trustee_ids):
-                executable = "client.py"
+            print("Lanuching {} on {}".format(executable, port))
             private_data = os.path.join(opts.config_dir, "{}.json".format(id))
             p = subprocess.Popen([sys.executable, executable, opts.config_dir,
-                                private_data, "-p", str(port)],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                  private_data, "-p", str(port),
+                                  "-u", opts.uptype, "-a", str(i % naps), "-m"],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            procs.append(p)
+        executable = "../trustee.py"
+        for i, id in enumerate(trustee_ids):
+            port += 1
+            print("Lanuching {} on {}".format(executable, port))
+            private_data = os.path.join(opts.config_dir, "{}.json".format(id))
+            p = subprocess.Popen([sys.executable, executable, opts.config_dir,
+                                  private_data, "-p", str(port)],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             procs.append(p)
 
         print("Manually launch: {}".format(client_ids[nclients:]))
@@ -53,8 +64,9 @@ def main():
     print("Cleaning up")
     for i, p in enumerate(procs):
         p.wait()
-        print("Client {}".format(i))
+        print("Process {}".format(i))
         print("-"*20)
+        print(p.stdout.read().decode("utf-8"))
         print(p.stderr.read().decode("utf-8"))
         print("-"*20)
 

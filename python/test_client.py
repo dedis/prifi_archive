@@ -1,16 +1,18 @@
 import argparse
 import asyncio
 import random
-import socks5
+import net.socks5 as socks5
 import time
+import config
+import os
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 @asyncio.coroutine
-def test_client(i, dest, port, socks):
+def test_client(i, dest, host, port, socks):
     yield from asyncio.sleep(random.random())
 
     start = time.time()
-    reader, writer = yield from asyncio.open_connection(dest, port)
+    reader, writer = yield from asyncio.open_connection(host, port)
 
     if socks:
         connect = socks5.VERSION + b'\x01' + socks5.METH_NO_AUTH
@@ -19,8 +21,7 @@ def test_client(i, dest, port, socks):
         ver_meth = yield from reader.readexactly(2)
         assert ver_meth == socks5.VERSION + socks5.METH_NO_AUTH
 
-        # XXX hardcoded, fix this
-        addr = "remote.lld-danny.safer".encode("UTF-8")
+        addr =dest.encode("UTF-8")
         request = (socks5.VERSION + socks5.CMD_CONNECT + b'\x00' +
                 socks5.ADDR_DOMAIN + long_to_bytes(len(addr)) + addr +
                 long_to_bytes(8080, 2))
@@ -32,7 +33,7 @@ def test_client(i, dest, port, socks):
         atyp = yield from reader.readexactly(1)
         addr = yield from socks5.read_addr(reader, atyp)
         port = yield from reader.readexactly(2)
-    
+
     payload = 'GET / HTTP/1.0\r\n\r\n'.encode("UTF-8")
     writer.write(payload)
 
@@ -47,24 +48,28 @@ def test_client(i, dest, port, socks):
 
 def main():
     p = argparse.ArgumentParser(description="SOCKS5 client for benchmarking")
-    p.add_argument("-c", "--clients", type=int, metavar="clients", default=256, dest="nclients")
-    p.add_argument("dest", type=str, metavar="destination")
-    p.add_argument("port", type=int, metavar="port")
+    p.add_argument("-c", "--connections", type=int, metavar="conns",
+                   default=256, dest="nconns")
+    p.add_argument("--host", type=str, metavar="client host",
+            default="localhost")
+    p.add_argument("port", type=int, metavar="client port")
+    p.add_argument("--dest", type=str, metavar="server to request",
+                   default="remote")
     p.add_argument("--socks", action="store_true", default=True, dest="socks")
     p.add_argument("--no-socks", action="store_false", default=False, dest="socks")
     opts = p.parse_args()
 
     loop = asyncio.get_event_loop()
-    clients = asyncio.gather(*(asyncio.async(test_client(i, opts.dest, opts.port,
-            opts.socks)) for i in range(opts.nclients)))
+    conns = asyncio.gather(*(asyncio.async(test_client(i, opts.dest, opts.host,
+          opts.port, opts.socks)) for i in range(opts.nconns)))
     try:
-        loop.run_until_complete(clients)
-        throughput = [t / d for t, d in clients.result()] 
-        latency = [d for t, d in clients.result()] 
-        total = [t for t, d in clients.result()]
-        print("{} clients: {} bytes, {} bytes/sec, {}s latency".format(opts.nclients,
-                sum(total) / opts.nclients, sum(throughput) / opts.nclients,
-                sum(latency) / opts.nclients))
+        loop.run_until_complete(conns)
+        throughput = [t / d for t, d in conns.result()]
+        latency = [d for t, d in conns.result()]
+        total = [t for t, d in conns.result()]
+        print("{} clients: {} bytes, {} bytes/sec, {}s latency"
+              .format(opts.nconns, sum(total) / opts.nconns,
+                      sum(throughput) / opts.nconns, sum(latency) / opts.nconns))
     except KeyboardInterrupt:
         pass
 

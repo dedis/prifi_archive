@@ -1,14 +1,18 @@
 # deterlab details
-SUFFIX=lld-danny.safer
+SUFFIX=LLD-ecawthon.safer
+VERBOSE=WARN
 maxclient=31
 maxtrustee=2
+maxap=0
 
 # internal file paths
-CONFIG=config
+CONFIG=$BASE/config
 CLIENTIDS=$CONFIG/CLIENTS
 TRUSTEEIDS=$CONFIG/TRUSTEES
+APIDS=$CONFIG/APS
+SCRIPTS=$BASE/deter
 
 BASE_PORT=12345
 
 # experiment specific
-OUT=scale_clients.data
+OUT=$BASE/evals/scale_clients.$(git --git-dir $HOME/dissent/.git log --pretty=format:'%H' -n 1).data
