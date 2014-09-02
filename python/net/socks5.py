@@ -5,6 +5,8 @@ import logging
 
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 
+from utils import verbosity
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
@@ -165,12 +167,14 @@ class Socks5Server:
 
 if __name__=='__main__':
     logging.basicConfig()
-    logger.setLevel(logging.WARN)
 
     p = argparse.ArgumentParser(description="A SOCKS5 server")
     p.add_argument("-p", "--port", type=int, metavar="port",
             default=8080, dest="port")
+    p.add_argument("-v", "--verbosity", type=str, choices=verbosity.keys(),
+                   default="WARN", dest="verbose")
     opts = p.parse_args()
+    logger.setLevel(verbosity[opts.verbose])
 
     server = Socks5Server(port=opts.port)
     try:

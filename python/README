@@ -14,13 +14,35 @@ now, executes only in the context of a single interval.
 
 See "python3 config.py -h" for configuration generation.
 
+### MESSAGES ###
+The basic unit of inter-process communication is a message, as spelled out in
+net/message.py. A message has a one-byte `kind` field, a number of fixed-length
+fields specific to the `kind`, and, optionally, a variable-length `data` field:
+    [Kind | Fixed length fields | Data]
+This is designed to make it efficient to read multiple kinds of information from
+the same connection: Normally, a node calls `message.read_stream(reader)` to
+read data from an `asyncio.StreamReader`. `message.read_stream` then:
+1. Reads the `kind` byte
+2. Looks up the length of all fixed-length fields for that `kind`
+3. Reads the rest of the fixed-length fields from `reader`
+4. If there is a data length field indicating the length of additional data
+   attached to this message, reads that number of bytes from `reader`
+5. Returns a dictionary of field names to values.
+In cases where only one, fixed-length type of message is expected on a
+connection, this has no advantage over and may be less efficient than reading
+the known length of the message each time. For this reason, ciphertext sent to
+the relay does not use the message format, and `trustee.py` caches the message
+types corresponding to each scheduling request rather than calling
+`message.unpack` or `message.read_stream` each time.
+For a complete list of messages currently implemented, see net/message.py
+
 ### OVERALL FLOW ###
 The RELAY is the central hub to which CLIENTs and TRUSTEEs connect.
 
 Once all clients and trustees are connected, the relay begins a continuous
-stream of dc-net exchanges. Communication is:
-    Relay -> Trustee: [NextSlot (2 bytes)]
-    Relay -> Client: [Conn# (4 bytes) | Len (2) | NextSlot (2) | Payload]
+stream of dc-net exchanges. Logically, communication is:
+    Relay -> Trustee: [ NEXT | NextSlot]
+    Relay -> Client: [ DOWNSTREAM | Conn# | NextSlot | Payload]
 If the Conn# corresponds to a connection through this client, the Payload
 is forwarded to the appropriate connection. Otherwise, it is ignored.
 
@@ -35,10 +57,10 @@ is an integer referring to the index within the pseudonym_config of the client
 whose turn it is to transmit a cell. [XXX Request slots]
 
 After receiving a downstream, clients and trustees respond with a dc-net cell
-for the requested pseduonym. Client dc-net cells may contain data on behalf of
-a local connection. These messages take the following form (before XORing, of
-course):
-    [Conn# (4 bytes) | Len (2) | Payload | 0-Padding, if needed]
+for the requested pseduonym. Client dc-net cells may contain data on behalf of a
+local connection. These messages contain the following information (before
+XORing, of course):
+    [ UPSTREAM | Conn# | Payload Len | Payload ]
 If the client has no data to transmit, it will transmit its dc-net ciphertext
 unmodified.
 
@@ -54,7 +76,25 @@ When the relay receives downstream data (i.e. from SOCKS server), it packages
 it up and forwards the data to all clients, returning to the first step of the
 process described in this section.
 
-### USAGE ###
+### ACCESS POINTS ###
+Optionally, downstream traffic from the RELAY to the CLIENTs may be handled with
+an ACCESS POINT. For clients connected through an access point, communication
+is:
+    Relay -> Access Point -> Client: [ DOWNSTREAM | Message ID | other metadata
+                                        | Payload ]
+    Access Point -> Client: [ PING | Message ID ]
+    Client -> Access Point: [ ACK | Message ID | True or False ]
+Access points always maintain a TCP connection with each client. Access points
+may choose to transmit downstream traffic as a UDP Multicast. When forwarding
+downstream traffic by multicast, access points send pings over each client's TCP
+connection, where each ping contains a unique message ID. Upon receiving a ping,
+the client sends an ACK to acknowledge receipt of the ping, and to indicate
+whether it received the multicast. If the access point receives a negative ping,
+it re-sends the specified downstream message to that client over its TCP
+connection.
+
+### BASIC USAGE ###
+(Run with --help to see additional options)
 Start the proxy:
     "python3 socks5.py" starts a SOCKS5 server on port 8080.
     "python3 echo_server.py -p 8080" is a useful alternative for testing/
@@ -63,10 +103,22 @@ Start the proxy:
 Start the relay:
     "python3 relay.py -p 12345 {config_dir}"
 
+Start the access point, if specified in the configuration:
+    "python3 net/access_point.py {config_dir} {config_dir}/{id}.json"
+        where {id} is the "id" field for the access point in "system.json"
+
 Start clients and trustees:
-    "python3 client.py/trustee.py -p {port} {config_dir} {config_dir}/{id}.json"
-        where {port} is any open port and {id} is the "id" field for the client/
-        trustee in "system.json"
+    "python3 client.py {config_dir} {config_dir}/{id}.json -p {port} -a {ap_id} [-m] "
+        where {port} is any open port, {ap_id} is the index of the desired
+	access point to connect to in "system.json" (optional), and specifying
+	-m tells the client to listen for multicasts from the access point if -a
+	{non-negative} is specified.
+
+    "python3 trustee.py {config_dir} {config_dir}/{id}.json"
+
+    for each, where {id} is the "id" field for the client/ trustee in
+    "system.json"
+
 
     To avoid starting all clients/trustees manually for a local configuration,
         "python3 supervisor.py {config_dir}" handles spawning the processes. The

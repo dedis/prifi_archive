@@ -101,8 +101,11 @@ class Client:
         for key in self.trustee_keys:
             self.secrets.append(long_to_bytes(self.key.exchange(key)))
 
+        self.own_nym_keys = []
+        self.own_nyms = {}
         self.interval = -1
         self.pub_nym_keys = []
+        self.nyms_in_processing = []
         self.certifier = certifier
         self.encoder = encoder
 
@@ -114,20 +117,26 @@ class Client:
         self.xornet = XorNet(self.secrets, self.interval)
 
     def add_own_nym(self, nym_key):
-        self.own_nym = nym_key
+        self.nyms_in_processing.append(nym_key)
 
     def add_nyms(self, nym_keys):
-        self.pub_nym_keys = nym_keys
-        elements = [key.element for key in self.pub_nym_keys]
-        try:
-            self.nym_index = elements.index(self.own_nym.element)
-        except ValueError:
-            self.nym_index = -1
+        offset = len(self.pub_nym_keys)
+        self.pub_nym_keys.extend(nym_keys)
+        for nidx in range(len(self.nyms_in_processing)):
+            nym = self.nyms_in_processing[nidx]
+            # If trying to add a nym_key owned by this client, remove it from
+            # nyms_in_processing and update own_nym_keys and own_nyms with it.
+            for idx in range(offset, len(self.pub_nym_keys)):
+                if nym.public_key().element != self.pub_nym_keys[idx].element:
+                    continue
+                self.own_nym_keys.append((nym, idx))
+                self.own_nyms[idx] = nym
+                self.nyms_in_processing.remove(nym)
 
     def produce_ciphertexts(self, nym_index):
         ciphertext = self.xornet.produce_ciphertext()
         cleartext = bytearray(cell_length)
-        if nym_index == self.nym_index:
+        if nym_index in self.own_nyms:
             try:
                 cleartext = self.message_queue.get_nowait()
             except:  # XXX make generic to queues
