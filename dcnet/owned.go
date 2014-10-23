@@ -4,20 +4,20 @@ import (
 	"bytes"
 	//"encoding/hex"
 	"crypto/cipher"
-	"dissent/crypto"
+	"github.com/dedis/crypto/abstract"
 )
 
 type ownedCoder struct {
-	suite crypto.Suite
+	suite abstract.Suite
 
 	// Length of Key and MAC part of verifiable DC-net point
 	keylen, maclen int
 
 	// Verifiable DC-nets secrets shared with each peer.
-	vkeys []crypto.Secret
+	vkeys []abstract.Secret
 
 	// The sum of all our verifiable DC-nets secrets.
-	vkey crypto.Secret
+	vkey abstract.Secret
 
 	// Pseudorandom DC-nets streams shared with each peer.
 	// On clients, there is one DC-nets stream per trustee.
@@ -25,8 +25,8 @@ type ownedCoder struct {
 	dcstreams []cipher.Stream
 
 	// Decoding state, used only by the relay
-	point crypto.Point
-	pnull crypto.Point	// neutral/identity element
+	point abstract.Point
+	pnull abstract.Point	// neutral/identity element
 	xorbuf []byte
 }
 
@@ -87,7 +87,7 @@ func (c *ownedCoder) symmCellSize(payloadlen int) int {
 */
 }
 
-func (c *ownedCoder) commonSetup(suite crypto.Suite) {
+func (c *ownedCoder) commonSetup(suite abstract.Suite) {
 	c.suite = suite
 
 	// Divide the embeddable data in the verifiable point
@@ -108,7 +108,7 @@ func (c *ownedCoder) ClientCellSize(payloadlen int) int {
 	return c.suite.PointLen() + c.symmCellSize(payloadlen)
 }
 
-func (c *ownedCoder) ClientSetup(suite crypto.Suite,
+func (c *ownedCoder) ClientSetup(suite abstract.Suite,
 				peerstreams []cipher.Stream) {
 	c.commonSetup(suite)
 
@@ -116,13 +116,13 @@ func (c *ownedCoder) ClientSetup(suite crypto.Suite,
 	// a pseudorandom public-key encryption secret, and
 	// a pseudorandom DC-nets substream shared with each peer.
 	npeers := len(peerstreams)
-	c.vkeys = make([]crypto.Secret, npeers)
+	c.vkeys = make([]abstract.Secret, npeers)
 	c.vkey = suite.Secret()
 	c.dcstreams = make([]cipher.Stream, npeers)
 	for j := range(peerstreams) {
 		c.vkeys[j] = suite.Secret().Pick(peerstreams[j])
 		c.vkey.Add(c.vkey, c.vkeys[j])
-		c.dcstreams[j] = crypto.SubStream(suite, peerstreams[j])
+		c.dcstreams[j] = abstract.SubStream(suite, peerstreams[j])
 	}
 }
 
@@ -165,7 +165,7 @@ func (c *ownedCoder) ClientEncode(payload []byte, payloadlen int,
 	return out
 }
 
-func (c *ownedCoder) inlineEncode(payload []byte, p crypto.Point) {
+func (c *ownedCoder) inlineEncode(payload []byte, p abstract.Point) {
 
 	// Hash the cleartext payload to produce the MAC
 	h := c.suite.Hash()
@@ -174,19 +174,19 @@ func (c *ownedCoder) inlineEncode(payload []byte, p crypto.Point) {
 
 	// Embed the payload and MAC into a Point representing the message
 	hdr := append(payload, mac...)
-	mp,_ := c.suite.Point().Pick(hdr, crypto.RandomStream)
+	mp,_ := c.suite.Point().Pick(hdr, abstract.RandomStream)
 
 	// Add this to the blinding point we already computed to transmit.
 	p.Add(p, mp)
 }
 
-func (c *ownedCoder) ownerEncode(payload, payout []byte, p crypto.Point) {
+func (c *ownedCoder) ownerEncode(payload, payout []byte, p abstract.Point) {
 
 	// XXX trap-encode
 
 	// Pick a fresh random key with which to encrypt the payload
 	key := make([]byte, c.keylen)
-	crypto.RandomStream.XORKeyStream(key,key)
+	abstract.RandomStream.XORKeyStream(key,key)
 	//println("key",hex.EncodeToString(key))
 
 	// Encrypt the payload with it
@@ -203,7 +203,7 @@ func (c *ownedCoder) ownerEncode(payload, payout []byte, p crypto.Point) {
 	if len(hdr) != p.PickLen() {
 		panic("oops, length of key+mac turned out wrong")
 	}
-	mp,_ := c.suite.Point().Pick(hdr, crypto.RandomStream)
+	mp,_ := c.suite.Point().Pick(hdr, abstract.RandomStream)
 	//println("encoded data:",hex.EncodeToString(hdr))
 	//println("encoded point:",mp.String())
 
@@ -225,7 +225,7 @@ func (c *ownedCoder) TrusteeCellSize(payloadlen int) int {
 // Setup the trustee side.
 // May produce coder configuration info to be passed to the relay,
 // which will become available to the RelaySetup() method below.
-func (c *ownedCoder) TrusteeSetup(suite crypto.Suite,
+func (c *ownedCoder) TrusteeSetup(suite abstract.Suite,
 				clientstreams []cipher.Stream) []byte {
 
 	// Compute shared secrets
@@ -251,13 +251,13 @@ func (c *ownedCoder) TrusteeEncode(payloadlen int) []byte {
 
 ///// Relay methods /////
 
-func (c *ownedCoder) RelaySetup(suite crypto.Suite, trusteeinfo [][]byte) {
+func (c *ownedCoder) RelaySetup(suite abstract.Suite, trusteeinfo [][]byte) {
 
 	c.commonSetup(suite)
 
 	// Decode the trustees' composite verifiable DC-net secrets
 	ntrustees := len(trusteeinfo)
-	c.vkeys = make([]crypto.Secret, ntrustees)
+	c.vkeys = make([]abstract.Secret, ntrustees)
 	c.vkey = suite.Secret()
 	for i := range(c.vkeys) {
 		c.vkeys[i] = c.suite.Secret()

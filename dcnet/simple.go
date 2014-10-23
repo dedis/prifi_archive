@@ -2,11 +2,11 @@ package dcnet
 
 import (
 	"crypto/cipher"
-	"dissent/crypto"
+	"github.com/dedis/crypto/abstract"
 )
 
 type simpleCoder struct {
-	suite crypto.Suite
+	suite abstract.Suite
 
 	// Pseudorandom DC-nets streams shared with each peer.
 	// On clients, there is one DC-nets stream per trustee.
@@ -29,7 +29,7 @@ func (c *simpleCoder) ClientCellSize(payloadlen int) int {
 	return payloadlen	// no expansion
 }
 
-func (c *simpleCoder) ClientSetup(suite crypto.Suite,
+func (c *simpleCoder) ClientSetup(suite abstract.Suite,
 				peerstreams []cipher.Stream) {
 	c.suite = suite
 
@@ -38,7 +38,7 @@ func (c *simpleCoder) ClientSetup(suite crypto.Suite,
 	npeers := len(peerstreams)
 	c.dcstreams = make([]cipher.Stream, npeers)
 	for j := range(peerstreams) {
-		c.dcstreams[j] = crypto.SubStream(suite, peerstreams[j])
+		c.dcstreams[j] = abstract.SubStream(suite, peerstreams[j])
 	}
 }
 
@@ -61,7 +61,7 @@ func (c *simpleCoder) TrusteeCellSize(payloadlen int) int {
 	return payloadlen	// no expansion
 }
 
-func (c *simpleCoder) TrusteeSetup(suite crypto.Suite,
+func (c *simpleCoder) TrusteeSetup(suite abstract.Suite,
 				peerstreams []cipher.Stream) []byte {
 	c.ClientSetup(suite, peerstreams)	// no difference
 	return nil
@@ -74,7 +74,7 @@ func (c *simpleCoder) TrusteeEncode(payloadlen int) []byte {
 
 ///// Relay methods /////
 
-func (c *simpleCoder) RelaySetup(suite crypto.Suite, trusteeinfo [][]byte) {
+func (c *simpleCoder) RelaySetup(suite abstract.Suite, trusteeinfo [][]byte) {
 	// nothing to do
 }
 

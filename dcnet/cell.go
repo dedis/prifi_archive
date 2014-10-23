@@ -2,7 +2,7 @@ package dcnet
 
 import (
 	"crypto/cipher"
-	"dissent/crypto"
+	"github.com/dedis/crypto/abstract"
 )
 
 // Cell encoding, decoding, and accountability interface.
@@ -25,7 +25,7 @@ type CellCoder interface {
 
 	///// Client methods /////
 
-	ClientSetup(suite crypto.Suite, trusteestreams []cipher.Stream)
+	ClientSetup(suite abstract.Suite, trusteestreams []cipher.Stream)
 
 	// Encode a ciphertext slice for the current cell,
 	// transmitting the optional payload if non-nil.
@@ -35,7 +35,7 @@ type CellCoder interface {
 
 	///// Client methods /////
 
-	TrusteeSetup(suite crypto.Suite, clientstreams []cipher.Stream) []byte
+	TrusteeSetup(suite abstract.Suite, clientstreams []cipher.Stream) []byte
 
 	// Encode the trustee's ciphertext slice for the current cell.
 	// Can be pre-computed for an interval based on a client-set.
@@ -44,7 +44,7 @@ type CellCoder interface {
 
 	///// Relay methods /////
 
-	RelaySetup(suite crypto.Suite, trusteeinfo [][]byte)
+	RelaySetup(suite abstract.Suite, trusteeinfo [][]byte)
 
 	// Initialize per-cell decoding state for the next cell
 	DecodeStart(payloadlen int, histoream cipher.Stream)

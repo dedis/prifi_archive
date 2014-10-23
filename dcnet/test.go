@@ -6,28 +6,28 @@ import (
 	"time"
 	"bytes"
 	"crypto/cipher"
-	"dissent/crypto"
+	"github.com/dedis/crypto/abstract"
 )
 
 type TestNode struct {
 
 	// General parameters
-	suite crypto.Suite
+	suite abstract.Suite
 	name string
 
 	// Session keypair for this node
-	spub crypto.Point
-	spri crypto.Secret
+	spub abstract.Point
+	spri abstract.Secret
 
 	npeers int
-	peerkeys []crypto.Point		// each peer's session public key
+	peerkeys []abstract.Point	// each peer's session public key
 	peerstreams []cipher.Stream	// shared session master streams
 
 	// Owner keypair for this cell series.
 	// Public key is known by and common to all nodes.
 	// Private key is held only by owner client.
-	opub crypto.Point
-	opri crypto.Secret
+	opub abstract.Point
+	opri abstract.Secret
 
 	Coder CellCoder
 
@@ -41,7 +41,7 @@ type TestGroup struct {
 	Trustees []*TestNode
 }
 
-func (n *TestNode) nodeSetup(name string, peerkeys []crypto.Point) {
+func (n *TestNode) nodeSetup(name string, peerkeys []abstract.Point) {
 	n.name = name
 	//println("Setup",name)
 
@@ -53,17 +53,17 @@ func (n *TestNode) nodeSetup(name string, peerkeys []crypto.Point) {
 	for j := range(peerkeys) {
 		dh := n.suite.Point().Mul(peerkeys[j], n.spri)
 		//println(" DH",dh.String())
-		n.peerstreams[j] = crypto.PointStream(n.suite, dh)
+		n.peerstreams[j] = abstract.PointStream(n.suite, dh)
 	}
 }
 
-func TestSetup(suite crypto.Suite, factory CellFactory,
+func TestSetup(suite abstract.Suite, factory CellFactory,
 		nclients, ntrustees int) *TestGroup {
 
 	// Use a pseudorandom stream from a well-known seed
 	// for all our setup randomness,
 	// so we can reproduce the same keys etc on each node.
-	rand := crypto.HashStream(suite, []byte("DCTest"))
+	rand := abstract.HashStream(suite, []byte("DCTest"), nil)
 
 	nodes := make([]*TestNode, nclients+ntrustees)
 	base := suite.Point().Base()
@@ -87,8 +87,8 @@ func TestSetup(suite crypto.Suite, factory CellFactory,
 	relay.Coder = factory()
 
 	// Create tables of the clients' and the trustees' public session keys
-	ckeys := make([]crypto.Point, nclients)
-	tkeys := make([]crypto.Point, ntrustees)
+	ckeys := make([]abstract.Point, nclients)
+	tkeys := make([]abstract.Point, ntrustees)
 	for i := range(clients) {
 		ckeys[i] = clients[i].spub
 	}
@@ -125,11 +125,11 @@ func TestSetup(suite crypto.Suite, factory CellFactory,
 
 	// Create a set of fake history streams for the relay and clients
 	hist := []byte("xyz")
-	relay.Histoream = crypto.HashStream(suite, hist)
-	//relay.Histoream = crypto.TraceStream(os.Stdout, relay.Histoream)
+	relay.Histoream = abstract.HashStream(suite, hist, nil)
+	//relay.Histoream = abstract.TraceStream(os.Stdout, relay.Histoream)
 	for i := range(clients) {
-		clients[i].Histoream = crypto.HashStream(suite, hist)
-		//clients[i].Histoream = crypto.TraceStream(os.Stdout,
+		clients[i].Histoream = abstract.HashStream(suite, hist, nil)
+		//clients[i].Histoream = abstract.TraceStream(os.Stdout,
 		//					clients[i].Histoream)
 	}
 
@@ -140,7 +140,7 @@ func TestSetup(suite crypto.Suite, factory CellFactory,
 	return tg
 }
 
-func TestCellCoder(suite crypto.Suite, factory CellFactory) {
+func TestCellCoder(suite abstract.Suite, factory CellFactory) {
 
 	nclients := 1
 	ntrustees := 3

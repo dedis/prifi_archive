@@ -13,14 +13,15 @@ import (
 	"os/signal"
 	//"encoding/hex"
 	"encoding/binary"
-	"dissent/crypto"
-	"dissent/crypto/openssl"
+	"github.com/dedis/crypto/nist"
+	"github.com/dedis/crypto/test"
+	"github.com/dedis/crypto/openssl"
 	"dissent/dcnet"
 	//"github.com/elazarl/goproxy"
 )
 
 
-var suite = crypto.NewAES128SHA256P256()
+var suite = nist.NewAES128SHA256P256()
 //var suite = openssl.NewAES128SHA256P256()
 var factory = dcnet.OwnedCoderFactory
 
@@ -46,21 +47,9 @@ type connbuf struct {
 
 
 func testSuites() {
-	crypto.TestSuite(crypto.NewAES128SHA256QR512())
-	//crypto.TestSuite(crypto.NewAES128SHA256QR1024())
-	crypto.TestSuite(crypto.NewAES128SHA256P256())
-	crypto.TestSuite(openssl.NewAES128SHA256P256())
-}
-
-func benchSuites() {
-	println("\nNative QR512 suite:")
-	crypto.BenchSuite(crypto.NewAES128SHA256QR512())
-
-	println("\nNative P256 suite:")
-	crypto.BenchSuite(crypto.NewAES128SHA256P256())
-
-	println("\nOpenSSL P256 suite:")
-	crypto.BenchSuite(openssl.NewAES128SHA256P256())
+	test.TestSuite(nist.NewAES128SHA256QR512())
+	test.TestSuite(nist.NewAES128SHA256P256())
+	test.TestSuite(openssl.NewAES128SHA256P256())
 }
 
 func testDCNet() {
@@ -830,7 +819,6 @@ func main() {
 	interceptCtrlC()
 
 	//testSuites()
-	//benchSuites()
 	//testDCNet()
 
 	isrel := flag.Bool("relay", false, "Start relay node")
