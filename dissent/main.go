@@ -1,4 +1,4 @@
-package dissent
+package main
 
 import (
 	"io"
@@ -22,6 +22,7 @@ import (
 
 var suite = nist.NewAES128SHA256P256()
 //var suite = openssl.NewAES128SHA256P256()
+//var suite = ed25519.NewAES128SHA256Ed25519()
 var factory = dcnet.OwnedCoderFactory
 
 const nclients = 5
@@ -630,6 +631,8 @@ func main() {
 	iscli := flag.Int("client", -1, "Start client node")
 	istru := flag.Int("trustee", -1, "Start trustee node")
 	flag.Parse()
+
+	readConfig()
 
 	if *isrel {
 		startRelay()

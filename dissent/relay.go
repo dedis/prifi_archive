@@ -1,4 +1,4 @@
-package dissent
+package main
 
 import (
 	"io"
