@@ -5,7 +5,7 @@
 moc_*
 Makefile
 ext/
-dissent
+dissent/dissent
 docs/html
 test.log
 libdissent.so*
