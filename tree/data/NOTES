@@ -1,0 +1,17 @@
+
+
+/*
+Some sources of relevant graphs:
+NetworkX: http://networkx.lanl.gov/reference/generators.html
+Of most interest:
+- random_regular_graph
+- watts_strogatz_graph
+- barabasi_albert_graph
+- powerlaw_cluster_graph
+- navigable_small_world_graph	(planar)
+- waxman_graph			(planar)
+
+Internet-like: BRITE, Inet-3.0
+IGen: http://informatique.umons.ac.be/networks/igen/
+*/
+

@@ -49,8 +49,7 @@ type log struct {
 	cur *event		// current event under construction
 }
 
-func newLog(suite abstract.Suite) {
-	l := log{}
+func (l *log) init(suite abstract.Suite) {
 	l.suite = suite
 }
 
@@ -98,29 +97,27 @@ func (l *log) newEvent() *event {
 
 
 
-// peer represents the information each node maintains about its peers
-// (parent and children) in the tree.
-type peer struct {
-	pub abstract.Point		// peer's public key
-}
-
-type node struct {
+// treeNode represents a host's participation on a particular tree
+type treeNode struct {
 	suite abstract.Suite
-	pri abstract.Secret		// our private key
-	pub abstract.Point		// our public key
+
+	// Host identities of ancestor hosts forming a path
+	// from the root (path[0]) down to but not including us.
+	// len(path) is our depth in the tree, 0 if we are the root.
+	path []HashId
 
 	// peers[0] is our parent, the rest are our children.
 	// peers[0] is nil if we're the root of the tree.
 	peers []*peer
 }
 
-func newNode(suite abstract.Suite, rand cipher.Stream,
-		parpub abstract.Point) *node {
 
-	n := &node{}
+/*
+func newNode(suite abstract.Suite, rand cipher.Stream,
+		parpub abstract.Point) *treeNode {
+
+	n := &treeNode{}
 	n.suite = suite
-	n.pri = suite.Secret().Pick(rand)
-	n.pub = suite.Point().Mul(nil, n.pri)
 
 	parent := (*peer)(nil)
 	if parpub != nil {
@@ -139,5 +136,53 @@ func (n *node) downStep() {
 }
 
 func (n *node) upStep() {
+}
+*/
+
+
+
+// peer represents the information a host maintains about
+// any peer host with whom it maintains direct communication.
+type peer struct {
+	pub abstract.Point		// peer's public key
+	id HashId			// hash of peer's public key
+}
+
+// host embodies the local state of a single host in the network
+type host struct {
+	name string			// our human-readable hostname
+	log				// our tamper-evident log
+
+	pri abstract.Secret		// our private key
+	pub abstract.Point		// our public key
+	id HashId			// hash of our public key
+
+	peers map[string]*peer		// peers indexed by string(HashId)
+	trees map[string]*treeNode	// trees indexed by string(HashId)
+}
+
+func newHost(suite abstract.Suite, rand cipher.Stream, hostname string) *host {
+	h := &host{}
+	h.name = hostname
+	h.log.init(suite)
+
+	h.pri = suite.Secret().Pick(rand)
+	h.pub = suite.Point().Mul(nil, h.pri)
+	h.id = abstract.HashBytes(suite, h.pub.Encode())
+
+	h.peers = make(map[string]*peer)
+	h.trees = make(map[string]*treeNode)
+
+	return h
+}
+
+func (h *host) addPeer(pub abstract.Point, id HashId) *peer {
+	sid := string(id)
+	if p := h.peers[sid]; p != nil {
+		return p	// already added
+	}
+	p := &peer{pub,id}
+	h.peers[sid] = p
+	return p
 }
 
