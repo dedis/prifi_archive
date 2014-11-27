@@ -76,6 +76,63 @@ func loadHost(hostname string, m *map[string]*host) *host {
 	return h
 }
 
+// Form a shortest-path spanning tree over all hosts from the given root.
+func dijkstra(hosts map[string]*host, root *host) {
+
+	rootid := string(root.id)
+	q := IntQ{}
+	idmap := make(map[string]*host)
+
+	// Prepare treeNodes on all hosts participating in this tree
+	for _,host := range(hosts) {
+		idmap[string(host.id)] = host
+
+		tn := &treeNode{}
+		host.trees[rootid] = tn
+
+		tn.dist = math.MaxInt32
+		if host == root {
+			tn.dist = 0
+			tn.path = []HashId{root.id}
+		}
+		q.Push(tn.dist, host)
+	}
+
+	//println("qlen",q.Len(),"hosts",len(hosts))
+
+	for q.Len() > 0 {
+		_,obj := q.Pop()
+		host := obj.(*host)
+		tn := host.trees[rootid]
+		//println("dist",pri,"host",host.name,"qlen",q.Len())
+		if len(tn.path) != tn.dist+1 {
+			panic("dijkstra oops!")
+		}
+
+		for peerid,_ := range(host.peers) {
+			peer := idmap[peerid]
+			if peer == nil {
+				panic("peer oops")
+			}
+			//println(" peer",peer.name)
+			ptn := peer.trees[rootid]
+			dist := tn.dist+1
+			if dist >= ptn.dist {
+				continue	// no better, so do nothing
+			}
+
+			// Form the new, shorter path to this peer
+			ptn.dist = dist
+			ptn.path = make([]HashId, dist+1)
+			copy(ptn.path, tn.path)
+			ptn.path[dist] = HashId(peerid)
+
+			q.Push(ptn.dist, peer)
+			//println("  dist",dist,"qlen",q.Len())
+		}
+	}
+}
+
 func loadGraph(name string) {
 	f,e := os.Open(name)
 	if e != nil {
@@ -92,13 +149,15 @@ func loadGraph(name string) {
 			panic(e.Error())
 		}
 		h1 := loadHost(host1,&hosts)
-		if root == nil {
-			root = h1
-		}
 		h2 := loadHost(host2,&hosts)
 		h1.addPeer(h2.pub, h2.id)
 		h2.addPeer(h1.pub, h1.id)
+		if root == nil {
+			root = h1
+		}
 	}
+
+	dijkstra(hosts, root)
 }
 
 func TestTree(t *testing.T) {

@@ -109,6 +109,9 @@ type treeNode struct {
 	// peers[0] is our parent, the rest are our children.
 	// peers[0] is nil if we're the root of the tree.
 	peers []*peer
+
+	// This node's distance from the root of the tree.
+	dist int
 }
 
 
