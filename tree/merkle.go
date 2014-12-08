@@ -1,9 +1,13 @@
 package tree
 
 import (
+	"hash"
+	"bytes"
 	"errors"
+	"crypto/subtle"
 	"github.com/dedis/crypto/abstract"
 )
+
 
 
 // MerklePath represents a downward path from a (root) node in a Merkle tree
@@ -16,6 +20,7 @@ type MerklePath struct {
 	Ofs int		// Offset of relevant object in last-level blob
 	Len int		// Length of relevant object in last-level blob
 }
+
 
 
 
@@ -50,4 +55,47 @@ func MerkleGet(suite abstract.Suite, root []byte, path MerklePath,
 	}
 	return blob[beg:end],nil
 }
+
+
+// Proof-of-beforeness:
+// a list of offsets of peer-hash-pointers at each level below the root.
+type MerkleProof []HashId
+
+// Given a MerkleProof and the hash of the leaf, compute the hash of the root.
+// If the MerkleProof is of length 0, simply returns leaf.
+func (p MerkleProof) Calc(newHash func() hash.Hash, leaf []byte) []byte {
+	var buf []byte
+	var h hash.Hash
+	for i := len(p)-1; i >= 0; i-- {
+		peer := p[i]
+		if bytes.Compare(leaf,peer) > 0 {	// sort so leaf < peer
+			leaf,peer = peer,leaf
+		}
+
+		// Hash the sorted leaf/peer pair to yield the next-higher node
+		if h == nil {
+			h = newHash()
+		} else {
+			h.Reset()
+		}
+		h.Write(leaf)
+		h.Write(peer)
+		buf = h.Sum(buf[:0])
+		leaf = buf
+	}
+	return leaf
+}
+
+// Check a purported MerkleProof against given root and leaf hashes.
+func (p MerkleProof) Check(newHash func() hash.Hash, root,leaf []byte) bool {
+	chk := p.Calc(newHash, leaf)
+	return subtle.ConstantTimeCompare(chk, root) != 0
+}
+
+
+
+//type MerkleLog struct {
+//}
+
+
 

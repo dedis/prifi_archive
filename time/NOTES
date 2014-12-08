@@ -1,0 +1,74 @@
+Time-Server and Merkletime reasoning support
+
+Functionality:
+- Timestamping requests: submit appropriate hash;
+	at next time-step signed log-entry and Merkleproof of beforeness
+- Proof of beforeness, betweenness
+
+With sorted ledgers:
+- Proof of nothing-betweenness (proof of absence on log between two time-steps)
+	(or maybe not necessary, if each ledger entry has a validated chain?)
+
+---
+
+Import question, possibly for configuration option:
+does time server remember entire history of its log, or only to a point?
+For another node that watches it "constantly enough",
+e.g., updates at least once within timeserver's log-retention window,
+the node can ensure that it can always build a proof-chain
+from the timerserver's latest entry to a given value the node timestamped.
+However, if the node stops watching the server's log-head
+for longer than the log-retention window,
+then it's possible that the log-server (and no one else)
+will still remember the Merkle path links from the current log-head
+to some historical value the node timestamped,
+even though that path is guaranteed to exist and to be "short".
+(But a large number of such paths can build up over time,
+hence the potential need for log-limiting.)
+
+This property is probably fine,
+since the main purpose is for the node to be able to prove
+that its timestamped value happened before
+a given timestamp server's signed log-entry with a given sequence number,
+and everyone who trusts the timestamp server
+can simply compare log-entry sequence numbers
+without reconstructing the entire chain between two log-entries.
+
+---
+
+Proving time-position: e.g., that a node's value was committed
+"between" time-server log entries A and B:
+We can in principle create two such types of proof,
+one purely cryptographic, the other based on trust in the timeserver.
+
+The purely cryptographic approach is to produce two Merkle paths:
+one from the earlier time-server entry A to a root whose hash is
+contained somewhere (anywhere) in the committed value;
+and a second Merkle path from the committed value
+to the later time-server log-entry B.
+Any node that tracks the time-server's log "continuously enough",
+leaving no gaps longer than the server's retention window,
+during the entire period from time A to time B,
+will be able to produce a compact cryptographic proof
+that the committed value was chosen between times A and B.
+Constructing such a proof is not guaranteed to be possible, however,
+if the node loses track of the time server's log for "too long".
+
+The attestation-based approach is simply to rely on
+the timeserver's attestation:
+e.g., just trust that the time server operates correctly,
+in particular that it always signs log-entries in sequence order
+and never produces two correctly-signed log entries
+with the same sequence number.
+If we trust the timeserver in this way,
+then the node who committed the value in question
+need not have tracked the log continuously between A
+and some much-later time C.
+The node gets a compact proof that the committed value
+happened after time A simply by embedding a suitable Merkle proof
+in the content of the value it commits;
+the node gets back a timestamp B
+proving that B happened after the committed value;
+and anyone can verify that C happened after B
+simply by checking their signatures and checking that C.Seq >= B.Seq.
+
