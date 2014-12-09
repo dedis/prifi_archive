@@ -72,3 +72,8 @@ proving that B happened after the committed value;
 and anyone can verify that C happened after B
 simply by checking their signatures and checking that C.Seq >= B.Seq.
 
+---
+
+Good security/crypto discussion of the NIST randomness beacon:
+http://crypto.stackexchange.com/questions/15225/how-useful-is-nists-randomness-beacon-for-cryptographic-use
+
