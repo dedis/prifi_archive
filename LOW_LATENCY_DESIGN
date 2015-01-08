@@ -7,6 +7,7 @@ III.  Trustee / Relay Interaction
 IV.   Client / Relay Interaction
 V.    Relay / Relay Interaction
 VI.   Client / Relay Interaction
+VII.  Configurations
 VII. Terms
 E.    Tasks
 
@@ -55,16 +56,20 @@ included twice, once by the trustee and once by the client.
 In LLD, slots have a fundamental unit of cells.  Trustees use the
 client/trustee shared secrets, the current interval index, the current cell
 index, and the slot DH key as seeds to random number generators -- hash(secret
-| interval index | cell index | slot DH key) -- producing a ciphertext for each
+| interval index | cell index | slot index) -- producing a ciphertext for each
 client.  Trustees generate these shared ciphertexts in batches, at a minimum of
 a cell size, Xor them together, and deliver the resulting byte array to the
 relay.
 
 Similarly, the clients use the client/trustee shared secrets as seeds to random
 number generators producing a ciphertext for each trustee.  The client then
-Xors these together and transmits at least an appropriate number of cells to
-the upstream relay.  The number of cells depends on the previous state of the
-cleartext and is defined in the section discussing slot format.
+Xors these together and transmits an appropriate number of cells to the
+upstream relay.  The number of cells can depend on a many number of things,
+such as fairness, policy, and the number of cells requested by the slot. This
+document, for now, only considers the number of cells requested by the slot,
+such that the output of exchange i specifies the number of cells requested in
+exchange i+1. This specific details of slot format are defined in the section
+discussing slot format.
 
 The relay accumulates trustee ciphertext and reserves it for later use.  After
 receiving a ciphertext from all clients for the given interval, the relay
@@ -78,10 +83,46 @@ trustee ciphertext.
 Certifying the Output
 ======================
 
-In order to certify the output of an exchange, or that the relay forwarded the
-correct output of the DC-net, each client signs the output of the previous
-round and transmits it to the relay with its ciphertext, the relay accumulates
-these signatures and transmits them to all clients along with the cleartext.
+We propose three methods for certifyiing the output of a slot: 1) each client
+signing off on the previous cleartext, 2) a shared secret among the clients
+that decrypts their ciphertext to reveal DC-net ciphertext, and 3) a per-nym
+verifiable DC-net that unclocks the nyms ciphertext using a similar shared
+secret between the anonymous owner and all clients.
+
+In the first approach, clients produce a signature using the previous exchanges
+cleartext, the session, interval, and exchange identifiers, ensuring that even
+if the same cleartext results for each exchange the client will be signing
+unique data. The relay accumulates the client signature from each client and
+transmits them back to all clients.
+
+In the next approach, each client shares a secret with every other client and
+computes a group-wide shared secret. The clients submit two ciphertexts along
+with their ciphertext: an encrypted key used encrypt their ciphertext and their
+portion of the decryption key.  Each client i has a private key, x_i, and a
+shared public key, g^x_i. In order to compute , and computes their portion of
+the shared secret as s_i = multi(g^x_j^x_i, j < i) * multi(-1 * g^x_j^x_i -1, j
+> i). The portion of the decryption key, d_i, is computed as g^(hash(m))^s_i,
+where m is the set of messages from the previous exchange concatenated with the
+current session, interval, and exchange identifiers. Multiplying all the d_i
+together results in a value of 1. Hence, the encrypted key, e_i, takes the form
+of key_i * d_i. To derive the key, multiply d_i * multi(e_j, j != i). The
+ciphertext transmitted with this is then encrypted using this key and can be
+decrypted by the relay using this key. At the conclusion of each interval,
+clients provide a proof of correctness of the form...
+
+In this approach, we introduce a verifiable DC-net (Verdict) slot for each
+active symmetric DC-net slot. After the shuffle, each client j obtains a shared
+secret, s_j, with the anonymous slot owner using their respective well-known DH
+keys. The slot owner, client i, sets his s_i = -SUM(s_j, j).  In exchange k, a
+verdict slot will be encrypted with a generator, g_k, derived from the hash of
+the cleartext from exchange k-1.  Specifically, client j computes a verdict
+element x_j = g_k^s_j.  If client j owns the slot, he can then multiply in a
+message, m: x_j = m * x_j.  Upon receiving all x_j, the server multiplies them
+together revealing m, each s_j cancels out if g_k is the same for all.  The
+message m contains a seed used to encrypt the symmetric DC-net ciphertext in
+the same exchange. In addition to transmitting x_j, clients transmit a proof of
+knowledge, proving that either they own the DH key associated with the slot or
+their m = 1, a null encryption.
 
 ======================
 Preventing Disruption
@@ -274,12 +315,119 @@ VI.   Client / Relay Interaction
 ===============================================================================
 
 ===============================================================================
-VII.  Terms
+VII.  Configuration
+===============================================================================
+Each Dissent deployment has several configurable layers: system, session,
+pseudonym and interval.
+
+=====================
+System Configuration
+=====================
+
+System configuration consists of the identities and keys of the set of possible
+trustees, relays, and clients. It also contains the IP addresses for relays and
+trustees. An identity is the sha-256 hash of a member's public key and used to
+reference the member independent of their IP address.  The configuration file
+also contains a version, to be included in certain messages, to ensure that two
+Dissent software components are compatible and a group-id for similar reasons.
+
+{
+  "version" : int,
+  "group-id" : int,
+  "relays" : {
+    { "id" : identity, "key" : key, "ip" : ip },
+    ...
+  },
+  "servers" : {
+    { "id" : identity, "key" : key, "ip" : ip },
+    ...
+  },
+  "clients" : {
+    { "id" : identity, "ip" : ip},
+    ...
+  }
+}
+
+======================
+Session Configuration
+======================
+
+The session configuration includes the group-id listed within the system
+configuration and consists of the participants for the upcoming session and a
+DH key for each and a unique session nonce or id. The session configuration
+also has a set of signatures, one for each trustee, attesting to the
+correctness of the session configuration file.
+
+{
+  "group-id" : int,
+  "session-id" : int,
+  "relays" : {
+    { "id" : identity, "dhkey" : dhkey },
+    ...
+  },
+  "servers" : {
+    { "id" : identity, "dhkey" : dhkey },
+    ...
+  },
+  "clients" : {
+    { "id" : identity, "dhkey" : dhkey },
+    ...
+  },
+  "signatures" : {
+    { "id" : identity, "sign" : signature },
+    ...
+  }
+}
+
+========================
+Pseudonym Configuration
+========================
+
+The pseudonym configuration consists of anonymous DH keys in a fixed order
+representing the order fo the communication slots during exchanges. This too
+includes the signature from all trustees.
+
+{
+  "group-id" : int,
+  "session-id" : int,
+  "slots" : {
+    dhkey0,
+    ...
+  },
+  "signatures" : {
+    { "id" : identity, "sign" : signature },
+    ...
+  }
+}
+
+=======================
+Interval Configuration
+=======================
+
+At each interval, trustees will announce the set of online clients and a list
+of new DH keys for generating trap bits.
+
+{
+  "group-id" : int,
+  "session-id" : int,
+  "trapkeys" : {
+    dhkey0,
+    ...
+  },
+  "signatures" : {
+    { "id" : identity, "sign" : signature },
+    ...
+  }
+}
+
+===============================================================================
+VIII.  Terms
 ===============================================================================
 Clients - users of the service
-Relays - data plane server 
+Relays - data plane server
 Trustees - control plane server
 Interval - the online and active set of clients
+Symmetric encryption cipher - AES128CTR
 
 ===============================================================================
 E.   Tasks
@@ -296,4 +444,4 @@ E.   Tasks
 - Socks server / proxy
 - HTTP server / instant messanger
 - Session bootstrap (Core Dissent Design Doc)
-- Configuration format for session and interval 
+- Configuration format for session and interval
