@@ -1,0 +1,9 @@
+- Configuration files should produce classes and not rely on hash tables (try to be a little more type safe)
+- The encoder interface is probably inappropriate and would needs to be better fleshed out
+- There are actually two models for generating trap bits ... one that adds noise at the expense of clients and trustees doing a ciphertext xor per trustee and one that adds no noise and does a single ciphertext generation. The current method in the design doc only discusses the latter.
+- Import in Lining's abstract groups interface
+- Import in Eleanor's encoding
+- Flesh out the distributed system
+- Add an http proxy 
+- Add accountability / replay on trustees
+- Don't use main, let's use unit tests and so we need a main unittest
