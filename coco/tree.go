@@ -17,6 +17,7 @@ type Peer interface {
 // get from the parents, send messages to the children, and get messages from
 // the children.
 type Host interface {
+	Name() string
 	PutUp(interface{})
 	GetUp() interface{}
 	PutDown(interface{})
@@ -26,13 +27,13 @@ type Host interface {
 // host embodies the local state of a single host in the network
 // it satisfies the tree node interface.
 type HostNode struct {
-	hostname string
+	name     string
 	parent   Peer
 	children map[string]Peer // map so we only add unique peers
 }
 
 func NewHostNode(hostname string) *HostNode {
-	h := &HostNode{hostname: hostname,
+	h := &HostNode{name: hostname,
 		children: make(map[string]Peer)}
 	return h
 }
@@ -45,6 +46,10 @@ func (h HostNode) AddChildren(ps ...Peer) {
 	for _, p := range ps {
 		h.children[p.Name()] = p
 	}
+}
+
+func (h HostNode) Name() string {
+	return h.name
 }
 
 // TODO(dyv): following methods will have to be rethought with network failures and

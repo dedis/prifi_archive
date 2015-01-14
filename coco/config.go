@@ -31,7 +31,7 @@ func NewHostConfig() *HostConfig {
 }
 
 // Depth-First search construction of the host tree
-func ConstructTree(tree map[string]interface{}, hc *HostConfig) error {
+func ConstructTree(tree map[string]interface{}, hc *HostConfig, parent Peer) error {
 	// get the first key in the tree there should only be one
 	for k, v := range tree {
 		if _, ok := hc.Hosts[k]; !ok {
@@ -40,6 +40,7 @@ func ConstructTree(tree map[string]interface{}, hc *HostConfig) error {
 		}
 
 		h := hc.Hosts[k]
+		h.parent = parent
 		// this key should map to a map[string]interface{} that represents the
 		// rest of the tree
 		rest := v.(map[string]interface{})
@@ -49,7 +50,7 @@ func ConstructTree(tree map[string]interface{}, hc *HostConfig) error {
 				h.AddChildren(gp)
 			}
 		}
-		ConstructTree(rest, hc)
+		ConstructTree(rest, hc, hc.Dir.nameToPeer[h.name])
 	}
 	return nil
 }
@@ -71,7 +72,7 @@ func ReadConfig(fname string) (*HostConfig, error) {
 		}
 	}
 	tree := m["tree"].(map[string]interface{})
-	ConstructTree(tree, hc)
+	ConstructTree(tree, hc, nil)
 	// construct the host tree
 	return hc, nil
 }
