@@ -1,15 +1,14 @@
 package coco
 
 import (
-	"crypto/cipher"
+	"errors"
 	"fmt"
 	"sync"
-
-	"github.com/dedis/crypto/abstract"
 )
 
 // Peer is an abstract peer which we can Put to and Get from.
 type Peer interface {
+	Name() string // to keep track of peers in hosts
 	Put(data interface{})
 	Get() interface{}
 }
@@ -28,17 +27,13 @@ type TreeNode interface {
 // it satisfies the tree node interface.
 type Host struct {
 	hostname string
-	prikey   abstract.Secret
-	pubkey   abstract.Point
 	parent   Peer
-	children []Peer
+	children map[string]Peer // map so we only add unique peers
 }
 
-func NewHost(suite abstract.Suite, rand cipher.Stream, hostname string) *Host {
+func NewHost(hostname string) *Host {
 	h := &Host{hostname: hostname,
-		prikey:   suite.Secret().Pick(rand),
-		children: make([]Peer, 0)}
-	h.pubkey = suite.Point().Mul(nil, h.prikey)
+		children: make(map[string]Peer)}
 	return h
 }
 
@@ -48,7 +43,9 @@ func (h Host) AddParent(p Peer) {
 
 // TODO: only add new children
 func (h Host) AddChildren(ps ...Peer) {
-	h.children = append(h.children, ps...)
+	for _, p := range ps {
+		h.children[p.Name()] = p
+	}
 }
 
 func (h Host) PutUp(data interface{}) {
@@ -64,67 +61,73 @@ func (h Host) PutDown(data interface{}) {
 	}
 }
 func (h Host) GetDown() []interface{} {
+	var mu sync.Mutex
 	data := make([]interface{}, len(h.children))
 	var wg sync.WaitGroup
-	for i, c := range h.children {
+	for _, c := range h.children {
 		wg.Add(1)
-		go func(i int) {
-			data[i] = c.Get()
-		}(i)
+		go func() {
+			d := c.Get()
+			mu.Lock()
+			data = append(data, d)
+			mu.Unlock()
+		}()
 	}
 	wg.Wait()
 	return data
 }
 
-// goRouter is a testing structure for the GoPeer. It allows us to simulate
+// directory is a testing structure for the GoPeer. It allows us to simulate
 // tcp network connections locally (and is easily adaptable for network
 // connections).
-type goRouter struct {
+type directory struct {
 	sync.Mutex
 	channel map[string]chan interface{}
 }
 
-func newGoRouter() *goRouter {
-	return &goRouter{channel: make(map[string]chan interface{})}
+func newDirectory() *directory {
+	return &directory{channel: make(map[string]chan interface{})}
 }
 
-type GoPeer struct {
-	router   *goRouter
-	pubkey   abstract.Point
+type goPeer struct {
+	dir      *directory
 	hostname string
 }
 
-func NewGoPeer(pubkey abstract.Point, hostname string) *GoPeer {
-	gp := &GoPeer{newGoRouter(), pubkey, hostname}
-	gp.router.Lock()
+var PeerExists error = errors.New("peer already exists in given directory")
 
-	defer gp.router.Unlock()
-	if _, ok := gp.router.channel[hostname]; ok {
+func NewGoPeer(dir *directory, hostname string) (*goPeer, error) {
+	gp := &goPeer{dir, hostname}
+	gp.dir.Lock()
+
+	defer gp.dir.Unlock()
+	if _, ok := gp.dir.channel[hostname]; ok {
 		// return the already existant peer
 		fmt.Println("Peer Already Exists")
-		return nil
+		return nil, PeerExists
 	}
-	gp.router.channel[hostname] = make(chan interface{})
-	return gp
+	gp.dir.channel[hostname] = make(chan interface{})
+	return gp, nil
 }
 
-func (p GoPeer) Put(data interface{}) {
-	p.router.Lock()
-	defer p.router.Unlock()
-	if _, ok := p.router.channel[p.hostname]; !ok {
-		p.router.channel[p.hostname] = make(chan interface{})
+func (p goPeer) Put(data interface{}) {
+	p.dir.Lock()
+	if _, ok := p.dir.channel[p.hostname]; !ok {
+		p.dir.channel[p.hostname] = make(chan interface{})
 	}
-	ch := p.router.channel[p.hostname]
+	ch := p.dir.channel[p.hostname]
+	p.dir.Unlock()
 	ch <- data
 }
 
-func (p GoPeer) Get() interface{} {
-	p.router.Lock()
-	defer p.router.Unlock()
-	if _, ok := p.router.channel[p.hostname]; !ok {
-		p.router.channel[p.hostname] = make(chan interface{})
+func (p goPeer) Get() interface{} {
+	p.dir.Lock()
+	defer p.dir.Unlock()
+	if _, ok := p.dir.channel[p.hostname]; !ok {
+		p.dir.channel[p.hostname] = make(chan interface{})
 	}
-	ch := p.router.channel[p.hostname]
+	ch := p.dir.channel[p.hostname]
+	p.dir.Unlock()
 	data := <-ch
 	return data
 }
