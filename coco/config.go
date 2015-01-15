@@ -40,7 +40,7 @@ func NewHostConfig() *HostConfig {
 // config file. It detects unknown hosts but does not detect the error of
 // multiple root nodes, rather it silently choses just one. ConstructTree must
 // be call AFTER populating the HostConfig with ALL the possible hosts.
-func ConstructTree(tree map[string]interface{}, hc *HostConfig, parent Conn) error {
+func ConstructTree(tree map[string]interface{}, hc *HostConfig, parent *HostNode) error {
 	// each k will be a sibling in the tree
 	// for each sibling add its children
 	for k, subtree := range tree {
@@ -49,21 +49,25 @@ func ConstructTree(tree map[string]interface{}, hc *HostConfig, parent Conn) err
 			return errors.New("unknown host in tree")
 		}
 		h := hc.Hosts[k]
+		// add connection from host to its parent
 		if parent == nil {
 			fmt.Printf("root node is %v\n", h.name)
 			hc.Root = h
+		} else {
+			gc, _ := NewGoConn(hc.Dir, h.name, parent.name)
+			h.AddParent(gc)
 		}
-		h.parent = parent
 
 		children := subtree.(map[string]interface{})
-		for _ = range children {
+		// add connections from parent to children
+		for child := range children {
 			// ignore the error because we don't care if we have already
 			// constructed this peer before.
-			//gp, _ := NewGoPeer(hc.Dir, child)
-			//h.AddChildren(gp)
-			//fmt.Printf("added %v as child of %v\n", gp.hostname, h.name)
+			gc, _ := NewGoConn(hc.Dir, h.name, child)
+			h.AddChildren(gc)
+			fmt.Printf("added %v as child of %v\n", gc.to, h.name)
 		}
-		if err := ConstructTree(children, hc, hc.Dir.nameToPeer[h.name]); err != nil {
+		if err := ConstructTree(children, hc, h); err != nil {
 			return err
 		}
 	}
