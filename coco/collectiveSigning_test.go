@@ -3,7 +3,7 @@ package coco
 import (
 	"testing"
 	"strconv"
-	"fmt" 	
+	// "fmt" 	
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/openssl"
 )
@@ -23,10 +23,10 @@ func TestStatic( t *testing.T ) {
 	// create new directory for communication between peers
 	directory := newDirectory()
 	// Create Hosts and Peers
-	h := make([]HostNode, nNodes)
+	h := make([]*HostNode, nNodes)
 	for i := 0; i < nNodes; i++ {
 		hostName := "host" + strconv.Itoa(i)
-		h[i] = *NewHostNode(hostName)
+		h[i] = NewHostNode(hostName)
 	}
 
 	// Add edges to children
@@ -42,12 +42,7 @@ func TestStatic( t *testing.T ) {
 	gc, _  = NewGoConn(directory, h[2].name, h[1].name)
 	h[2].AddParent(gc)
 	gc, _  = NewGoConn(directory, h[3].name, h[1].name)
-	fmt.Println(gc)
 	h[3].AddParent(gc)
-
-	if h[3].parent == nil {
-		fmt.Println("h[3] nil parent")
-	}
 
 	// Create Signing Nodes out of the hosts
 	nodes := make([]SigningNode, nNodes)
@@ -55,7 +50,6 @@ func TestStatic( t *testing.T ) {
 		nodes[i] = *NewSigningNode(h[i], suite, rand)
 	}
 	for i := 0; i < nNodes; i++ {
-		fmt.Println(nodes[i].IsRoot())
 		nodes[i].Listen() // start listening for messages from within the tree
 	}
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	// "strconv"
 	// "os"
 )
 
@@ -52,7 +53,7 @@ type ResponseMessage struct{
 	r  abstract.Secret 			// response
 }
 
-func NewSigningNode(hn HostNode, suite abstract.Suite, random cipher.Stream) *SigningNode{
+func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *SigningNode{
 	sn := &SigningNode{Host: hn, suite: suite}
 	sn.privKey = suite.Secret().Pick(random)
 	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
@@ -63,11 +64,8 @@ func NewSigningNode(hn HostNode, suite abstract.Suite, random cipher.Stream) *Si
 func (sn *SigningNode) Listen(){
 	go func() {
 		for {
-			// fmt.Println("testing if root", sn.IsRoot())
 			if ! sn.IsRoot() {
-				fmt.Println(sn.Name(), "getting data")
 				data := sn.GetUp()
-				fmt.Println(sn.Name(), "data got")
 
 				sn.HandleFromUp(data)
 			} else {
@@ -95,7 +93,6 @@ func (sn *SigningNode) HandleFromUp( data interface{} ){
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Announce( am AnnouncementMessage ){
-	fmt.Println(sn.Name(), "announcing")
 	// inform all children of announcement
 	sn.PutDown(am)
 	// initiate commit phase
@@ -115,12 +112,14 @@ func (sn *SigningNode) Commit( ){
 		default:
 			// Not possible in current system where little randomness is allowed
 			// In real system failing is required
+			fmt.Println(cm)
 			panic("Reply to announcement is not a commit")
 		case CommitmentMessage:
 			sn.V_hat.Add(sn.V_hat, cm.V_hat)      
 		}
 	}
 	if sn.IsRoot() {
+		fmt.Println(sn.Name(), "finalizing commit")
 		sn.FinalizeCommits()
 	} else {
 		// create and putup own commit message
@@ -142,7 +141,9 @@ func (sn *SigningNode) Respond(){
 	// generate response   r = v - xc
 	sn.r = sn.suite.Secret()
 	sn.r.Mul(sn.privKey, sn.c).Sub(sn.v, sn.r)
-	var sum_r abstract.Secret
+	// initialize sum of children's responses + own response
+	sn.r_hat = sn.suite.Secret()
+	sn.r_hat.Set(sn.r)
 	// wait for all children to respond
 	dataSlice := sn.GetDown()
 	for _, data := range(dataSlice) {
@@ -152,11 +153,12 @@ func (sn *SigningNode) Respond(){
 			// In real system failing is required
 			panic("Reply to challenge is not a response")
 		case ResponseMessage:
-			sum_r.Add(sum_r, rm.r)
+			sn.r_hat.Add(sn.r_hat, rm.r)
 		}
 	}
-	sn.r_hat.Add(sn.r, sum_r) 	
+
 	if sn.IsRoot() {
+		fmt.Println(sn.Name(), "verifying response")
 		sn.VerifyResponses()
 	} else {			
 		// create and putup own response message
@@ -167,6 +169,8 @@ func (sn *SigningNode) Respond(){
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits(){
 	// challenge = Hash(message, sn.V_hat) 
+	fmt.Println(sn.logTest)
+	fmt.Println(sn.V_hat)
 	sn.c = hashElGamal(sn.suite, sn.logTest, sn.V_hat)
 	sn.Challenge(ChallengeMessage{sn.c})
 }
@@ -175,11 +179,18 @@ func (sn *SigningNode) FinalizeCommits(){
 func (sn *SigningNode) VerifyResponses() error{
 	// Check that: base**r_hat * X_hat**c == V_hat 
 	// Equivalent to base**(r+xc) == base**(v) == T in vanillaElGamal
-	var T, P abstract.Point
+	var P, T abstract.Point
+	P = sn.suite.Point()
+	T = sn.suite.Point()
 	T.Add(T.Mul(nil, sn.r_hat), P.Mul(sn.X_hat, sn.c))
 	c2 := hashElGamal(sn.suite, sn.logTest, T)
 
+	fmt.Println(sn.logTest)
+	fmt.Println(T)
 	if sn.c != c2 {
+		fmt.Println(sn.c)
+		fmt.Println(c2)
+		// panic("Veryfing ElGamal Collective Signature failed")
 		return errors.New("Veryfing ElGamal Collective Signature failed")
 	}
 	fmt.Println("ElGamal Collective Signature succeeded")

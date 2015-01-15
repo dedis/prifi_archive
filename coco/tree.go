@@ -117,11 +117,12 @@ func (h *HostNode) PutDown(data interface{}) {
 // whatever 'network' interface each child Peer implements.
 func (h *HostNode) GetDown() []interface{} {
 	var mu sync.Mutex
-	data := make([]interface{}, len(h.children))
+	data := make([]interface{}, 0)
 	var wg sync.WaitGroup
 	for _, c := range h.children {
 		wg.Add(1)
 		go func(c Conn) {
+			defer wg.Done()
 			d := c.Get()
 			mu.Lock()
 			data = append(data, d)
