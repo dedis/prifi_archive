@@ -7,7 +7,8 @@ import (
 	"sync"
 )
 
-// Conn is an abstract bidirectonal connection.
+// Conn is an abstract bidirectonal connection. It abstracts away the network
+// layer as well as the data-format for communication.
 type Conn interface {
 	Name() string
 	Put(data interface{}) // sends data through the connection
@@ -167,61 +168,62 @@ var PeerExists error = errors.New("peer already exists in given directory")
 // hostname. It returns an ignorable PeerExists error if this peer already
 // exists.
 func NewGoConn(dir *directory, from, to string) (*goConn, error) {
-	gp := &goConn{dir, from, to}
-	gp.dir.Lock()
+	gc := &goConn{dir, from, to}
+	gc.dir.Lock()
 	fromto := from + to
-	defer gp.dir.Unlock()
-	if _, ok := gp.dir.channel[fromto]; ok {
+	defer gc.dir.Unlock()
+	if _, ok := gc.dir.channel[fromto]; ok {
 		// return the already existant peer
-		return gp.dir.nameToPeer[fromto], PeerExists
+		return gc.dir.nameToPeer[fromto], PeerExists
 	}
-	gp.dir.channel[fromto] = make(chan interface{})
-	return gp, nil
+	gc.dir.channel[fromto] = make(chan interface{})
+	return gc, nil
 }
 
 // Name returns the from+to identifier of the goConn.
-func (p goConn) Name() string {
-	return p.from + p.to
+func (c goConn) Name() string {
+	return c.from + c.to
 }
 
 // Put sends data to the goConn through the channel.
-func (p goConn) Put(data interface{}) {
-	fromto := p.from + p.to
-	p.dir.Lock()
-	ch := p.dir.channel[fromto]
+func (c goConn) Put(data interface{}) {
+	fromto := c.from + c.to
+	c.dir.Lock()
+	ch := c.dir.channel[fromto]
 	// the directory must be unlocked before sending data. otherwise the
 	// receiver would not be able to access this channel from the directory
 	// either.
-	p.dir.Unlock()
+	c.dir.Unlock()
 	ch <- data
 }
 
 // Get receives data from the sender.
-func (p goConn) Get() interface{} {
+func (c goConn) Get() interface{} {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
-	tofrom := p.to + p.from
-	p.dir.Lock()
-	ch := p.dir.channel[tofrom]
+	tofrom := c.to + c.from
+	c.dir.Lock()
+	ch := c.dir.channel[tofrom]
 	// as in Put directory must be unlocked to allow other goroutines to reach
 	// their send lines.
-	p.dir.Unlock()
+	c.dir.Unlock()
 	data := <-ch
 	return data
 }
 
-type TcpPeer struct {
+// TcpConn is a prototype TCP connection with gob encoding.
+type TcpConn struct {
 	name string
 	conn net.Conn
 	enc  *gob.Encoder
 	dec  *gob.Decoder
 }
 
-func NewTcpPeer(hostname string) (*TcpPeer, error) {
-	tp := &TcpPeer{}
+func NewTcpConn(hostname string) (*TcpConn, error) {
+	tp := &TcpConn{}
 	tp.name = hostname
-	// connect to this peer
+	// establish the connection
 	conn, err := net.Dial("tcp", hostname)
 	if err != nil {
 		return tp, err
@@ -232,16 +234,16 @@ func NewTcpPeer(hostname string) (*TcpPeer, error) {
 	return tp, nil
 }
 
-func (tp TcpPeer) Name() string {
-	return tp.name
+func (tc TcpConn) Name() string {
+	return tc.name
 }
 
-func (tp TcpPeer) Put(data interface{}) {
-	tp.enc.Encode(data)
+func (tc TcpConn) Put(data interface{}) {
+	tc.enc.Encode(data)
 }
 
-func (tp TcpPeer) Get() interface{} {
+func (tc TcpConn) Get() interface{} {
 	var data interface{}
-	tp.dec.Decode(data)
+	tc.dec.Decode(data)
 	return data
 }
