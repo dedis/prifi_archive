@@ -1,9 +1,9 @@
 package coco
 
 import (
-	"testing"
 	"strconv"
-	// "fmt" 	
+	"testing"
+	// "fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/openssl"
 )
@@ -13,7 +13,7 @@ import (
 //     1
 //    / \
 //   2   3
-func TestStatic( t *testing.T ) {
+func TestStatic(t *testing.T) {
 	// Crypto setup
 	suite := openssl.NewAES128SHA256P256()
 	rand := abstract.HashStream(suite, []byte("example"), nil)
@@ -31,17 +31,17 @@ func TestStatic( t *testing.T ) {
 
 	// Add edges to children
 	var gc, gc2 *goConn
-	gc, _  = NewGoConn(directory, h[0].name, h[1].name)
+	gc, _ = NewGoConn(directory, h[0].name, h[1].name)
 	h[0].AddChildren(gc)
-	gc, _  = NewGoConn(directory, h[1].name, h[2].name)
-	gc2, _  = NewGoConn(directory, h[1].name, h[3].name)
+	gc, _ = NewGoConn(directory, h[1].name, h[2].name)
+	gc2, _ = NewGoConn(directory, h[1].name, h[3].name)
 	h[1].AddChildren(gc, gc2)
 	// Add edges to parents
-	gc, _  = NewGoConn(directory, h[1].name, h[0].name)
+	gc, _ = NewGoConn(directory, h[1].name, h[0].name)
 	h[1].AddParent(gc)
-	gc, _  = NewGoConn(directory, h[2].name, h[1].name)
+	gc, _ = NewGoConn(directory, h[2].name, h[1].name)
 	h[2].AddParent(gc)
-	gc, _  = NewGoConn(directory, h[3].name, h[1].name)
+	gc, _ = NewGoConn(directory, h[3].name, h[1].name)
 	h[3].AddParent(gc)
 
 	// Create Signing Nodes out of the hosts
