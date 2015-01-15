@@ -66,13 +66,13 @@ func NewHostNode(hostname string) *HostNode {
 }
 
 // AddParent adds a parent node to the HostNode.
-func (h HostNode) AddParent(c Conn) {
+func (h *HostNode) AddParent(c Conn) {
 	h.parent = c
 }
 
 // AddChildren variadically adds multiple Peers as children to the HostNode.
 // Only unique children will be stored.
-func (h HostNode) AddChildren(cs ...Conn) {
+func (h *HostNode) AddChildren(cs ...Conn) {
 	for _, c := range cs {
 		h.children[c.Name()] = c
 	}
@@ -95,19 +95,19 @@ func (h HostNode) IsRoot() bool {
 
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h HostNode) PutUp(data interface{}) {
+func (h *HostNode) PutUp(data interface{}) {
 	h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h HostNode) GetUp() interface{} {
+func (h *HostNode) GetUp() interface{} {
 	return h.parent.Get()
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
-func (h HostNode) PutDown(data interface{}) {
+func (h *HostNode) PutDown(data interface{}) {
 	for _, c := range h.children {
 		c.Put(data)
 	}
@@ -115,7 +115,7 @@ func (h HostNode) PutDown(data interface{}) {
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
-func (h HostNode) GetDown() []interface{} {
+func (h *HostNode) GetDown() []interface{} {
 	var mu sync.Mutex
 	data := make([]interface{}, len(h.children))
 	var wg sync.WaitGroup
@@ -186,7 +186,7 @@ func (c goConn) Name() string {
 }
 
 // Put sends data to the goConn through the channel.
-func (c goConn) Put(data interface{}) {
+func (c *goConn) Put(data interface{}) {
 	fromto := c.from + c.to
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
@@ -198,7 +198,7 @@ func (c goConn) Put(data interface{}) {
 }
 
 // Get receives data from the sender.
-func (c goConn) Get() interface{} {
+func (c *goConn) Get() interface{} {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
@@ -238,11 +238,11 @@ func (tc TcpConn) Name() string {
 	return tc.name
 }
 
-func (tc TcpConn) Put(data interface{}) {
+func (tc *TcpConn) Put(data interface{}) {
 	tc.enc.Encode(data)
 }
 
-func (tc TcpConn) Get() interface{} {
+func (tc *TcpConn) Get() interface{} {
 	var data interface{}
 	tc.dec.Decode(data)
 	return data
