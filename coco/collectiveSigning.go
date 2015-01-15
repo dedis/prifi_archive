@@ -5,6 +5,8 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"errors"
 	"fmt"
+	"time"
+	// "os"
 )
 
 // Collective Signing via ElGamal
@@ -15,6 +17,7 @@ import (
 
 type SigningNode struct{
 	Host
+	// hostNode HostNode
 	suite	 abstract.Suite 
 	pubKey 	 abstract.Point       // long lasting public key
 	privKey  abstract.Secret      // long lasting private key
@@ -60,9 +63,16 @@ func NewSigningNode(hn HostNode, suite abstract.Suite, random cipher.Stream) *Si
 func (sn *SigningNode) Listen(){
 	go func() {
 		for {
+			// fmt.Println("testing if root", sn.IsRoot())
 			if ! sn.IsRoot() {
+				fmt.Println(sn.Name(), "getting data")
 				data := sn.GetUp()
+				fmt.Println(sn.Name(), "data got")
+
 				sn.HandleFromUp(data)
+			} else {
+				// fmt.Println("I am root")
+				time.Sleep(1 * time.Second)
 			}
 		}
 	} ()
@@ -85,6 +95,7 @@ func (sn *SigningNode) HandleFromUp( data interface{} ){
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Announce( am AnnouncementMessage ){
+	fmt.Println(sn.Name(), "announcing")
 	// inform all children of announcement
 	sn.PutDown(am)
 	// initiate commit phase

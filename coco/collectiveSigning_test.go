@@ -1,8 +1,9 @@
 package coco
 
 import (
+	"testing"
 	"strconv"
-
+	"fmt" 	
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/openssl"
 )
@@ -12,7 +13,7 @@ import (
 //     1
 //    / \
 //   2   3
-func Example_Static() {
+func TestStatic( t *testing.T ) {
 	// Crypto setup
 	suite := openssl.NewAES128SHA256P256()
 	rand := abstract.HashStream(suite, []byte("example"), nil)
@@ -23,27 +24,39 @@ func Example_Static() {
 	directory := newDirectory()
 	// Create Hosts and Peers
 	h := make([]HostNode, nNodes)
-	p := make([]goConn, nNodes)
 	for i := 0; i < nNodes; i++ {
 		hostName := "host" + strconv.Itoa(i)
 		h[i] = *NewHostNode(hostName)
-		auxp, _ := NewGoPeer(directory, hostName)
-		p[i] = *auxp
 	}
 
 	// Add edges to children
-	h[0].AddChildren(p[1])
-	h[1].AddChildren(p[2], p[3])
+	var gc, gc2 *goConn
+	gc, _  = NewGoConn(directory, h[0].name, h[1].name)
+	h[0].AddChildren(gc)
+	gc, _  = NewGoConn(directory, h[1].name, h[2].name)
+	gc2, _  = NewGoConn(directory, h[1].name, h[3].name)
+	h[1].AddChildren(gc, gc2)
 	// Add edges to parents
-	h[1].AddParent(p[0])
-	h[2].AddParent(p[1])
-	h[3].AddParent(p[1])
+	gc, _  = NewGoConn(directory, h[1].name, h[0].name)
+	h[1].AddParent(gc)
+	gc, _  = NewGoConn(directory, h[2].name, h[1].name)
+	h[2].AddParent(gc)
+	gc, _  = NewGoConn(directory, h[3].name, h[1].name)
+	fmt.Println(gc)
+	h[3].AddParent(gc)
+
+	if h[3].parent == nil {
+		fmt.Println("h[3] nil parent")
+	}
 
 	// Create Signing Nodes out of the hosts
 	nodes := make([]SigningNode, nNodes)
 	for i := 0; i < nNodes; i++ {
 		nodes[i] = *NewSigningNode(h[i], suite, rand)
-		nodes[i].Listen() // start listening for messages from withing the tree
+	}
+	for i := 0; i < nNodes; i++ {
+		fmt.Println(nodes[i].IsRoot())
+		nodes[i].Listen() // start listening for messages from within the tree
 	}
 
 	// initialize root node with knowledge of the
@@ -59,6 +72,4 @@ func Example_Static() {
 	nodes[0].logTest = []byte("Hello World")
 	nodes[0].Announce(AnnouncementMessage{nodes[0].logTest})
 
-	// Output:
-	// ElGamal Collective Signature succeeded
 }
