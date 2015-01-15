@@ -1,9 +1,10 @@
 package coco
 
 import (
+	"strconv"
+
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/openssl"
-	"strconv"
 )
 
 //       0
@@ -11,7 +12,7 @@ import (
 //     1
 //    / \
 //   2   3
-func Example_Static(){
+func Example_Static() {
 	// Crypto setup
 	suite := openssl.NewAES128SHA256P256()
 	rand := abstract.HashStream(suite, []byte("example"), nil)
@@ -22,8 +23,8 @@ func Example_Static(){
 	directory := newDirectory()
 	// Create Hosts and Peers
 	h := make([]HostNode, nNodes)
-	p := make([]goPeer, nNodes)
-	for i:=0; i<nNodes; i++ {
+	p := make([]goConn, nNodes)
+	for i := 0; i < nNodes; i++ {
 		hostName := "host" + strconv.Itoa(i)
 		h[i] = *NewHostNode(hostName)
 		auxp, _ := NewGoPeer(directory, hostName)
@@ -40,21 +41,20 @@ func Example_Static(){
 
 	// Create Signing Nodes out of the hosts
 	nodes := make([]SigningNode, nNodes)
-	for i:=0; i<nNodes; i++ {
+	for i := 0; i < nNodes; i++ {
 		nodes[i] = *NewSigningNode(h[i], suite, rand)
 		nodes[i].Listen() // start listening for messages from withing the tree
 	}
 
-	// initialize root node with knowledge of the 
+	// initialize root node with knowledge of the
 	// combined public keys of all its descendents
 	var X_hat abstract.Point = nodes[1].pubKey
-	for i:=2; i<nNodes; i++ {
+	for i := 2; i < nNodes; i++ {
 		X_hat.Add(X_hat, nodes[i].pubKey)
-	}	
+	}
 	nodes[0].X_hat = X_hat
 
-
-	// Have root node initiate the signing protocol 
+	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].logTest = []byte("Hello World")
 	nodes[0].Announce(AnnouncementMessage{nodes[0].logTest})

@@ -3,17 +3,15 @@ package coco
 import (
 	"encoding/gob"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 )
 
-// Peer is an abstract peer (network node) which is named, and we can send data
-// to and get data from.
-type Peer interface {
-	Name() string         // the hostname of the peer
-	Put(data interface{}) // sends data to the peer
-	Get() interface{}     // gets data from the peer (blocking)
+// Conn is an abstract bidirectonal connection.
+type Conn interface {
+	Name() string
+	Put(data interface{}) // sends data through the connection
+	Get() interface{}     // gets data from connection
 }
 
 // Host is an abstract node on the Host tree. The Host has a Name and can send
@@ -55,27 +53,27 @@ type Host interface {
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type HostNode struct {
 	name     string          // the hostname
-	parent   Peer            // the Peer representing parent, nil if root
-	children map[string]Peer // a list of unique peers for each hostname
+	parent   Conn            // the Peer representing parent, nil if root
+	children map[string]Conn // a list of unique peers for each hostname
 }
 
 // NewHostNode creates a new HostNode with a given hostname.
 func NewHostNode(hostname string) *HostNode {
 	h := &HostNode{name: hostname,
-		children: make(map[string]Peer)}
+		children: make(map[string]Conn)}
 	return h
 }
 
 // AddParent adds a parent node to the HostNode.
-func (h HostNode) AddParent(p Peer) {
-	h.parent = p
+func (h HostNode) AddParent(c Conn) {
+	h.parent = c
 }
 
 // AddChildren variadically adds multiple Peers as children to the HostNode.
 // Only unique children will be stored.
-func (h HostNode) AddChildren(ps ...Peer) {
-	for _, p := range ps {
-		h.children[p.Name()] = p
+func (h HostNode) AddChildren(cs ...Conn) {
+	for _, c := range cs {
+		h.children[c.Name()] = c
 	}
 }
 
@@ -122,7 +120,7 @@ func (h HostNode) GetDown() []interface{} {
 	var wg sync.WaitGroup
 	for _, c := range h.children {
 		wg.Add(1)
-		go func(c Peer) {
+		go func(c Conn) {
 			d := c.Get()
 			mu.Lock()
 			data = append(data, d)
@@ -133,62 +131,81 @@ func (h HostNode) GetDown() []interface{} {
 	return data
 }
 
-// directory is a testing structure for the GoPeer. It allows us to simulate
+// directory is a testing structure for the goConn. It allows us to simulate
 // tcp network connections locally (and is easily adaptable for network
-// connections).
+// connections). A single directory should be shared between all goConns's that
+// are operating in the same network 'space'. If they are on the same tree they
+// should share a directory.
 type directory struct {
-	sync.Mutex
-	channel    map[string]chan interface{}
-	nameToPeer map[string]*goPeer
+	sync.Mutex                             // protects accesses to channel and nameToPeer
+	channel    map[string]chan interface{} // one channel per peer-to-peer connection
+	nameToPeer map[string]*goConn          // keeps track of duplicate connections
 }
 
+/// newDirectory creates a new directory for registering goPeers.
 func newDirectory() *directory {
 	return &directory{channel: make(map[string]chan interface{}),
-		nameToPeer: make(map[string]*goPeer)}
+		nameToPeer: make(map[string]*goConn)}
 }
 
-type goPeer struct {
-	dir      *directory
-	hostname string
+// goConn is a Conn type for representing connections in an in-memory tree. It
+// uses channels for communication.
+type goConn struct {
+	// the directory maps each (from,to) pair to a channel for sending
+	// (from,to). When receiving one reads from the channel (from, to). Thus
+	// the sender "owns" the channel.
+	dir  *directory
+	from string
+	to   string
 }
 
+// PeerExists is an ignorable error that says that this peer has already been
+// registered to this directory.
 var PeerExists error = errors.New("peer already exists in given directory")
 
-func NewGoPeer(dir *directory, hostname string) (*goPeer, error) {
-	gp := &goPeer{dir, hostname}
+// NewGoPeer creates a goPeer registered in the given directory with the given
+// hostname. It returns an ignorable PeerExists error if this peer already
+// exists.
+func NewGoConn(dir *directory, from, to string) (*goConn, error) {
+	gp := &goConn{dir, from, to}
 	gp.dir.Lock()
-
+	fromto := from + to
 	defer gp.dir.Unlock()
-	if _, ok := gp.dir.channel[hostname]; ok {
+	if _, ok := gp.dir.channel[fromto]; ok {
 		// return the already existant peer
-		fmt.Println("Peer Already Exists")
-		return gp.dir.nameToPeer[hostname], PeerExists
+		return gp.dir.nameToPeer[fromto], PeerExists
 	}
-	gp.dir.channel[hostname] = make(chan interface{})
+	gp.dir.channel[fromto] = make(chan interface{})
 	return gp, nil
 }
 
-func (p goPeer) Name() string {
-	return p.hostname
+// Name returns the from+to identifier of the goConn.
+func (p goConn) Name() string {
+	return p.from + p.to
 }
 
-func (p goPeer) Put(data interface{}) {
+// Put sends data to the goConn through the channel.
+func (p goConn) Put(data interface{}) {
+	fromto := p.from + p.to
 	p.dir.Lock()
-	if _, ok := p.dir.channel[p.hostname]; !ok {
-		p.dir.channel[p.hostname] = make(chan interface{})
-	}
-	ch := p.dir.channel[p.hostname]
+	ch := p.dir.channel[fromto]
+	// the directory must be unlocked before sending data. otherwise the
+	// receiver would not be able to access this channel from the directory
+	// either.
 	p.dir.Unlock()
 	ch <- data
 }
 
-func (p goPeer) Get() interface{} {
+// Get receives data from the sender.
+func (p goConn) Get() interface{} {
+	// since the channel is owned by the sender, we flip around the ordering of
+	// the fromto key to indicate that we want to receive from this instead of
+	// send.
+	tofrom := p.to + p.from
 	p.dir.Lock()
-	defer p.dir.Unlock()
-	if _, ok := p.dir.channel[p.hostname]; !ok {
-		p.dir.channel[p.hostname] = make(chan interface{})
-	}
-	ch := p.dir.channel[p.hostname]
+	ch := p.dir.channel[tofrom]
+	// as in Put directory must be unlocked to allow other goroutines to reach
+	// their send lines.
 	p.dir.Unlock()
 	data := <-ch
 	return data
