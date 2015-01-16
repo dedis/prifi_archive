@@ -46,7 +46,7 @@ type Host interface {
 	Name() string
 
 	Peers() map[string]Conn // returns the peers list: all connected nodes
-	AddPeer()               // add a node but don't make it child or parent
+	AddPeers(cs ...Conn)    // add a node but don't make it child or parent
 
 	IsRoot() bool // true if this host is the root of the tree
 
@@ -106,7 +106,7 @@ func (h HostNode) IsRoot() bool {
 }
 
 // Peers returns the list of peers as a mapping from hostname to Conn
-func (h HostNode) Peers() {
+func (h HostNode) Peers() map[string]Conn {
 	return h.peers
 }
 

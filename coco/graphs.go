@@ -44,13 +44,13 @@ func loadGraph(name string) (root *SigningNode, hosts map[string]*SigningNode, e
 			return nil, nil, errors.New("improperly formatted file")
 		}
 		h1 := loadHost(host1, hosts)
-		h2 := loadHost(host2, hosts)
+		//h2 := loadHost(host2, hosts)
 		//h1.AddPeer(h2.pub, h2.id)
 		//h2.AddPeer(h1.pub, h1.id)
 		if root == nil {
 			root = h1
 		}
 	}
-	dijkstra(hosts, root)
+	//dijkstra(hosts, root)
 	return root, hosts, err
 }
