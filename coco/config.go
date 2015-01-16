@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/openssl"
 )
 
 /*
@@ -14,60 +17,61 @@ file format: json
 ex.json
 {
 	hosts: ["host1", "host2", "host3"],
-	tree: {host1:{
-		    host2:{},
-			host3:{}}
-		  }
+	tree: {name: host1,
+		   children: [
+		     {name: host2,
+			  children: [{name: host3}, {name: host4}]}
+			 {name: host5,
+			  children: [{name: host6}]}}
+}
+*/
+type ConfigFile struct {
+	Hosts []string `json:"hosts"`
+	Tree  Node     `json:"tree"`
 }
 
-This will be compiled into the specified tree structure with HostNode Hosts and goPeer Peers.
-*/
+type Node struct {
+	Name     string `json:"name"`
+	Children []Node `json:"children,omitempty"`
+}
 
 // HostConfig stores all of the relevant information of the configuration file.
 type HostConfig struct {
-	Hosts map[string]*HostNode // maps hostname to host
-	Dir   *directory           // the directory mapping hostnames to goPeers
-	Root  *HostNode            // the host root of the tree
+	SNodes []*SigningNode       // an array of signing nodes
+	Hosts  map[string]*HostNode // maps hostname to host
+	Dir    *directory           // the directory mapping hostnames to goPeers
+	Root   *HostNode            // the host root of the tree
 }
 
 // NewHostConfig creates a new host configuration that can be populated with
 // hosts.
 func NewHostConfig() *HostConfig {
-	return &HostConfig{Hosts: make(map[string]*HostNode), Dir: newDirectory(), Root: nil}
+	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*HostNode), Dir: newDirectory(), Root: nil}
 }
 
 // ConstructTree does a depth-first construction of the tree specified in the
-// config file. It detects unknown hosts but does not detect the error of
-// multiple root nodes, rather it silently choses just one. ConstructTree must
-// be call AFTER populating the HostConfig with ALL the possible hosts.
-func ConstructTree(tree map[string]interface{}, hc *HostConfig, parent *HostNode) error {
-	// each k will be a sibling in the tree
-	// for each sibling add its children
-	for k, subtree := range tree {
-		if _, ok := hc.Hosts[k]; !ok {
-			fmt.Println("unknown host in tree:", k)
-			return errors.New("unknown host in tree")
-		}
-		h := hc.Hosts[k]
-		// add connection from host to its parent
-		if parent == nil {
-			fmt.Printf("root node is %v\n", h.name)
-			hc.Root = h
-		} else {
-			gc, _ := NewGoConn(hc.Dir, h.name, parent.name)
-			h.AddParent(gc)
-		}
-
-		children := subtree.(map[string]interface{})
-		// add connections from parent to children
-		for child := range children {
-			// ignore the error because we don't care if we have already
-			// constructed this peer before.
-			gc, _ := NewGoConn(hc.Dir, h.name, child)
-			h.AddChildren(gc)
-			fmt.Printf("added %v as child of %v\n", gc.to, h.name)
-		}
-		if err := ConstructTree(children, hc, h); err != nil {
+// config file. ConstructTree must be call AFTER populating the HostConfig with
+// ALL the possible hosts.
+func ConstructTree(n Node, hc *HostConfig, parent *HostNode) error {
+	// get the HostNode associated with n
+	h, ok := hc.Hosts[n.Name]
+	if !ok {
+		fmt.Println("unknown host in tree:", n.Name)
+		return errors.New("unknown host in tree")
+	}
+	// if the parent of this call is nil then this must be the root node
+	if parent == nil {
+		hc.Root = h
+	} else {
+		// connect this node to its parent first
+		gc, _ := NewGoConn(hc.Dir, h.name, parent.name)
+		h.AddParent(gc)
+	}
+	for _, c := range n.Children {
+		// connect this node to its children
+		gc, _ := NewGoConn(hc.Dir, h.name, c.Name)
+		h.AddChildren(gc)
+		if err := ConstructTree(c, hc, h); err != nil {
 			return err
 		}
 	}
@@ -82,18 +86,34 @@ func LoadConfig(fname string) (*HostConfig, error) {
 	if err != nil {
 		return hc, err
 	}
-	var m map[string]interface{}
-	json.Unmarshal(file, &m)
+	var cf ConfigFile
+	err = json.Unmarshal(file, &cf)
+	if err != nil {
+		return hc, err
+	}
 	// read the hosts lists
-	hnames := m["hosts"].([]string)
-	for _, h := range hnames {
+	for _, h := range cf.Hosts {
 		// add to the hosts list if we havent added it before
 		if _, ok := hc.Hosts[h]; !ok {
 			hc.Hosts[h] = NewHostNode(h)
 		}
 	}
-	tree := m["tree"].(map[string]interface{})
-	err = ConstructTree(tree, hc, nil)
-	// construct the host tree
+	err = ConstructTree(cf.Tree, hc, nil)
+	if err != nil {
+		return hc, err
+	}
+	suite := openssl.NewAES128SHA256P256()
+	rand := abstract.HashStream(suite, []byte("example"), nil)
+	for _, h := range hc.Hosts {
+		hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
+	}
+	for _, sn := range hc.SNodes {
+		sn.Listen()
+	}
+	var X_hat abstract.Point = hc.SNodes[1].pubKey
+	for i := 2; i < len(hc.SNodes); i++ {
+		X_hat.Add(X_hat, hc.SNodes[i].pubKey)
+	}
+	hc.SNodes[0].X_hat = X_hat
 	return hc, err
 }
