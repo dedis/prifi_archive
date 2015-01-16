@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dedis/crypto/abstract"
-	"time"
 	// "strconv"
 	// "os"
 )
@@ -63,30 +62,26 @@ func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *S
 func (sn *SigningNode) Listen() {
 	go func() {
 		for {
-			if !sn.IsRoot() {
-				data := sn.GetUp()
-				sn.HandleFromUp(data)
+			if sn.IsRoot() {
+				// Sleep/ Yield until change in network
+				sn.WaitTick()
 			} else {
-				// fmt.Println("I am root")
-				time.Sleep(1 * time.Second)
+				// Determine type of message coming from the parent
+				// Pass the duty of acting on it to another function
+				data := sn.GetUp()
+				switch messg := data.(type) {
+				default:
+					// Not possible in current system where little randomness is allowed
+					// In real system some action is required
+					panic("Message from parent is of unknown type")
+				case AnnouncementMessage:
+					sn.Announce(messg)
+				case ChallengeMessage:
+					sn.Challenge(messg)
+				}
 			}
 		}
 	}()
-}
-
-// Determine type of message coming from the parent
-// Pass the duty of acting on it to another function
-func (sn *SigningNode) HandleFromUp(data interface{}) {
-	switch messg := data.(type) {
-	default:
-		// Not possible in current system where little randomness is allowed
-		// In real system some action is required
-		panic("Message from parent is of unknown type")
-	case AnnouncementMessage:
-		sn.Announce(messg)
-	case ChallengeMessage:
-		sn.Challenge(messg)
-	}
 }
 
 // initiated by root, propagated by all others
@@ -99,16 +94,11 @@ func (sn *SigningNode) Announce(am AnnouncementMessage) {
 
 func (sn *SigningNode) Commit() {
 	// generate secret and point commitment for this round
-	rand := abstract.HashStream(sn.suite, []byte(sn.Name()), nil) // change me
+	rand := sn.suite.Cipher([]byte(sn.Name()))
 	sn.v = sn.suite.Secret().Pick(rand)
 	sn.V = sn.suite.Point().Mul(nil, sn.v)
 	// initialize product of point commitments
-	sn.V_hat = sn.suite.Point()
-	if sn.IsRoot() {
-		sn.V_hat.Null()
-	} else {
-		sn.V_hat = sn.V
-	}
+	sn.V_hat = sn.V
 	// wait for all children to commit
 	dataSlice := sn.GetDown()
 	for _, data := range dataSlice {
@@ -146,12 +136,7 @@ func (sn *SigningNode) Respond() {
 	sn.r = sn.suite.Secret()
 	sn.r.Mul(sn.privKey, sn.c).Sub(sn.v, sn.r)
 	// initialize sum of children's responses
-	sn.r_hat = sn.suite.Secret()
-	if sn.IsRoot() {
-		sn.r_hat.Zero()
-	} else {
-		sn.r_hat.Set(sn.r)
-	}
+	sn.r_hat = sn.r
 	// wait for all children to respond
 	dataSlice := sn.GetDown()
 	for _, data := range dataSlice {
@@ -199,14 +184,9 @@ func (sn *SigningNode) VerifyResponses() error {
 	return nil
 }
 
-// This function has to be eventually removed
 // Returns a secret that depends on on a message and a point
 func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstract.Secret {
-	H := suite.Hash()
-	H.Write(message)
-	H.Write(p.Encode())
-
-	b := H.Sum(nil)
-	s := suite.Stream(b[:suite.KeyLen()])
-	return suite.Secret().Pick(s)
+	c := suite.Cipher(p.Encode(), abstract.More{})
+	c.Crypt(nil, message)
+	return suite.Secret().Pick(c)
 }

@@ -16,7 +16,7 @@ import (
 func TestStatic(t *testing.T) {
 	// Crypto setup
 	suite := openssl.NewAES128SHA256P256()
-	rand := abstract.HashStream(suite, []byte("example"), nil)
+	rand := suite.Cipher([]byte("example"))
 
 	// number of nodes for the test
 	nNodes := 4

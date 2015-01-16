@@ -103,7 +103,7 @@ func LoadConfig(fname string) (*HostConfig, error) {
 		return hc, err
 	}
 	suite := openssl.NewAES128SHA256P256()
-	rand := abstract.HashStream(suite, []byte("example"), nil)
+	rand := suite.Cipher([]byte("example"))
 	for _, h := range hc.Hosts {
 		hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
 	}
