@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 )
 
 // Conn is an abstract bidirectonal connection. It abstracts away the network
@@ -43,11 +44,18 @@ type Conn interface {
 //
 type Host interface {
 	Name() string
-	IsRoot() bool           // true if this host is the root of the tree
+
+	Peers() map[string]Conn // returns the peers list: all connected nodes
+	AddPeer()               // add a node but don't make it child or parent
+
+	IsRoot() bool // true if this host is the root of the tree
+
 	PutUp(interface{})      // send data to parent in host tree
 	GetUp() interface{}     // get data from parent in host tree (blocking)
 	PutDown(interface{})    // send data to children in host tree
 	GetDown() []interface{} // get data from children in host tree (blocking)
+
+	WaitTick() // Sleeps for network implementation dependent amount of time
 }
 
 // HostNode is a simple implementation of Host that does not specify the
@@ -56,17 +64,22 @@ type HostNode struct {
 	name     string          // the hostname
 	parent   Conn            // the Peer representing parent, nil if root
 	children map[string]Conn // a list of unique peers for each hostname
+	peers    map[string]Conn
 }
 
 // NewHostNode creates a new HostNode with a given hostname.
 func NewHostNode(hostname string) *HostNode {
 	h := &HostNode{name: hostname,
-		children: make(map[string]Conn)}
+		children: make(map[string]Conn),
+		peers:    make(map[string]Conn)}
 	return h
 }
 
 // AddParent adds a parent node to the HostNode.
 func (h *HostNode) AddParent(c Conn) {
+	if _, ok := h.peers[c.Name()]; !ok {
+		h.peers[c.Name()] = c
+	}
 	h.parent = c
 }
 
@@ -74,6 +87,9 @@ func (h *HostNode) AddParent(c Conn) {
 // Only unique children will be stored.
 func (h *HostNode) AddChildren(cs ...Conn) {
 	for _, c := range cs {
+		if _, ok := h.peers[c.Name()]; !ok {
+			h.peers[c.Name()] = c
+		}
 		h.children[c.Name()] = c
 	}
 }
@@ -87,6 +103,26 @@ func (h HostNode) Name() string {
 // parent).
 func (h HostNode) IsRoot() bool {
 	return h.parent == nil
+}
+
+// Peers returns the list of peers as a mapping from hostname to Conn
+func (h HostNode) Peers() {
+	return h.peers
+}
+
+// AddPeers adds the list of peers
+func (h HostNode) AddPeers(cs ...Conn) {
+	for _, c := range cs {
+		if _, ok := h.peers[c.Name()]; !ok {
+			h.peers[c.Name()] = c
+		}
+	}
+}
+
+// WaitTick waits for a random amount of time.
+// XXX should it wait for a network change
+func (h HostNode) WaitTick() {
+	time.Sleep(1 * time.Second)
 }
 
 // TODO(dyv): following methods will have to be rethought with network failures and
