@@ -1,8 +1,6 @@
 package coco
 
-import (
-	"github.com/dedis/crypto/abstract"
-)
+import "github.com/dedis/crypto/abstract"
 
 // Broadcasted message initiated and signed by proposer
 type AnnouncementMessage struct {
@@ -20,4 +18,8 @@ type ChallengeMessage struct {
 
 type ResponseMessage struct {
 	r_hat abstract.Secret // response
+}
+
+type TestMessage struct {
+	S abstract.Secret
 }

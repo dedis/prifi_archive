@@ -1,6 +1,7 @@
 package coco
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 	// "fmt"
@@ -64,4 +65,33 @@ func TestStatic(t *testing.T) {
 	// via a simple annoucement
 	nodes[0].logTest = []byte("Hello World")
 	nodes[0].Announce(AnnouncementMessage{nodes[0].logTest})
+}
+
+func TestReadWrite(t *testing.T) {
+	// Crypto setup
+	suite := openssl.NewAES128SHA256P256()
+	rand := suite.Cipher([]byte("example"))
+	// intialize example to be read/ wrote, and a signing node
+	// testBytes := []byte("Hello World")
+	s := suite.Secret().Pick(rand)
+	m := TestMessage{S: s}
+	h := NewHostNode("exampleHost")
+	sn := NewSigningNode(h, suite, rand)
+
+	// test write
+	dataBytes := sn.Write(m)
+	dataInterface, err := sn.Read(dataBytes)
+	if err != nil {
+		t.Error("Decoding didn't work")
+	}
+	fmt.Println(dataInterface)
+
+	switch mDecoded := dataInterface.(type) {
+	case TestMessage:
+		fmt.Println("Decoded annoucement message")
+		fmt.Println(mDecoded)
+	default:
+		t.Error("Decoding didn't work")
+	}
+
 }

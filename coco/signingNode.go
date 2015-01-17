@@ -1,6 +1,7 @@
 package coco
 
 import (
+	"bytes"
 	"crypto/cipher"
 
 	"github.com/dedis/crypto/abstract"
@@ -36,4 +37,19 @@ func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *S
 func (sn *SigningNode) addPeer(conn Conn, pubKey abstract.Point) {
 	sn.Host.AddPeers(conn)
 	sn.peerKeys[conn.Name()] = pubKey
+}
+
+func (sn *SigningNode) Write(data interface{}) []byte {
+	buf := bytes.Buffer{}
+	abstract.Write(&buf, &data, sn.suite)
+	return buf.Bytes()
+}
+
+func (sn *SigningNode) Read(data []byte) (interface{}, error) {
+	buf := bytes.NewBuffer(data)
+	messg := TestMessage{}
+	if err := abstract.Read(buf, &messg, sn.suite); err != nil {
+		return nil, err
+	}
+	return messg, nil
 }
