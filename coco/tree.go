@@ -47,6 +47,8 @@ type Host interface {
 
 	Peers() map[string]Conn // returns the peers list: all connected nodes
 	AddPeers(cs ...Conn)    // add a node but don't make it child or parent
+	AddParent(cs Conn)      // ad a parent connection
+	AddChildren(cs ...Conn) // add child connections
 
 	IsRoot() bool // true if this host is the root of the tree
 
@@ -219,7 +221,7 @@ func NewGoConn(dir *directory, from, to string) (*goConn, error) {
 
 // Name returns the from+to identifier of the goConn.
 func (c goConn) Name() string {
-	return c.from + c.to
+	return c.to
 }
 
 // Put sends data to the goConn through the channel.

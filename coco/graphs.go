@@ -2,6 +2,7 @@ package coco
 
 import (
 	"bufio"
+	"container/list"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,31 @@ import (
 
 var testSuite = openssl.NewAES128SHA256P256()
 var testRand = random.Stream
+
+// dijkstra is actually implemented as BFS right now because it is equivalent
+// when edge weights are all 1.
+func dijkstra(m map[string]*SigningNode, root *SigningNode) {
+	l := list.New()
+	visited := make(map[string]bool)
+	l.PushFront(root)
+	visited[root.Name()] = true
+	for e := l.Front(); e != nil; e = l.Front() {
+		sn := e.Value.(*SigningNode)
+		// make all unvisited peers children
+		// and mark them as visited
+		for name, conn := range sn.Peers() {
+			// visited means it is already on the tree.
+			if visited[name] {
+				continue
+			}
+			visited[name] = true
+			// add the associated peer/connection as a child
+			sn.AddChildren(conn)
+			cn := m[name]
+			l.PushFront(cn)
+		}
+	}
+}
 
 func loadHost(hostname string, m map[string]*SigningNode) *SigningNode {
 	if h := m[hostname]; h != nil {
@@ -51,6 +77,6 @@ func loadGraph(name string) (root *SigningNode, hosts map[string]*SigningNode, e
 			root = h1
 		}
 	}
-	//dijkstra(hosts, root)
+	dijkstra(hosts, root)
 	return root, hosts, err
 }
