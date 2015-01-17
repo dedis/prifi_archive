@@ -67,7 +67,23 @@ func TestStatic(t *testing.T) {
 	nodes[0].Announce(AnnouncementMessage{nodes[0].logTest})
 }
 
+// Configuration file data/exconf.json
+//       0
+//      / \
+//     1   4
+//    / \   \
+//   2   3   5
+func TestTreeFromStaticConfig(t *testing.T) {
+	hostConfig, _ := LoadConfig("data/exconf.json")
+
+	// Have root node initiate the signing protocol
+	// via a simple annoucement
+	hostConfig.SNodes[0].logTest = []byte("Hello World")
+	hostConfig.SNodes[0].Announce(AnnouncementMessage{hostConfig.SNodes[0].logTest})
+}
+
 func TestReadWrite(t *testing.T) {
+	return
 	// Crypto setup
 	suite := openssl.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
