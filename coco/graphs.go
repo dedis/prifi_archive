@@ -3,16 +3,16 @@ package coco
 import (
 	"bufio"
 	"container/list"
+	"crypto/cipher"
 	"errors"
 	"fmt"
 	"os"
 
-	"github.com/dedis/crypto/openssl"
-	"github.com/dedis/crypto/random"
+	"github.com/dedis/crypto/abstract"
 )
 
-var testSuite = openssl.NewAES128SHA256P256()
-var testRand = random.Stream
+// var testSuite = openssl.NewAES128SHA256P256()
+// var testRand = random.Stream
 
 // dijkstra is actually implemented as BFS right now because it is equivalent
 // when edge weights are all 1.
@@ -39,7 +39,7 @@ func dijkstra(m map[string]*SigningNode, root *SigningNode) {
 	}
 }
 
-func loadHost(hostname string, m map[string]*SigningNode) *SigningNode {
+func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Suite, testRand cipher.Stream) *SigningNode {
 	if h := m[hostname]; h != nil {
 		return h
 	}
@@ -52,12 +52,13 @@ func loadHost(hostname string, m map[string]*SigningNode) *SigningNode {
 // from1 to2
 // from2 to2
 // ...
-func loadGraph(name string) (root *SigningNode, hosts map[string]*SigningNode, err error) {
+func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (root *SigningNode, hosts map[string]*SigningNode, err error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return nil, nil, err
 	}
 	s := bufio.NewScanner(f)
+	dir := newDirectory()
 	// generate the list of hosts
 	hosts = make(map[string]*SigningNode)
 	for s.Scan() {
@@ -69,10 +70,12 @@ func loadGraph(name string) (root *SigningNode, hosts map[string]*SigningNode, e
 		if n != 2 {
 			return nil, nil, errors.New("improperly formatted file")
 		}
-		h1 := loadHost(host1, hosts)
-		//h2 := loadHost(host2, hosts)
-		//h1.AddPeer(h2.pub, h2.id)
-		//h2.AddPeer(h1.pub, h1.id)
+		h1 := loadHost(host1, hosts, testSuite, testRand)
+		h2 := loadHost(host2, hosts, testSuite, testRand)
+		c12, _ := NewGoConn(dir, h1.Name(), h2.Name())
+		c21, _ := NewGoConn(dir, h2.Name(), h1.Name())
+		h1.addPeer(c12, h2.pubKey)
+		h2.addPeer(c21, h1.pubKey)
 		if root == nil {
 			root = h1
 		}
