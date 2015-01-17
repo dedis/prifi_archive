@@ -1,9 +1,9 @@
 package coco
 
 import (
-	"crypto/cipher"
 	"errors"
 	"fmt"
+
 	"github.com/dedis/crypto/abstract"
 	// "strconv"
 	// "os"
@@ -14,50 +14,6 @@ import (
 // 2. Commitment
 // 3. Challenge
 // 4. Response
-
-type SigningNode struct {
-	Host
-	suite   abstract.Suite
-	pubKey  abstract.Point  // long lasting public key
-	privKey abstract.Secret // long lasting private key
-
-	v abstract.Secret // round lasting secret
-	V abstract.Point  // round lasting commitment point
-	c abstract.Secret // round lasting challenge
-	r abstract.Secret // round lasting response
-
-	V_hat abstract.Point  // aggregate of commit points
-	r_hat abstract.Secret // aggregate of responses
-	X_hat abstract.Point  // aggregate of public keys
-
-	logTest []byte // for testing purposes
-}
-
-// Broadcasted message initiated and signed by proposer
-type AnnouncementMessage struct {
-	logTest []byte
-}
-
-type CommitmentMessage struct {
-	V     abstract.Point // commitment Point
-	V_hat abstract.Point // product of children's commitment points
-}
-
-type ChallengeMessage struct {
-	c abstract.Secret // challenge
-}
-
-type ResponseMessage struct {
-	r_hat abstract.Secret // response
-}
-
-func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *SigningNode {
-	sn := &SigningNode{Host: hn, suite: suite}
-	sn.privKey = suite.Secret().Pick(random)
-	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
-	sn.X_hat = suite.Point().Null()
-	return sn
-}
 
 // Start listening for messages coming from parent(up)
 func (sn *SigningNode) Listen() {
