@@ -55,6 +55,7 @@ func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *S
 	sn := &SigningNode{Host: hn, suite: suite}
 	sn.privKey = suite.Secret().Pick(random)
 	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
+	sn.X_hat = suite.Point().Null()
 	return sn
 }
 
@@ -113,7 +114,6 @@ func (sn *SigningNode) Commit() {
 		}
 	}
 	if sn.IsRoot() {
-		fmt.Println(sn.Name(), "finalizing commit")
 		sn.FinalizeCommits()
 	} else {
 		// create and putup own commit message
@@ -150,10 +150,8 @@ func (sn *SigningNode) Respond() {
 		}
 	}
 
-	if sn.IsRoot() {
-		fmt.Println(sn.Name(), "verifying response")
-		sn.VerifyResponses()
-	} else {
+	sn.VerifyResponses()
+	if !sn.IsRoot() {
 		// create and putup own response message
 		sn.PutUp(ResponseMessage{sn.r_hat})
 	}
@@ -166,7 +164,7 @@ func (sn *SigningNode) FinalizeCommits() {
 	sn.Challenge(ChallengeMessage{c: sn.c})
 }
 
-// Called *only* by root node after receiving all responses
+// Called by every node after receiving aggregate responses from descendants
 func (sn *SigningNode) VerifyResponses() error {
 	// Check that: base**r_hat * X_hat**c == V_hat
 	// Equivalent to base**(r+xc) == base**(v) == T in vanillaElGamal
@@ -176,11 +174,14 @@ func (sn *SigningNode) VerifyResponses() error {
 	T.Add(T.Mul(nil, sn.r_hat), P.Mul(sn.X_hat, sn.c))
 	c2 := hashElGamal(sn.suite, sn.logTest, T)
 
-	if !sn.c.Equal(c2) {
-		// panic("Veryfing ElGamal Collective Signature failed")
+	// intermediary nodes check partial responses aginst their partial keys
+	// the root node is also able to check against the challenge it emitted
+	if !T.Equal(sn.V_hat) || (sn.IsRoot() && !sn.c.Equal(c2)) {
+		fmt.Println(sn.Name(), "reports ElGamal Collective Signature failed")
 		return errors.New("Veryfing ElGamal Collective Signature failed")
 	}
-	fmt.Println("ElGamal Collective Signature succeeded")
+
+	fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
 	return nil
 }
 

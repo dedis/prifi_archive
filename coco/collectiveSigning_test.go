@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"testing"
 	// "fmt"
-	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/openssl"
 )
 
@@ -53,17 +52,16 @@ func TestStatic(t *testing.T) {
 		nodes[i].Listen() // start listening for messages from within the tree
 	}
 
-	// initialize root node with knowledge of the
+	// initialize all nodes with knowledge of
 	// combined public keys of all its descendents
-	var X_hat abstract.Point = nodes[1].pubKey
-	for i := 2; i < nNodes; i++ {
-		X_hat.Add(X_hat, nodes[i].pubKey)
-	}
-	nodes[0].X_hat = X_hat
+	nodes[2].X_hat = nodes[2].pubKey
+	nodes[3].X_hat = nodes[3].pubKey
+	nodes[1].X_hat.Add(nodes[1].pubKey, nodes[2].X_hat)
+	nodes[1].X_hat.Add(nodes[1].X_hat, nodes[3].X_hat)
+	nodes[0].X_hat.Add(nodes[0].pubKey, nodes[1].X_hat)
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].logTest = []byte("Hello World")
 	nodes[0].Announce(AnnouncementMessage{nodes[0].logTest})
-
 }
