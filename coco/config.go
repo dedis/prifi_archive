@@ -1,10 +1,12 @@
 package coco
 
 import (
+	"crypto/cipher"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/openssl"
@@ -51,28 +53,33 @@ func NewHostConfig() *HostConfig {
 // ConstructTree does a depth-first construction of the tree specified in the
 // config file. ConstructTree must be call AFTER populating the HostConfig with
 // ALL the possible hosts.
-func ConstructTree(n Node, hc *HostConfig, parent *HostNode) (*HostNode, error) {
+func ConstructTree(n Node, hc *HostConfig, parent *HostNode, suite abstract.Suite, rand cipher.Stream) (*SigningNode, error) {
 	// get the HostNode associated with n
 	h, ok := hc.Hosts[n.Name]
 	if !ok {
 		fmt.Println("unknown host in tree:", n.Name)
 		return nil, errors.New("unknown host in tree")
 	}
+	hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
+	sn := hc.SNodes[len(hc.SNodes)-1]
 	// if the parent of this call is nil then this must be the root node
 	if parent != nil {
 		// connect this node to its parent first
 		gc, _ := NewGoConn(hc.Dir, h.name, parent.name)
 		h.AddParent(gc)
 	}
+	sn.X_hat = sn.pubKey
 	for _, c := range n.Children {
 		// connect this node to its children
 		gc, _ := NewGoConn(hc.Dir, h.name, c.Name)
 		h.AddChildren(gc)
-		if _, err := ConstructTree(c, hc, h); err != nil {
+		csn, err := ConstructTree(c, hc, h, suite, rand)
+		if err != nil {
 			return nil, err
 		}
+		sn.X_hat.Add(sn.X_hat, csn.X_hat)
 	}
-	return h, nil
+	return sn, nil
 }
 
 // LoadConfig loads a configuration file in the format specified above. It
@@ -95,26 +102,18 @@ func LoadConfig(fname string) (*HostConfig, error) {
 			hc.Hosts[h] = NewHostNode(h)
 		}
 	}
-	root, err := ConstructTree(cf.Tree, hc, nil)
+	suite := openssl.NewAES128SHA256P256()
+	rand := suite.Cipher([]byte("example"))
+	rn, err := ConstructTree(cf.Tree, hc, nil, suite, rand)
 	if err != nil {
 		return hc, err
 	}
-	suite := openssl.NewAES128SHA256P256()
-	rand := suite.Cipher([]byte("example"))
-	for _, h := range hc.Hosts {
-		hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
-		if h == root {
-			last := len(hc.SNodes) - 1
-			hc.SNodes[0], hc.SNodes[last] = hc.SNodes[last], hc.SNodes[0]
-		}
+	if rn != hc.SNodes[0] {
+		log.Fatal("root node is not the zeroth")
 	}
+
 	for _, sn := range hc.SNodes {
 		sn.Listen()
 	}
-	var X_hat abstract.Point = hc.SNodes[1].pubKey
-	for i := 2; i < len(hc.SNodes); i++ {
-		X_hat.Add(X_hat, hc.SNodes[i].pubKey)
-	}
-	hc.SNodes[0].X_hat = X_hat
 	return hc, err
 }
