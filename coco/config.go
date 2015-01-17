@@ -40,29 +40,26 @@ type HostConfig struct {
 	SNodes []*SigningNode       // an array of signing nodes
 	Hosts  map[string]*HostNode // maps hostname to host
 	Dir    *directory           // the directory mapping hostnames to goPeers
-	Root   *HostNode            // the host root of the tree
 }
 
 // NewHostConfig creates a new host configuration that can be populated with
 // hosts.
 func NewHostConfig() *HostConfig {
-	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*HostNode), Dir: newDirectory(), Root: nil}
+	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*HostNode), Dir: newDirectory()}
 }
 
 // ConstructTree does a depth-first construction of the tree specified in the
 // config file. ConstructTree must be call AFTER populating the HostConfig with
 // ALL the possible hosts.
-func ConstructTree(n Node, hc *HostConfig, parent *HostNode) error {
+func ConstructTree(n Node, hc *HostConfig, parent *HostNode) (*HostNode, error) {
 	// get the HostNode associated with n
 	h, ok := hc.Hosts[n.Name]
 	if !ok {
 		fmt.Println("unknown host in tree:", n.Name)
-		return errors.New("unknown host in tree")
+		return nil, errors.New("unknown host in tree")
 	}
 	// if the parent of this call is nil then this must be the root node
-	if parent == nil {
-		hc.Root = h
-	} else {
+	if parent != nil {
 		// connect this node to its parent first
 		gc, _ := NewGoConn(hc.Dir, h.name, parent.name)
 		h.AddParent(gc)
@@ -71,11 +68,11 @@ func ConstructTree(n Node, hc *HostConfig, parent *HostNode) error {
 		// connect this node to its children
 		gc, _ := NewGoConn(hc.Dir, h.name, c.Name)
 		h.AddChildren(gc)
-		if err := ConstructTree(c, hc, h); err != nil {
-			return err
+		if _, err := ConstructTree(c, hc, h); err != nil {
+			return nil, err
 		}
 	}
-	return nil
+	return h, nil
 }
 
 // LoadConfig loads a configuration file in the format specified above. It
@@ -98,7 +95,7 @@ func LoadConfig(fname string) (*HostConfig, error) {
 			hc.Hosts[h] = NewHostNode(h)
 		}
 	}
-	err = ConstructTree(cf.Tree, hc, nil)
+	root, err := ConstructTree(cf.Tree, hc, nil)
 	if err != nil {
 		return hc, err
 	}
@@ -106,6 +103,10 @@ func LoadConfig(fname string) (*HostConfig, error) {
 	rand := suite.Cipher([]byte("example"))
 	for _, h := range hc.Hosts {
 		hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
+		if h == root {
+			last := len(hc.SNodes) - 1
+			hc.SNodes[0], hc.SNodes[last] = hc.SNodes[last], hc.SNodes[0]
+		}
 	}
 	for _, sn := range hc.SNodes {
 		sn.Listen()
