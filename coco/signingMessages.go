@@ -2,10 +2,11 @@ package coco
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/gob"
 	"fmt"
 
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/openssl"
 )
 
 // All message structures defined in this package are used in the
@@ -35,7 +36,7 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	var sub []byte
 	var err error
-	fmt.Fprintf(&b, "%v ", sm.Type) // space needed after type
+	b.WriteByte(byte(sm.Type))
 	// marshal sub message based on its Type
 	switch sm.Type {
 	case Announcement:
@@ -55,12 +56,9 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 }
 
 func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
-	b := bytes.NewBuffer(data)
-	n, err := fmt.Fscan(b, &sm.Type)
-	if err != nil {
-		return err
-	}
-	msgBytes := data[n:]
+	sm.Type = MessageType(data[0])
+	msgBytes := data[1:]
+	var err error
 	switch sm.Type {
 	case Announcement:
 		sm.am = &AnnouncementMessage{}
@@ -103,50 +101,50 @@ type TestMessage struct {
 
 func (am AnnouncementMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
+	enc := gob.NewEncoder(&b)
 	err := enc.Encode(am.logTest)
 	return b.Bytes(), err
 }
 
 func (am *AnnouncementMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
-	dec := json.NewDecoder(b)
+	dec := gob.NewDecoder(b)
 	err := dec.Decode(&am.logTest)
 	return err
 }
 
 func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
-	var b bytes.Buffer
-	fmt.Fprintln(&b, cm.V, cm.V_hat)
+	b := bytes.Buffer{}
+	abstract.Write(&b, &cm, openssl.NewAES128SHA256P256())
 	return b.Bytes(), nil
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
-	_, err := fmt.Fscanln(b, &cm.V, &cm.V_hat)
+	err := abstract.Read(b, cm, openssl.NewAES128SHA256P256())
 	return err
 }
 
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
-	var b bytes.Buffer
-	fmt.Fprintln(&b, cm.c)
+	b := bytes.Buffer{}
+	abstract.Write(&b, &cm, openssl.NewAES128SHA256P256())
 	return b.Bytes(), nil
 }
 
 func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
-	_, err := fmt.Fscanln(b, &cm.c)
+	err := abstract.Read(b, cm, openssl.NewAES128SHA256P256())
 	return err
 }
 
 func (rm ResponseMessage) MarshalBinary() ([]byte, error) {
-	var b bytes.Buffer
-	fmt.Fprintln(&b, rm.r_hat)
+	b := bytes.Buffer{}
+	abstract.Write(&b, &rm, openssl.NewAES128SHA256P256())
 	return b.Bytes(), nil
 }
 
 func (rm *ResponseMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
-	_, err := fmt.Fscanln(b, &rm.r_hat)
+	err := abstract.Read(b, rm, openssl.NewAES128SHA256P256())
 	return err
 }
