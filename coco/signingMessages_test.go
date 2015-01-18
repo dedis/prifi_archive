@@ -7,7 +7,7 @@ import (
 
 func TestMarshallUnmarshall(t *testing.T) {
 	logTest := []byte("Hello World")
-	am := AnnouncementMessage{logTest: logTest}
+	am := AnnouncementMessage{LogTest: logTest}
 
 	dataBytes, err := AnnouncementMessage.MarshalBinary(am)
 	if err != nil {

@@ -3,7 +3,6 @@ package coco
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/openssl"
@@ -51,7 +50,6 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 	if err == nil {
 		b.Write(sub)
 	}
-	fmt.Print(string(b.Bytes()))
 	return b.Bytes(), err
 }
 
@@ -78,7 +76,7 @@ func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
 
 // Broadcasted message initiated and signed by proposer
 type AnnouncementMessage struct {
-	logTest []byte
+	LogTest []byte
 }
 
 type CommitmentMessage struct {
@@ -87,11 +85,11 @@ type CommitmentMessage struct {
 }
 
 type ChallengeMessage struct {
-	c abstract.Secret // challenge
+	C abstract.Secret // challenge
 }
 
 type ResponseMessage struct {
-	r_hat abstract.Secret // response
+	R_hat abstract.Secret // response
 }
 
 type TestMessage struct {
@@ -102,14 +100,14 @@ type TestMessage struct {
 func (am AnnouncementMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
-	err := enc.Encode(am.logTest)
+	err := enc.Encode(am.LogTest)
 	return b.Bytes(), err
 }
 
 func (am *AnnouncementMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(b)
-	err := dec.Decode(&am.logTest)
+	err := dec.Decode(&am.LogTest)
 	return err
 }
 

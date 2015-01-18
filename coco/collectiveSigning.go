@@ -102,7 +102,7 @@ func (sn *SigningNode) Commit() {
 // initiated by root, propagated by all others
 func (sn *SigningNode) Challenge(chm *ChallengeMessage) {
 	// register challenge
-	sn.c = chm.c
+	sn.c = chm.C
 	// inform all children of challenge
 	// PutDown requires each child to have his own message
 	messgs := make([]BinaryMarshaler, sn.NChildren())
@@ -139,7 +139,7 @@ func (sn *SigningNode) Respond() {
 			// In real system failing is required
 			panic("Reply to challenge is not a response")
 		case Response:
-			sn.r_hat.Add(sn.r_hat, sm.rm.r_hat)
+			sn.r_hat.Add(sn.r_hat, sm.rm.R_hat)
 		}
 	}
 
@@ -156,7 +156,7 @@ func (sn *SigningNode) Respond() {
 func (sn *SigningNode) FinalizeCommits() {
 	// challenge = Hash(message, sn.V_hat)
 	sn.c = hashElGamal(sn.suite, sn.logTest, sn.V_hat)
-	sn.Challenge(&ChallengeMessage{c: sn.c})
+	sn.Challenge(&ChallengeMessage{C: sn.c})
 }
 
 // Called by every node after receiving aggregate responses from descendants
