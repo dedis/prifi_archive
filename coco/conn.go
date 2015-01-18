@@ -15,6 +15,18 @@ type Conn interface {
 	Get() interface{}     // gets data from connection
 }
 
+// Taken from: http://golang.org/pkg/encoding/#BinaryMarshaler
+// All messages passing through our conn must implement their own  BinaryMarshaler
+type BinaryMarshaler interface {
+	MarshalBinary() (data []byte, err error)
+}
+
+// Taken from: http://golang.org/pkg/encoding/#BinaryMarshaler
+// All messages passing through our conn must implement their own BinaryUnmarshaler
+type BinaryUnmarshaler interface {
+	UnmarshalBinary(data []byte) error
+}
+
 // directory is a testing structure for the goConn. It allows us to simulate
 // tcp network connections locally (and is easily adaptable for network
 // connections). A single directory should be shared between all goConns's that
