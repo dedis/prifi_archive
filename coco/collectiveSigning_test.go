@@ -63,7 +63,7 @@ func TestStatic(t *testing.T) {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].logTest = []byte("Hello World")
-	nodes[0].Announce(AnnouncementMessage{nodes[0].logTest})
+	nodes[0].Announce(&AnnouncementMessage{nodes[0].logTest})
 }
 
 // Configuration file data/exconf.json
@@ -78,5 +78,5 @@ func TestTreeFromStaticConfig(t *testing.T) {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	hostConfig.SNodes[0].logTest = []byte("Hello World")
-	hostConfig.SNodes[0].Announce(AnnouncementMessage{hostConfig.SNodes[0].logTest})
+	hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].logTest})
 }

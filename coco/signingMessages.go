@@ -47,6 +47,18 @@ func (am *AnnouncementMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
+	var b bytes.Buffer
+	fmt.Fprintln(&b, cm.V, cm.V_hat)
+	return b.Bytes(), nil
+}
+
+func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
+	b := bytes.NewBuffer(data)
+	_, err := fmt.Fscanln(b, &cm.V, &cm.V_hat)
+	return err
+}
+
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintln(&b, cm.c)

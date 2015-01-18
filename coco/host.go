@@ -38,13 +38,14 @@ type Host interface {
 	AddPeers(cs ...Conn)    // add a node but don't make it child or parent
 	AddParent(cs Conn)      // ad a parent connection
 	AddChildren(cs ...Conn) // add child connections
+	NChildren() int
 
 	IsRoot() bool // true if this host is the root of the tree
 
-	PutUp(interface{})      // send data to parent in host tree
-	GetUp() interface{}     // get data from parent in host tree (blocking)
-	PutDown(interface{})    // send data to children in host tree
-	GetDown() []interface{} // get data from children in host tree (blocking)
+	PutUp(BinaryMarshaler) error       // send data to parent in host tree
+	GetUp(BinaryUnmarshaler) error     // get data from parent in host tree (blocking)
+	PutDown([]BinaryMarshaler) error   // send data to children in host tree
+	GetDown([]BinaryUnmarshaler) error // get data from children in host tree (blocking)
 
 	WaitTick() // Sleeps for network implementation dependent amount of time
 }
@@ -85,6 +86,10 @@ func (h *HostNode) AddChildren(cs ...Conn) {
 	}
 }
 
+func (h *HostNode) NChildren() int {
+	return len(h.children)
+}
+
 // Name returns the hostname of the HostNode.
 func (h HostNode) Name() string {
 	return h.name
@@ -122,40 +127,55 @@ func (h HostNode) WaitTick() {
 
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h *HostNode) PutUp(data interface{}) {
-	h.parent.Put(data)
+func (h *HostNode) PutUp(data BinaryMarshaler) error {
+	return h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h *HostNode) GetUp() interface{} {
-	return h.parent.Get()
+func (h *HostNode) GetUp(data BinaryUnmarshaler) error {
+	return h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
-func (h *HostNode) PutDown(data interface{}) {
-	for _, c := range h.children {
-		c.Put(data)
+func (h *HostNode) PutDown(data []BinaryMarshaler) error {
+	if len(data) != len(h.children) {
+		panic("number of messages passed down != number of children")
 	}
+	// Try to send the message to all children
+	// If at least on of the attempts fails, return a non-nil error
+	var err error
+	i := 0
+	for _, c := range h.children {
+		if e := c.Put(data[i]); e != nil {
+			err = e
+		}
+		i++
+	}
+	return err
 }
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
-func (h *HostNode) GetDown() []interface{} {
+func (h *HostNode) GetDown(data []BinaryUnmarshaler) error {
 	var mu sync.Mutex
-	data := make([]interface{}, 0)
 	var wg sync.WaitGroup
+	var err error
+	i := 0
 	for _, c := range h.children {
 		wg.Add(1)
-		go func(c Conn) {
+		go func(i int, c Conn) {
 			defer wg.Done()
-			d := c.Get()
-			mu.Lock()
-			data = append(data, d)
-			mu.Unlock()
-		}(c)
+			e := c.Get(data[i])
+			if e != nil {
+				mu.Lock()
+				err = e
+				mu.Unlock()
+			}
+		}(i, c)
+		i++
 	}
 	wg.Wait()
-	return data
+	return err
 }

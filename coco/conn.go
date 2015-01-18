@@ -11,8 +11,8 @@ import (
 // layer as well as the data-format for communication.
 type Conn interface {
 	Name() string
-	Put(data interface{}) // sends data through the connection
-	Get() interface{}     // gets data from connection
+	Put(BinaryMarshaler) error   // sends data through the connection
+	Get(BinaryUnmarshaler) error // gets data from connection
 }
 
 // Taken from: http://golang.org/pkg/encoding/#BinaryMarshaler
@@ -33,14 +33,14 @@ type BinaryUnmarshaler interface {
 // are operating in the same network 'space'. If they are on the same tree they
 // should share a directory.
 type directory struct {
-	sync.Mutex                             // protects accesses to channel and nameToPeer
-	channel    map[string]chan interface{} // one channel per peer-to-peer connection
-	nameToPeer map[string]*goConn          // keeps track of duplicate connections
+	sync.Mutex                        // protects accesses to channel and nameToPeer
+	channel    map[string]chan []byte // one channel per peer-to-peer connection
+	nameToPeer map[string]*goConn     // keeps track of duplicate connections
 }
 
 /// newDirectory creates a new directory for registering goPeers.
 func newDirectory() *directory {
-	return &directory{channel: make(map[string]chan interface{}),
+	return &directory{channel: make(map[string]chan []byte),
 		nameToPeer: make(map[string]*goConn)}
 }
 
@@ -71,7 +71,7 @@ func NewGoConn(dir *directory, from, to string) (*goConn, error) {
 		// return the already existant peer
 		return gc.dir.nameToPeer[fromto], PeerExists
 	}
-	gc.dir.channel[fromto] = make(chan interface{})
+	gc.dir.channel[fromto] = make(chan []byte)
 	return gc, nil
 }
 
@@ -81,7 +81,7 @@ func (c goConn) Name() string {
 }
 
 // Put sends data to the goConn through the channel.
-func (c *goConn) Put(data interface{}) {
+func (c *goConn) Put(data BinaryMarshaler) error {
 	fromto := c.from + c.to
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
@@ -89,11 +89,16 @@ func (c *goConn) Put(data interface{}) {
 	// receiver would not be able to access this channel from the directory
 	// either.
 	c.dir.Unlock()
-	ch <- data
+	b, err := data.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	ch <- b
+	return nil
 }
 
 // Get receives data from the sender.
-func (c *goConn) Get() interface{} {
+func (c *goConn) Get(bum BinaryUnmarshaler) error {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
@@ -103,8 +108,9 @@ func (c *goConn) Get() interface{} {
 	// as in Put directory must be unlocked to allow other goroutines to reach
 	// their send lines.
 	c.dir.Unlock()
+
 	data := <-ch
-	return data
+	return bum.UnmarshalBinary(data)
 }
 
 // TcpConn is a prototype TCP connection with gob encoding.

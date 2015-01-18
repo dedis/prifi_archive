@@ -25,15 +25,19 @@ func (sn *SigningNode) Listen() {
 			} else {
 				// Determine type of message coming from the parent
 				// Pass the duty of acting on it to another function
-				data := sn.GetUp()
-				switch messg := data.(type) {
+				var bum BinaryUnmarshaler
+				if err := sn.GetUp(bum); err != nil {
+					// TODO: actually handle network failures
+					panic("could not get up all messages in listen" + err.Error())
+				}
+				switch messg := bum.(type) {
 				default:
 					// Not possible in current system where little randomness is allowed
 					// In real system some action is required
 					panic("Message from parent is of unknown type")
-				case AnnouncementMessage:
+				case *AnnouncementMessage:
 					sn.Announce(messg)
-				case ChallengeMessage:
+				case *ChallengeMessage:
 					sn.Challenge(messg)
 				}
 			}
@@ -42,9 +46,18 @@ func (sn *SigningNode) Listen() {
 }
 
 // initiated by root, propagated by all others
-func (sn *SigningNode) Announce(am AnnouncementMessage) {
-	// inform all children of announcement
-	sn.PutDown(am)
+func (sn *SigningNode) Announce(am *AnnouncementMessage) {
+	// Inform all children of announcement
+	// PutDown requires each child to have his own message
+	// XXX AnnoucementMessage are read-only it's ok to use pointers to one message
+	messgs := make([]BinaryMarshaler, sn.NChildren())
+	for i := range messgs {
+		messgs[i] = am
+	}
+	if err := sn.PutDown(messgs); err != nil {
+		// TODO: actually handle network failures
+		panic("could not put down all Annoucement Messages" + err.Error())
+	}
 	// initiate commit phase
 	sn.Commit()
 }
@@ -57,15 +70,19 @@ func (sn *SigningNode) Commit() {
 	// initialize product of point commitments
 	sn.V_hat = sn.V
 	// wait for all children to commit
-	dataSlice := sn.GetDown()
-	for _, data := range dataSlice {
-		switch cm := data.(type) {
+	messgs := make([]BinaryUnmarshaler, sn.NChildren())
+	if err := sn.GetDown(messgs); err != nil {
+		// TODO: actually handle network failures
+		panic("could not get down all Commit Messages" + err.Error())
+	}
+	for _, messg := range messgs {
+		switch cm := messg.(type) {
 		default:
 			// Not possible in current system where little randomness is allowed
 			// In real system failing is required
 			fmt.Println(cm)
 			panic("Reply to announcement is not a commit")
-		case CommitmentMessage:
+		case *CommitmentMessage:
 			sn.V_hat.Add(sn.V_hat, cm.V_hat)
 		}
 	}
@@ -78,11 +95,20 @@ func (sn *SigningNode) Commit() {
 }
 
 // initiated by root, propagated by all others
-func (sn *SigningNode) Challenge(cm ChallengeMessage) {
+func (sn *SigningNode) Challenge(cm *ChallengeMessage) {
 	// register challenge
 	sn.c = cm.c
 	// inform all children of challenge
-	sn.PutDown(cm)
+	// PutDown requires each child to have his own message
+	// XXX ChallengeMessages are read-only it's ok to use pointers to one message
+	messgs := make([]BinaryMarshaler, sn.NChildren())
+	for i := range messgs {
+		messgs[i] = cm
+	}
+	if err := sn.PutDown(messgs); err != nil {
+		// TODO: actually handle network failures
+		panic("could not put down all Challenge Messages" + err.Error())
+	}
 	// initiate response phase
 	sn.Respond()
 }
@@ -94,14 +120,18 @@ func (sn *SigningNode) Respond() {
 	// initialize sum of children's responses
 	sn.r_hat = sn.r
 	// wait for all children to respond
-	dataSlice := sn.GetDown()
-	for _, data := range dataSlice {
-		switch rm := data.(type) {
+	messgs := make([]BinaryUnmarshaler, sn.NChildren())
+	if err := sn.GetDown(messgs); err != nil {
+		// TODO: actually handle network failures
+		panic("could not get down all Respond Messages" + err.Error())
+	}
+	for _, messg := range messgs {
+		switch rm := messg.(type) {
 		default:
 			// Not possible in current system where little randomness is allowed
 			// In real system failing is required
 			panic("Reply to challenge is not a response")
-		case ResponseMessage:
+		case *ResponseMessage:
 			sn.r_hat.Add(sn.r_hat, rm.r_hat)
 		}
 	}
@@ -117,7 +147,7 @@ func (sn *SigningNode) Respond() {
 func (sn *SigningNode) FinalizeCommits() {
 	// challenge = Hash(message, sn.V_hat)
 	sn.c = hashElGamal(sn.suite, sn.logTest, sn.V_hat)
-	sn.Challenge(ChallengeMessage{c: sn.c})
+	sn.Challenge(&ChallengeMessage{c: sn.c})
 }
 
 // Called by every node after receiving aggregate responses from descendants
