@@ -25,20 +25,19 @@ func (sn *SigningNode) Listen() {
 			} else {
 				// Determine type of message coming from the parent
 				// Pass the duty of acting on it to another function
-				var bum BinaryUnmarshaler
-				if err := sn.GetUp(bum); err != nil {
-					// TODO: actually handle network failures
-					panic("could not get up all messages in listen" + err.Error())
+				sm := SigningMessage{}
+				if err := sn.GetUp(&sm); err != nil {
+					panic("could not get up message in listen " + err.Error())
 				}
-				switch messg := bum.(type) {
+				switch sm.Type {
 				default:
 					// Not possible in current system where little randomness is allowed
 					// In real system some action is required
 					panic("Message from parent is of unknown type")
-				case *AnnouncementMessage:
-					sn.Announce(messg)
-				case *ChallengeMessage:
-					sn.Challenge(messg)
+				case Announcement:
+					sn.Announce(sm.am)
+				case Challenge:
+					sn.Challenge(sm.chm)
 				}
 			}
 		}
@@ -47,15 +46,15 @@ func (sn *SigningNode) Listen() {
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Announce(am *AnnouncementMessage) {
+	fmt.Println(sn.Name(), "announces")
 	// Inform all children of announcement
 	// PutDown requires each child to have his own message
-	// XXX AnnoucementMessage are read-only it's ok to use pointers to one message
 	messgs := make([]BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
-		messgs[i] = am
+		sm := SigningMessage{Type: Announcement, am: am}
+		messgs[i] = sm
 	}
 	if err := sn.PutDown(messgs); err != nil {
-		// TODO: actually handle network failures
 		panic("could not put down all Annoucement Messages" + err.Error())
 	}
 	// initiate commit phase
@@ -69,44 +68,49 @@ func (sn *SigningNode) Commit() {
 	sn.V = sn.suite.Point().Mul(nil, sn.v)
 	// initialize product of point commitments
 	sn.V_hat = sn.V
-	// wait for all children to commit
+	// grab space for children messages
 	messgs := make([]BinaryUnmarshaler, sn.NChildren())
+	for i := range messgs {
+		messgs[i] = &SigningMessage{}
+	}
+	// wait for all children to commit
 	if err := sn.GetDown(messgs); err != nil {
-		// TODO: actually handle network failures
 		panic("could not get down all Commit Messages" + err.Error())
 	}
 	for _, messg := range messgs {
-		switch cm := messg.(type) {
+		sm := messg.(*SigningMessage)
+		switch sm.Type {
 		default:
 			// Not possible in current system where little randomness is allowed
 			// In real system failing is required
-			fmt.Println(cm)
+			fmt.Println(sm.com)
 			panic("Reply to announcement is not a commit")
-		case *CommitmentMessage:
-			sn.V_hat.Add(sn.V_hat, cm.V_hat)
+		case Commitment:
+			sn.V_hat.Add(sn.V_hat, sm.com.V_hat)
 		}
 	}
 	if sn.IsRoot() {
 		sn.FinalizeCommits()
 	} else {
 		// create and putup own commit message
-		sn.PutUp(CommitmentMessage{V: sn.V, V_hat: sn.V_hat})
+		sn.PutUp(SigningMessage{
+			Type: Commitment,
+			com:  &CommitmentMessage{V: sn.V, V_hat: sn.V_hat}})
 	}
 }
 
 // initiated by root, propagated by all others
-func (sn *SigningNode) Challenge(cm *ChallengeMessage) {
+func (sn *SigningNode) Challenge(chm *ChallengeMessage) {
 	// register challenge
-	sn.c = cm.c
+	sn.c = chm.c
 	// inform all children of challenge
 	// PutDown requires each child to have his own message
-	// XXX ChallengeMessages are read-only it's ok to use pointers to one message
 	messgs := make([]BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
-		messgs[i] = cm
+		sm := SigningMessage{Type: Challenge, chm: chm}
+		messgs[i] = sm
 	}
 	if err := sn.PutDown(messgs); err != nil {
-		// TODO: actually handle network failures
 		panic("could not put down all Challenge Messages" + err.Error())
 	}
 	// initiate response phase
@@ -121,25 +125,30 @@ func (sn *SigningNode) Respond() {
 	sn.r_hat = sn.r
 	// wait for all children to respond
 	messgs := make([]BinaryUnmarshaler, sn.NChildren())
+	for i := range messgs {
+		messgs[i] = &SigningMessage{}
+	}
 	if err := sn.GetDown(messgs); err != nil {
-		// TODO: actually handle network failures
 		panic("could not get down all Respond Messages" + err.Error())
 	}
 	for _, messg := range messgs {
-		switch rm := messg.(type) {
+		sm := messg.(*SigningMessage)
+		switch sm.Type {
 		default:
 			// Not possible in current system where little randomness is allowed
 			// In real system failing is required
 			panic("Reply to challenge is not a response")
-		case *ResponseMessage:
-			sn.r_hat.Add(sn.r_hat, rm.r_hat)
+		case Response:
+			sn.r_hat.Add(sn.r_hat, sm.rm.r_hat)
 		}
 	}
 
 	sn.VerifyResponses()
 	if !sn.IsRoot() {
 		// create and putup own response message
-		sn.PutUp(ResponseMessage{sn.r_hat})
+		sn.PutUp(SigningMessage{
+			Type: Response,
+			rm:   &ResponseMessage{sn.r_hat}})
 	}
 }
 
