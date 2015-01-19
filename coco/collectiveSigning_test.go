@@ -80,3 +80,12 @@ func TestTreeFromStaticConfig(t *testing.T) {
 	hostConfig.SNodes[0].logTest = []byte("Hello World")
 	hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].logTest})
 }
+
+func TestTreeBigConfig(t *testing.T) {
+	hc, err := LoadConfig("data/wax.json")
+	if err != nil {
+		t.Error()
+	}
+	hc.SNodes[0].logTest = []byte("hello world")
+	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+}

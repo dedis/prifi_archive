@@ -35,6 +35,7 @@ type Host interface {
 	Name() string
 
 	Peers() map[string]Conn // returns the peers list: all connected nodes
+	Children() map[string]Conn
 	AddPeers(cs ...Conn)    // add a node but don't make it child or parent
 	AddParent(cs Conn)      // ad a parent connection
 	AddChildren(cs ...Conn) // add child connections
@@ -104,6 +105,10 @@ func (h HostNode) IsRoot() bool {
 // Peers returns the list of peers as a mapping from hostname to Conn
 func (h HostNode) Peers() map[string]Conn {
 	return h.peers
+}
+
+func (h HostNode) Children() map[string]Conn {
+	return h.children
 }
 
 // AddPeers adds the list of peers
