@@ -10,7 +10,7 @@ import (
 )
 
 func TestTreeFromRandomGraph(t *testing.T) {
-	defer profile.Start(profile.MemProfile, profile.ProfilePath("."), profile.MemProfileRate(1)).Stop()
+	defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
 	hc, _ := loadGraph("data/wax.dat", openssl.NewAES128SHA256P256(), random.Stream)
 
 	// Have root node initiate the signing protocol
