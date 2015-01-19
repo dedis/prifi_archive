@@ -30,10 +30,7 @@ func TestTreeFromRandomGraph(t *testing.T) {
 }
 
 func Benchmark1000Nodes(b *testing.B) {
-	hc, _ := loadGraph("data/wax.dat", nist.NewAES128SHA256P256(), random.Stream)
-	if err := ioutil.WriteFile("data/wax.json", []byte(hc.String()), 0666); err != nil {
-		fmt.Println(err)
-	}
+	hc, _ := LoadConfig("data/wax.json")
 	hc.SNodes[0].logTest = []byte("Hello World")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
