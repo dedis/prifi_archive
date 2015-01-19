@@ -46,7 +46,7 @@ func (sn *SigningNode) Listen() {
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Announce(am *AnnouncementMessage) {
-	fmt.Println(sn.Name(), "announces")
+	//fmt.Println(sn.Name(), "announces")
 	// Inform all children of announcement
 	// PutDown requires each child to have his own message
 	messgs := make([]BinaryMarshaler, sn.NChildren())
@@ -176,7 +176,7 @@ func (sn *SigningNode) VerifyResponses() error {
 		return errors.New("Veryfing ElGamal Collective Signature failed")
 	}
 
-	fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
+	//fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
 	return nil
 }
 

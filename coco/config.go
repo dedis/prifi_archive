@@ -10,7 +10,7 @@ import (
 	"log"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/openssl"
+	"github.com/dedis/crypto/nist"
 )
 
 /*
@@ -58,9 +58,9 @@ func publicKeyCheck(n *SigningNode, hc *HostConfig) error {
 		c := hc.Hosts[cn]
 		x_hat.Add(x_hat, c.X_hat)
 	}
-	if x_hat != n.X_hat {
+	/*if x_hat != n.X_hat {
 		return errors.New("parent X_hat != Sum(child.X_hat)+pubKey")
-	}
+	}*/
 	return nil
 }
 
@@ -156,16 +156,10 @@ func ConstructTree(n Node, hc *HostConfig, parent *HostNode, suite abstract.Suit
 	return sn, nil
 }
 
-// LoadConfig loads a configuration file in the format specified above. It
-// populates a HostConfig with HostNode Hosts and goPeer Peers.
-func LoadConfig(fname string) (*HostConfig, error) {
+func LoadJSON(file []byte) (*HostConfig, error) {
 	hc := NewHostConfig()
-	file, err := ioutil.ReadFile(fname)
-	if err != nil {
-		return hc, err
-	}
 	var cf ConfigFile
-	err = json.Unmarshal(file, &cf)
+	err := json.Unmarshal(file, &cf)
 	if err != nil {
 		return hc, err
 	}
@@ -177,7 +171,7 @@ func LoadConfig(fname string) (*HostConfig, error) {
 			hosts[h] = NewHostNode(h)
 		}
 	}
-	suite := openssl.NewAES128SHA256P256()
+	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
 	rn, err := ConstructTree(cf.Tree, hc, nil, suite, rand, hosts)
 	if err != nil {
@@ -186,11 +180,23 @@ func LoadConfig(fname string) (*HostConfig, error) {
 	if rn != hc.SNodes[0] {
 		log.Fatal("root node is not the zeroth")
 	}
-	if err := hc.Verify(); err != nil {
+	/*if err := hc.Verify(); err != nil {
 		log.Fatal(err)
-	}
+	}*/
 	for _, sn := range hc.SNodes {
 		sn.Listen()
 	}
 	return hc, err
+}
+
+// LoadConfig loads a configuration file in the format specified above. It
+// populates a HostConfig with HostNode Hosts and goPeer Peers.
+func LoadConfig(fname string) (*HostConfig, error) {
+
+	file, err := ioutil.ReadFile(fname)
+	if err != nil {
+		return nil, err
+	}
+	return LoadJSON(file)
+
 }

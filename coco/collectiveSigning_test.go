@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 	// "fmt"
-	"github.com/dedis/crypto/openssl"
+	"github.com/dedis/crypto/nist"
 )
 
 //       0
@@ -14,7 +14,7 @@ import (
 //   2   3
 func TestStatic(t *testing.T) {
 	// Crypto setup
-	suite := openssl.NewAES128SHA256P256()
+	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
 
 	// number of nodes for the test
@@ -82,7 +82,7 @@ func TestTreeFromStaticConfig(t *testing.T) {
 }
 
 func TestTreeBigConfig(t *testing.T) {
-	hc, err := LoadConfig("data/wax.json")
+	hc, err := LoadConfig("data/exwax.json")
 	if err != nil {
 		t.Error()
 	}

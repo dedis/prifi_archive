@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dedis/crypto/openssl"
+	"github.com/dedis/crypto/nist"
 )
 
 func TestReadWrite(t *testing.T) {
 	return
-	suite := openssl.NewAES128SHA256P256()
+	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
 
 	testBytes := []byte("Hello World")

@@ -5,7 +5,7 @@ import (
 	"encoding/gob"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/openssl"
+	"github.com/dedis/crypto/nist"
 )
 
 // All message structures defined in this package are used in the
@@ -113,36 +113,36 @@ func (am *AnnouncementMessage) UnmarshalBinary(data []byte) error {
 
 func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
-	abstract.Write(&b, &cm, openssl.NewAES128SHA256P256())
+	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
 	return b.Bytes(), nil
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
-	err := abstract.Read(b, cm, openssl.NewAES128SHA256P256())
+	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
 	return err
 }
 
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
-	abstract.Write(&b, &cm, openssl.NewAES128SHA256P256())
+	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
 	return b.Bytes(), nil
 }
 
 func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
-	err := abstract.Read(b, cm, openssl.NewAES128SHA256P256())
+	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
 	return err
 }
 
 func (rm ResponseMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
-	abstract.Write(&b, &rm, openssl.NewAES128SHA256P256())
+	abstract.Write(&b, &rm, nist.NewAES128SHA256P256())
 	return b.Bytes(), nil
 }
 
 func (rm *ResponseMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
-	err := abstract.Read(b, rm, openssl.NewAES128SHA256P256())
+	err := abstract.Read(b, rm, nist.NewAES128SHA256P256())
 	return err
 }

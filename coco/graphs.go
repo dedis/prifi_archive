@@ -99,5 +99,6 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 	for _, sn := range hc.SNodes {
 		sn.Listen()
 	}
-	return hc, err
+	jhc, err := LoadJSON([]byte(hc.String()))
+	return jhc, err
 }
