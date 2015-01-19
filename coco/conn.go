@@ -64,14 +64,15 @@ var PeerExists error = errors.New("peer already exists in given directory")
 // exists.
 func NewGoConn(dir *directory, from, to string) (*goConn, error) {
 	gc := &goConn{dir, from, to}
-	gc.dir.Lock()
-	fromto := from + to
-	defer gc.dir.Unlock()
-	if _, ok := gc.dir.channel[fromto]; ok {
-		// return the already existant peer
-		return gc.dir.nameToPeer[fromto], PeerExists
+	dir.Lock()
+	fromto := gc.FromTo()
+	defer dir.Unlock()
+	if c, ok := dir.nameToPeer[fromto]; ok {
+		// return the already existant peer\
+		return c, PeerExists
 	}
-	gc.dir.channel[fromto] = make(chan []byte)
+	dir.nameToPeer[fromto] = gc
+	dir.channel[fromto] = make(chan []byte)
 	return gc, nil
 }
 
@@ -80,9 +81,17 @@ func (c goConn) Name() string {
 	return c.to
 }
 
+func (c goConn) FromTo() string {
+	return c.from + "::::" + c.to
+}
+
+func (c goConn) ToFrom() string {
+	return c.to + "::::" + c.from
+}
+
 // Put sends data to the goConn through the channel.
 func (c *goConn) Put(data BinaryMarshaler) error {
-	fromto := c.from + c.to
+	fromto := c.FromTo()
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
 	// the directory must be unlocked before sending data. otherwise the
@@ -102,7 +111,7 @@ func (c *goConn) Get(bum BinaryUnmarshaler) error {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
-	tofrom := c.to + c.from
+	tofrom := c.ToFrom()
 	c.dir.Lock()
 	ch := c.dir.channel[tofrom]
 	// as in Put directory must be unlocked to allow other goroutines to reach

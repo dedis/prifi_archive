@@ -109,9 +109,7 @@ func (h HostNode) Peers() map[string]Conn {
 // AddPeers adds the list of peers
 func (h HostNode) AddPeers(cs ...Conn) {
 	for _, c := range cs {
-		if _, ok := h.peers[c.Name()]; !ok {
-			h.peers[c.Name()] = c
-		}
+		h.peers[c.Name()] = c
 	}
 }
 

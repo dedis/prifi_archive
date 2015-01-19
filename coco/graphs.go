@@ -22,6 +22,7 @@ func dijkstra(m map[string]*SigningNode, root *SigningNode) {
 	l.PushFront(root)
 	visited[root.Name()] = true
 	for e := l.Front(); e != nil; e = l.Front() {
+		l.Remove(e)
 		sn := e.Value.(*SigningNode)
 		// make all unvisited peers children
 		// and mark them as visited
@@ -33,17 +34,29 @@ func dijkstra(m map[string]*SigningNode, root *SigningNode) {
 			visited[name] = true
 			// add the associated peer/connection as a child
 			sn.AddChildren(conn)
-			cn := m[name]
+			cn, ok := m[name]
+			if !ok {
+				panic("error getting connection from map")
+			}
+			peers := cn.Peers()
+			pconn, ok := peers[sn.Name()]
+			if !ok {
+				panic("parent connection doesn't exist: not bi-directional")
+			}
+			cn.AddParent(pconn)
 			l.PushFront(cn)
 		}
 	}
 }
 
-func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Suite, testRand cipher.Stream) *SigningNode {
-	if h := m[hostname]; h != nil {
+func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Suite, testRand cipher.Stream, hc *HostConfig) *SigningNode {
+	if h, ok := m[hostname]; ok {
 		return h
 	}
-	h := NewSigningNode(NewHostNode(hostname), testSuite, testRand)
+	host := NewHostNode(hostname)
+	hc.Hosts[hostname] = host
+	h := NewSigningNode(host, testSuite, testRand)
+	m[hostname] = h
 	return h
 }
 
@@ -52,34 +65,39 @@ func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Sui
 // from1 to2
 // from2 to2
 // ...
-func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (root *SigningNode, hosts map[string]*SigningNode, err error) {
+func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*HostConfig, error) {
 	f, err := os.Open(name)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	s := bufio.NewScanner(f)
-	dir := newDirectory()
 	// generate the list of hosts
-	hosts = make(map[string]*SigningNode)
+	hosts := make(map[string]*SigningNode)
+	hc := NewHostConfig()
+	var root *SigningNode
 	for s.Scan() {
 		var host1, host2 string
 		n, err := fmt.Sscan(s.Text(), &host1, &host2)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if n != 2 {
-			return nil, nil, errors.New("improperly formatted file")
+			return nil, errors.New("improperly formatted file")
 		}
-		h1 := loadHost(host1, hosts, testSuite, testRand)
-		h2 := loadHost(host2, hosts, testSuite, testRand)
-		c12, _ := NewGoConn(dir, h1.Name(), h2.Name())
-		c21, _ := NewGoConn(dir, h2.Name(), h1.Name())
+		h1 := loadHost(host1, hosts, testSuite, testRand, hc)
+		h2 := loadHost(host2, hosts, testSuite, testRand, hc)
+		c12, _ := NewGoConn(hc.Dir, h1.Name(), h2.Name())
+		c21, _ := NewGoConn(hc.Dir, h2.Name(), h1.Name())
 		h1.addPeer(c12, h2.pubKey)
 		h2.addPeer(c21, h1.pubKey)
 		if root == nil {
 			root = h1
 		}
+		hc.SNodes = append(hc.SNodes, h1, h2)
 	}
 	dijkstra(hosts, root)
-	return root, hosts, err
+	for _, sn := range hc.SNodes {
+		sn.Listen()
+	}
+	return hc, err
 }

@@ -31,6 +31,7 @@ func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *S
 	sn.privKey = suite.Secret().Pick(random)
 	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
 	sn.X_hat = suite.Point().Null()
+	sn.peerKeys = make(map[string]abstract.Point)
 	return sn
 }
 
