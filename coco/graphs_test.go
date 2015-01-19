@@ -11,7 +11,11 @@ import (
 
 func TestTreeFromRandomGraph(t *testing.T) {
 	//defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
-	hc, _ := loadGraph("data/wax.dat", nist.NewAES128SHA256P256(), random.Stream)
+	hc, err := loadGraph("data/wax.dat", nist.NewAES128SHA256P256(), random.Stream)
+	if err != nil || hc == nil {
+		fmt.Println("run data/gen.py to generate graphs")
+		return
+	}
 	if err := ioutil.WriteFile("data/wax.json", []byte(hc.String()), 0666); err != nil {
 		fmt.Println(err)
 	}
