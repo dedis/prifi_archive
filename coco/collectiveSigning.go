@@ -15,33 +15,34 @@ import (
 // 3. Challenge
 // 4. Response
 
+var ErrUnknownMessageType error = errors.New("Received message of unknown type")
+
 // Start listening for messages coming from parent(up)
-func (sn *SigningNode) Listen() {
-	go func() {
-		for {
-			if sn.IsRoot() {
-				// Sleep/ Yield until change in network
-				sn.WaitTick()
-			} else {
-				// Determine type of message coming from the parent
-				// Pass the duty of acting on it to another function
-				sm := SigningMessage{}
-				if err := sn.GetUp(&sm); err != nil {
-					panic("could not get up message in listen " + err.Error())
-				}
-				switch sm.Type {
-				default:
-					// Not possible in current system where little randomness is allowed
-					// In real system some action is required
-					panic("Message from parent is of unknown type")
-				case Announcement:
-					sn.Announce(sm.am)
-				case Challenge:
-					sn.Challenge(sm.chm)
-				}
+func (sn *SigningNode) Listen() error {
+	for {
+		if sn.IsRoot() {
+			// Sleep/ Yield until change in network
+			sn.WaitTick()
+		} else {
+			// Determine type of message coming from the parent
+			// Pass the duty of acting on it to another function
+			sm := SigningMessage{}
+			if err := sn.GetUp(&sm); err != nil {
+				return err
+			}
+			switch sm.Type {
+			default:
+				// Not possible in current system where little randomness is allowed
+				// In real system some action is required
+				return ErrUnknownMessageType
+			case Announcement:
+				sn.Announce(sm.am)
+			case Challenge:
+				sn.Challenge(sm.chm)
 			}
 		}
-	}()
+	}
+	return nil
 }
 
 // initiated by root, propagated by all others
@@ -176,7 +177,7 @@ func (sn *SigningNode) VerifyResponses() error {
 		return errors.New("Veryfing ElGamal Collective Signature failed")
 	}
 
-	//fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
+	// fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
 	return nil
 }
 

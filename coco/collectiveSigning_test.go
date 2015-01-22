@@ -49,7 +49,10 @@ func TestStatic(t *testing.T) {
 		nodes[i] = *NewSigningNode(h[i], suite, rand)
 	}
 	for i := 0; i < nNodes; i++ {
-		nodes[i].Listen() // start listening for messages from within the tree
+		go func(i int) {
+			// start listening for messages from within the tree
+			nodes[i].Listen()
+		}(i)
 	}
 
 	// initialize all nodes with knowledge of
@@ -88,4 +91,17 @@ func TestTreeBigConfig(t *testing.T) {
 	}
 	hc.SNodes[0].logTest = []byte("hello world")
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+}
+
+// tree from configuration file data/exconf.json
+func TestMultipleRounds(t *testing.T) {
+	hostConfig, _ := LoadConfig("data/exconf.json")
+	N := 1000
+
+	// Have root node initiate the signing protocol
+	// via a simple annoucement
+	for i := 0; i < N; i++ {
+		hostConfig.SNodes[0].logTest = []byte("Hello World" + strconv.Itoa(i))
+		hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].logTest})
+	}
 }

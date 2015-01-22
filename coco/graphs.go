@@ -97,7 +97,10 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 	}
 	dijkstra(hosts, root)
 	for _, sn := range hc.SNodes {
-		sn.Listen()
+		go func(sn *SigningNode) {
+			// start listening for messages from within the tree
+			sn.Listen()
+		}(sn)
 	}
 	jhc, err := LoadJSON([]byte(hc.String()))
 	return jhc, err

@@ -184,7 +184,10 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 		log.Fatal(err)
 	}*/
 	for _, sn := range hc.SNodes {
-		sn.Listen()
+		go func(sn *SigningNode) {
+			// start listening for messages from within the tree
+			sn.Listen()
+		}(sn)
 	}
 	return hc, err
 }
