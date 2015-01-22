@@ -25,13 +25,16 @@ func NewTCPHost(hostname string) *TCPHost {
 }
 
 func (h *TCPHost) Listen() error {
-	ln, err := net.Listen("tcp", ":8080")
+	log.Println("tcphost: attempting to start listening")
+	ln, err := net.Listen("tcp", h.name)
 	if err != nil {
 		log.Println("failed to listen:", err)
 		return err
 	}
 	for {
+		log.Println("listening on host: ", h.name)
 		conn, err := ln.Accept()
+		log.Println("accepted connection")
 		if err != nil {
 			// handle error
 			log.Println("failed to accept connection")

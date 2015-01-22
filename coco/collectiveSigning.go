@@ -19,6 +19,7 @@ var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
 // Start listening for messages coming from parent(up)
 func (sn *SigningNode) Listen() error {
+	go sn.Host.Listen()
 	for {
 		if sn.IsRoot() {
 			// Sleep/ Yield until change in network

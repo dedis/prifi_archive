@@ -61,11 +61,11 @@ type GoHost struct {
 	parent   Conn            // the Peer representing parent, nil if root
 	children map[string]Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
-	dir      *directory
+	dir      *GoDirectory
 }
 
 // NewHostNode creates a new HostNode with a given hostname.
-func NewGoHost(hostname string, dir *directory) *GoHost {
+func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
 		children: make(map[string]Conn),
 		peers:    make(map[string]Conn),

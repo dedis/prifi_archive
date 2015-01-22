@@ -53,7 +53,7 @@ func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Sui
 	if h, ok := m[hostname]; ok {
 		return h
 	}
-	host := NewGoHost(hostname, newDirectory())
+	host := NewGoHost(hostname, NewGoDirectory())
 	h := NewSigningNode(host, testSuite, testRand)
 	hc.Hosts[hostname] = h
 	m[hostname] = h

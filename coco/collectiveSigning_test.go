@@ -1,6 +1,7 @@
 package coco
 
 import (
+	"log"
 	"strconv"
 	"testing"
 	// "fmt"
@@ -20,7 +21,7 @@ func TestStatic(t *testing.T) {
 	// number of nodes for the test
 	nNodes := 4
 	// create new directory for communication between peers
-	dir := newDirectory()
+	dir := NewGoDirectory()
 	// Create Hosts and Peers
 	h := make([]*GoHost, nNodes)
 	for i := 0; i < nNodes; i++ {
@@ -113,6 +114,7 @@ func TestTCPStaticConfig(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	log.Println("finished loading configuration file")
 	hc.SNodes[0].logTest = []byte("hello world")
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
 }

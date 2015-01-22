@@ -3,6 +3,7 @@ package coco
 import (
 	"encoding/gob"
 	"errors"
+	"log"
 	"net"
 	"sync"
 )
@@ -41,25 +42,25 @@ type BinaryUnmarshaler interface {
 // connections). A single directory should be shared between all goConns's that
 // are operating in the same network 'space'. If they are on the same tree they
 // should share a directory.
-type directory struct {
+type GoDirectory struct {
 	sync.Mutex                        // protects accesses to channel and nameToPeer
 	channel    map[string]chan []byte // one channel per peer-to-peer connection
-	nameToPeer map[string]*goConn     // keeps track of duplicate connections
+	nameToPeer map[string]*GoConn     // keeps track of duplicate connections
 }
 
 /// newDirectory creates a new directory for registering goPeers.
-func newDirectory() *directory {
-	return &directory{channel: make(map[string]chan []byte),
-		nameToPeer: make(map[string]*goConn)}
+func NewGoDirectory() *GoDirectory {
+	return &GoDirectory{channel: make(map[string]chan []byte),
+		nameToPeer: make(map[string]*GoConn)}
 }
 
 // goConn is a Conn type for representing connections in an in-memory tree. It
 // uses channels for communication.
-type goConn struct {
+type GoConn struct {
 	// the directory maps each (from,to) pair to a channel for sending
 	// (from,to). When receiving one reads from the channel (from, to). Thus
 	// the sender "owns" the channel.
-	dir  *directory
+	dir  *GoDirectory
 	from string
 	to   string
 }
@@ -71,8 +72,8 @@ var PeerExists error = errors.New("peer already exists in given directory")
 // NewGoPeer creates a goPeer registered in the given directory with the given
 // hostname. It returns an ignorable PeerExists error if this peer already
 // exists.
-func NewGoConn(dir *directory, from, to string) (*goConn, error) {
-	gc := &goConn{dir, from, to}
+func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
+	gc := &GoConn{dir, from, to}
 	dir.Lock()
 	fromto := gc.FromTo()
 	defer dir.Unlock()
@@ -86,24 +87,24 @@ func NewGoConn(dir *directory, from, to string) (*goConn, error) {
 }
 
 // Name returns the from+to identifier of the goConn.
-func (c goConn) Name() string {
+func (c GoConn) Name() string {
 	return c.to
 }
 
-func (c goConn) FromTo() string {
+func (c GoConn) FromTo() string {
 	return c.from + "::::" + c.to
 }
 
-func (c goConn) ToFrom() string {
+func (c GoConn) ToFrom() string {
 	return c.to + "::::" + c.from
 }
 
-func (c goConn) Connect() error {
+func (c GoConn) Connect() error {
 	return nil
 }
 
 // Put sends data to the goConn through the channel.
-func (c *goConn) Put(data BinaryMarshaler) error {
+func (c *GoConn) Put(data BinaryMarshaler) error {
 	fromto := c.FromTo()
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
@@ -120,7 +121,7 @@ func (c *goConn) Put(data BinaryMarshaler) error {
 }
 
 // Get receives data from the sender.
-func (c *goConn) Get(bum BinaryUnmarshaler) error {
+func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
@@ -159,9 +160,11 @@ func NewTCPConn(hostname string) *TCPConn {
 }
 
 func (tc TCPConn) Connect() error {
+	log.Println("tcpconn establishing new connection")
 	// establish the connection
 	conn, err := net.Dial("tcp", tc.name)
 	if err != nil {
+		log.Println("connection failed")
 		return err
 	}
 	tc.conn = conn
@@ -177,9 +180,15 @@ func (tc TCPConn) Name() string {
 }
 
 func (tc *TCPConn) Put(bm BinaryMarshaler) error {
+	if tc.enc == nil {
+		return errors.New(" connection not established")
+	}
 	return tc.enc.Encode(bm)
 }
 
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
+	if tc.dec == nil {
+		return errors.New(" connection not established")
+	}
 	return tc.dec.Decode(bum)
 }
