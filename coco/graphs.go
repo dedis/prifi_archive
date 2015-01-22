@@ -33,7 +33,7 @@ func dijkstra(m map[string]*SigningNode, root *SigningNode) {
 			}
 			visited[name] = true
 			// add the associated peer/connection as a child
-			sn.AddChildren(conn)
+			sn.AddChildren(conn.Name())
 			cn, ok := m[name]
 			if !ok {
 				panic("error getting connection from map")
@@ -43,7 +43,7 @@ func dijkstra(m map[string]*SigningNode, root *SigningNode) {
 			if !ok {
 				panic("parent connection doesn't exist: not bi-directional")
 			}
-			cn.AddParent(pconn)
+			cn.AddParent(pconn.Name())
 			l.PushFront(cn)
 		}
 	}
@@ -53,7 +53,7 @@ func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Sui
 	if h, ok := m[hostname]; ok {
 		return h
 	}
-	host := NewHostNode(hostname)
+	host := NewHostNode(hostname, newDirectory())
 	h := NewSigningNode(host, testSuite, testRand)
 	hc.Hosts[hostname] = h
 	m[hostname] = h
@@ -86,10 +86,8 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 		}
 		h1 := loadHost(host1, hosts, testSuite, testRand, hc)
 		h2 := loadHost(host2, hosts, testSuite, testRand, hc)
-		c12, _ := NewGoConn(hc.Dir, h1.Name(), h2.Name())
-		c21, _ := NewGoConn(hc.Dir, h2.Name(), h1.Name())
-		h1.addPeer(c12, h2.pubKey)
-		h2.addPeer(c21, h1.pubKey)
+		h1.addPeer(h2.Name(), h2.pubKey)
+		h2.addPeer(h1.Name(), h1.pubKey)
 		if root == nil {
 			root = h1
 		}

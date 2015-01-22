@@ -26,7 +26,7 @@ type SigningNode struct {
 	peerKeys map[string]abstract.Point // map of all peer public keys
 }
 
-func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *SigningNode {
+func NewSigningNode(hn Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
 	sn := &SigningNode{Host: hn, suite: suite}
 	sn.privKey = suite.Secret().Pick(random)
 	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
@@ -35,9 +35,9 @@ func NewSigningNode(hn *HostNode, suite abstract.Suite, random cipher.Stream) *S
 	return sn
 }
 
-func (sn *SigningNode) addPeer(conn Conn, pubKey abstract.Point) {
+func (sn *SigningNode) addPeer(conn string, pubKey abstract.Point) {
 	sn.Host.AddPeers(conn)
-	sn.peerKeys[conn.Name()] = pubKey
+	sn.peerKeys[conn] = pubKey
 }
 
 func (sn *SigningNode) Write(data interface{}) []byte {

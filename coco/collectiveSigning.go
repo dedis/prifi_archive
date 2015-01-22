@@ -176,7 +176,7 @@ func (sn *SigningNode) VerifyResponses() error {
 		return errors.New("Veryfing ElGamal Collective Signature failed")
 	}
 
-	//fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
+	fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
 	return nil
 }
 

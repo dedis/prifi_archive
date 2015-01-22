@@ -11,9 +11,18 @@ import (
 // layer as well as the data-format for communication.
 type Conn interface {
 	Name() string
+	Connect() error
 	Put(BinaryMarshaler) error   // sends data through the connection
 	Get(BinaryUnmarshaler) error // gets data from connection
 }
+
+/* Alternative Bytes Based Conn
+type Conn interface {
+	Name() string
+	Put([]data) error     // sends data through the connection
+	Get([]data) error     // gets data from connection
+	Get() ([]data, error) // -> extra allocation for every recieve
+}*/
 
 // Taken from: http://golang.org/pkg/encoding/#BinaryMarshaler
 // All messages passing through our conn must implement their own  BinaryMarshaler
@@ -89,6 +98,10 @@ func (c goConn) ToFrom() string {
 	return c.to + "::::" + c.from
 }
 
+func (c goConn) Connect() error {
+	return nil
+}
+
 // Put sends data to the goConn through the channel.
 func (c *goConn) Put(data BinaryMarshaler) error {
 	fromto := c.FromTo()
@@ -123,37 +136,50 @@ func (c *goConn) Get(bum BinaryUnmarshaler) error {
 }
 
 // TcpConn is a prototype TCP connection with gob encoding.
-type TcpConn struct {
+type TCPConn struct {
 	name string
 	conn net.Conn
 	enc  *gob.Encoder
 	dec  *gob.Decoder
 }
 
-func NewTcpConn(hostname string) (*TcpConn, error) {
-	tp := &TcpConn{}
-	tp.name = hostname
-	// establish the connection
-	conn, err := net.Dial("tcp", hostname)
-	if err != nil {
-		return tp, err
-	}
-	tp.conn = conn
-	tp.enc = gob.NewEncoder(conn)
-	tp.dec = gob.NewDecoder(conn)
-	return tp, nil
+func NewTCPConnFromNet(conn net.Conn) *TCPConn {
+	return &TCPConn{
+		name: conn.RemoteAddr().String(),
+		conn: conn,
+		enc:  gob.NewEncoder(conn),
+		dec:  gob.NewDecoder(conn)}
+
 }
 
-func (tc TcpConn) Name() string {
+func NewTCPConn(hostname string) *TCPConn {
+	tp := &TCPConn{}
+	tp.name = hostname
+	return tp
+}
+
+func (tc TCPConn) Connect() error {
+	// establish the connection
+	conn, err := net.Dial("tcp", tc.name)
+	if err != nil {
+		return err
+	}
+	tc.conn = conn
+	// gob encoders call MarshalBinary and UnmarshalBinary
+	// TODO replace gob with minimal Put, Get interface
+	tc.enc = gob.NewEncoder(conn)
+	tc.dec = gob.NewDecoder(conn)
+	return nil
+}
+
+func (tc TCPConn) Name() string {
 	return tc.name
 }
 
-func (tc *TcpConn) Put(data interface{}) {
-	tc.enc.Encode(data)
+func (tc *TCPConn) Put(bm BinaryMarshaler) error {
+	return tc.enc.Encode(bm)
 }
 
-func (tc *TcpConn) Get() interface{} {
-	var data interface{}
-	tc.dec.Decode(data)
-	return data
+func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
+	return tc.dec.Decode(bum)
 }

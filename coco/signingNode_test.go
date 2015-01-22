@@ -15,7 +15,7 @@ func TestReadWrite(t *testing.T) {
 	testBytes := []byte("Hello World")
 	s := suite.Secret().Pick(rand)
 	m := TestMessage{S: s, Bytes: testBytes}
-	h := NewHostNode("exampleHost")
+	h := NewHostNode("exampleHost", nil)
 	sn := NewSigningNode(h, suite, rand)
 
 	dataBytes := sn.Write(m)

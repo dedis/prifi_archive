@@ -36,9 +36,9 @@ type Host interface {
 
 	Peers() map[string]Conn // returns the peers list: all connected nodes
 	Children() map[string]Conn
-	AddPeers(cs ...Conn)    // add a node but don't make it child or parent
-	AddParent(cs Conn)      // ad a parent connection
-	AddChildren(cs ...Conn) // add child connections
+	AddPeers(hostnames ...string)   // add a node but don't make it child or parent
+	AddParent(hostname string)      // ad a parent connection
+	AddChildren(hostname ...string) // add child connections
 	NChildren() int
 
 	IsRoot() bool // true if this host is the root of the tree
@@ -49,6 +49,9 @@ type Host interface {
 	GetDown([]BinaryUnmarshaler) error // get data from children in host tree (blocking)
 
 	WaitTick() // Sleeps for network implementation dependent amount of time
+
+	Connect() error
+	Listen() error
 }
 
 // HostNode is a simple implementation of Host that does not specify the
@@ -58,32 +61,42 @@ type HostNode struct {
 	parent   Conn            // the Peer representing parent, nil if root
 	children map[string]Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
+	dir      *directory
 }
 
 // NewHostNode creates a new HostNode with a given hostname.
-func NewHostNode(hostname string) *HostNode {
+func NewHostNode(hostname string, dir *directory) *HostNode {
 	h := &HostNode{name: hostname,
 		children: make(map[string]Conn),
-		peers:    make(map[string]Conn)}
+		peers:    make(map[string]Conn),
+		dir:      dir}
 	return h
 }
 
+func (h *HostNode) Listen() error {
+	return nil
+}
+
+func (h *HostNode) Connect() error {
+	return nil
+}
+
 // AddParent adds a parent node to the HostNode.
-func (h *HostNode) AddParent(c Conn) {
-	if _, ok := h.peers[c.Name()]; !ok {
-		h.peers[c.Name()] = c
+func (h *HostNode) AddParent(c string) {
+	if _, ok := h.peers[c]; !ok {
+		h.peers[c] = nil
 	}
-	h.parent = c
+	h.parent, _ = NewGoConn(h.dir, h.name, c)
 }
 
 // AddChildren variadically adds multiple Peers as children to the HostNode.
 // Only unique children will be stored.
-func (h *HostNode) AddChildren(cs ...Conn) {
+func (h *HostNode) AddChildren(cs ...string) {
 	for _, c := range cs {
-		if _, ok := h.peers[c.Name()]; !ok {
-			h.peers[c.Name()] = c
+		if _, ok := h.peers[c]; !ok {
+			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 		}
-		h.children[c.Name()] = c
+		h.children[c] = h.peers[c]
 	}
 }
 
@@ -112,9 +125,9 @@ func (h HostNode) Children() map[string]Conn {
 }
 
 // AddPeers adds the list of peers
-func (h HostNode) AddPeers(cs ...Conn) {
+func (h HostNode) AddPeers(cs ...string) {
 	for _, c := range cs {
-		h.peers[c.Name()] = c
+		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
 }
 

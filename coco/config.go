@@ -17,8 +17,27 @@ import (
 Example configuration file.
 file format: json
 
+conn: indicates what protocol should be used
+	by default it uses the "tcp" protocol
+	"tcp": uses TcpConn for communications
+	"goroutine": uses GoConn for communications
+
+multiprocess: indicates whether each node should be run in its own process
+	true: run each in its own process
+	false: run each in its own goroutine
+	--> create executable to run a signing node
+
+process_hosts: indicates what hosts to run these processes on
+	default: just this one
+	[] // non empty list: tries ssh'ing ?
+	???: how to do this best
+		cross compile the SigningNode binary
+		scp this to the host node (after establishing ssh key pairs)
+		ssh run command
+
 ex.json
 {
+	conn: "tcp"
 	hosts: ["host1", "host2", "host3"],
 	tree: {name: host1,
 		   children: [
@@ -29,6 +48,7 @@ ex.json
 }
 */
 type ConfigFile struct {
+	Conn  string   `json:"conn,omitempty"`
 	Hosts []string `json:"hosts"`
 	Tree  Node     `json:"tree"`
 }
@@ -123,10 +143,17 @@ func NewHostConfig() *HostConfig {
 	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*SigningNode), Dir: newDirectory()}
 }
 
+type ConnType int
+
+const (
+	GoC ConnType = iota
+	TcpC
+)
+
 // ConstructTree does a depth-first construction of the tree specified in the
 // config file. ConstructTree must be call AFTER populating the HostConfig with
 // ALL the possible hosts.
-func ConstructTree(n Node, hc *HostConfig, parent *HostNode, suite abstract.Suite, rand cipher.Stream, hosts map[string]*HostNode) (*SigningNode, error) {
+func ConstructTree(n Node, hc *HostConfig, parent Host, suite abstract.Suite, rand cipher.Stream, hosts map[string]Host) (*SigningNode, error) {
 	// get the HostNode associated with n
 	h, ok := hosts[n.Name]
 	if !ok {
@@ -138,15 +165,12 @@ func ConstructTree(n Node, hc *HostConfig, parent *HostNode, suite abstract.Suit
 	hc.Hosts[n.Name] = sn
 	// if the parent of this call is nil then this must be the root node
 	if parent != nil {
-		// connect this node to its parent first
-		gc, _ := NewGoConn(hc.Dir, h.name, parent.name)
-		h.AddParent(gc)
+		h.AddParent(parent.Name())
 	}
 	sn.X_hat = sn.pubKey
 	for _, c := range n.Children {
 		// connect this node to its children
-		gc, _ := NewGoConn(hc.Dir, h.name, c.Name)
-		h.AddChildren(gc)
+		h.AddChildren(c.Name)
 		csn, err := ConstructTree(c, hc, h, suite, rand, hosts)
 		if err != nil {
 			return nil, err
@@ -163,12 +187,21 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 	if err != nil {
 		return hc, err
 	}
-	hosts := make(map[string]*HostNode)
+	connT := GoC
+	if cf.Conn == "tcp" {
+		connT = TcpC
+	}
+	dir := newDirectory()
+	hosts := make(map[string]Host)
 	// read the hosts lists
 	for _, h := range cf.Hosts {
 		// add to the hosts list if we havent added it before
 		if _, ok := hc.Hosts[h]; !ok {
-			hosts[h] = NewHostNode(h)
+			if connT == GoC {
+				hosts[h] = NewHostNode(h, dir)
+			} else {
+				hosts[h] = NewTCPHost(h)
+			}
 		}
 	}
 	suite := nist.NewAES128SHA256P256()
@@ -186,13 +219,15 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 	for _, sn := range hc.SNodes {
 		sn.Listen()
 	}
+	for _, sn := range hc.SNodes {
+		sn.Connect()
+	}
 	return hc, err
 }
 
 // LoadConfig loads a configuration file in the format specified above. It
 // populates a HostConfig with HostNode Hosts and goPeer Peers.
 func LoadConfig(fname string) (*HostConfig, error) {
-
 	file, err := ioutil.ReadFile(fname)
 	if err != nil {
 		return nil, err

@@ -20,33 +20,32 @@ func TestStatic(t *testing.T) {
 	// number of nodes for the test
 	nNodes := 4
 	// create new directory for communication between peers
-	directory := newDirectory()
+	dir := newDirectory()
 	// Create Hosts and Peers
 	h := make([]*HostNode, nNodes)
 	for i := 0; i < nNodes; i++ {
 		hostName := "host" + strconv.Itoa(i)
-		h[i] = NewHostNode(hostName)
+		h[i] = NewHostNode(hostName, dir)
 	}
 
 	// Add edges to children
-	var gc, gc2 *goConn
-	gc, _ = NewGoConn(directory, h[0].name, h[1].name)
-	h[0].AddChildren(gc)
-	gc, _ = NewGoConn(directory, h[1].name, h[2].name)
-	gc2, _ = NewGoConn(directory, h[1].name, h[3].name)
-	h[1].AddChildren(gc, gc2)
+	//gc, _ = NewGoConn(directory, h[0].name, h[1].name)
+	h[0].AddChildren(h[1].name)
+	//gc, _ = NewGoConn(directory, h[1].name, h[2].name)
+	//gc2, _ = NewGoConn(directory, h[1].name, h[3].name)
+	h[1].AddChildren(h[2].name, h[3].name)
 	// Add edges to parents
-	gc, _ = NewGoConn(directory, h[1].name, h[0].name)
-	h[1].AddParent(gc)
-	gc, _ = NewGoConn(directory, h[2].name, h[1].name)
-	h[2].AddParent(gc)
-	gc, _ = NewGoConn(directory, h[3].name, h[1].name)
-	h[3].AddParent(gc)
+	//gc, _ = NewGoConn(directory, h[1].name, h[0].name)
+	h[1].AddParent(h[0].name)
+	//gc, _ = NewGoConn(directory, h[2].name, h[1].name)
+	h[2].AddParent(h[1].name)
+	//gc, _ = NewGoConn(directory, h[3].name, h[1].name)
+	h[3].AddParent(h[1].name)
 
 	// Create Signing Nodes out of the hosts
-	nodes := make([]SigningNode, nNodes)
+	nodes := make([]*SigningNode, nNodes)
 	for i := 0; i < nNodes; i++ {
-		nodes[i] = *NewSigningNode(h[i], suite, rand)
+		nodes[i] = NewSigningNode(h[i], suite, rand)
 	}
 	for i := 0; i < nNodes; i++ {
 		nodes[i].Listen() // start listening for messages from within the tree
