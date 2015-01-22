@@ -108,11 +108,11 @@ func TestMultipleRounds(t *testing.T) {
 	}
 }
 
-func TestTCPStaticConfig(t *testing.T) {
-	hc, err := LoadConfig("data/extcpconf.json")
-	if err != nil {
-		t.Error(err)
-	}
-	hc.SNodes[0].logTest = []byte("hello world")
-	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
-}
+// func TestTCPStaticConfig(t *testing.T) {
+// 	hc, err := LoadConfig("data/extcpconf.json")
+// 	if err != nil {
+// 		t.Error(err)
+// 	}
+// 	hc.SNodes[0].logTest = []byte("hello world")
+// 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+// }

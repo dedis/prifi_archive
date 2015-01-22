@@ -1,0 +1,112 @@
+Open ssl errors, probably caused by sharing the same suite 
+over multiple threads
+------------------------------------------------------------
+
+
+=== RUN TestTreeFromStaticConfig
+host0 announces
+host1 announces
+host2 announces
+host4 announces
+host3 announces
+host5 announces
+host2 reports ElGamal Collective Signature succeeded
+host5 reports ElGamal Collective Signature succeeded
+host4 reports ElGamal Collective Signature succeeded
+panic: EC_POINT_point2oct: error:100E0090:lib(16):func(224):reason(144)
+
+goroutine 38 [running]:
+runtime.panic(0x58c3c0, 0xc2080a6080)
+	/usr/local/go/src/pkg/runtime/panic.c:279 +0xf5
+github.com/dedis/crypto/openssl.(*point).Encode(0xc20809f000, 0x0, 0x0, 0x0)
+	/home/iulia/go/src/github.com/dedis/crypto/openssl/curve.go:220 +0x16b
+github.com/dedis/prifi/coco.hashElGamal(0x7fdeb3172928, 0xc2080190e0, 0x0, 0x0, 0x0, 0x7fdeb3172838, 0xc20809f000, 0x0, 0x0)
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:185 +0x58
+github.com/dedis/prifi/coco.(*SigningNode).VerifyResponses(0xc208094d00, 0x0, 0x0)
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:170 +0x261
+github.com/dedis/prifi/coco.(*SigningNode).Respond(0xc208094d00)
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:146 +0x4bb
+github.com/dedis/prifi/coco.(*SigningNode).Challenge(0xc208094d00, 0xc208001d30)
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:117 +0x28e
+github.com/dedis/prifi/coco.func·001()
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:40 +0x243
+created by github.com/dedis/prifi/coco.(*SigningNode).Listen
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:44 +0x63
+
+....
+
+
+
+=== RUN TestTreeFromStaticConfig
+host0 announces
+host1 announces
+host2 announces
+host4 announces
+host3 announces
+host5 announces
+host5 reports ElGamal Collective Signature succeeded
+host3 reports ElGamal Collective Signature succeeded
+host2 reports ElGamal Collective Signature succeeded
+host4 reports ElGamal Collective Signature succeeded
+fatal error: unexpected signal during runtime execution
+[signal 0xb code=0x1 addr=0x7fcba0002c7c pc=0x7fc7be675944]
+
+runtime stack:
+runtime: unexpected return pc for runtime.sigpanic called from 0x7fc7be675944
+runtime.throw(0x93fe05)
+	/usr/local/go/src/pkg/runtime/panic.c:520 +0x69
+runtime: unexpected return pc for runtime.sigpanic called from 0x7fc7be675944
+runtime.sigpanic()
+	/usr/local/go/src/pkg/runtime/os_linux.c:222 +0x3d
+
+goroutine 36 [syscall]:
+runtime.cgocall(0x4030b0, 0x7fc7bc492ac8)
+	/usr/local/go/src/pkg/runtime/cgocall.c:143 +0xe5 fp=0x7fc7bc492ab0 sp=0x7fc7bc492a68
+github.com/dedis/crypto/openssl._Cfunc_EC_POINT_mul(0x7fc7a0002b30, 0x7fc7a4008260, 0x0, 0x7fc7a0002dd0, 0x7fc7a00099e0, 0x7fc7a0002930, 0x1)
+	github.com/dedis/crypto/openssl/_obj/_cgo_defun.c:318 +0x36 fp=0x7fc7bc492ac8 sp=0x7fc7bc492ab0
+github.com/dedis/crypto/openssl.(*point).Mul(0xc2080a7380, 0x7fc7beb84838, 0xc20800fa80, 0x7fc7beb84b18, 0xc208001bf0, 0x0, 0x0)
+	/home/iulia/go/src/github.com/dedis/crypto/openssl/curve.go:203 +0x20f fp=0x7fc7bc492b38 sp=0x7fc7bc492ac8
+github.com/dedis/prifi/coco.(*SigningNode).VerifyResponses(0xc20809c8f0, 0x0, 0x0)
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:169 +0x1ae fp=0x7fc7bc492c98 sp=0x7fc7bc492b38
+github.com/dedis/prifi/coco.(*SigningNode).Respond(0xc20809c8f0)
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:146 +0x4bb fp=0x7fc7bc492de0 sp=0x7fc7bc492c98
+github.com/dedis/prifi/coco.(*SigningNode).Challenge(0xc20809c8f0, 0xc208001bd0)
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:117 +0x28e fp=0x7fc7bc492ed8 sp=0x7fc7bc492de0
+github.com/dedis/prifi/coco.func·001()
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:40 +0x243 fp=0x7fc7bc492fa8 sp=0x7fc7bc492ed8
+runtime.goexit()
+	/usr/local/go/src/pkg/runtime/proc.c:1445 fp=0x7fc7bc492fb0 sp=0x7fc7bc492fa8
+created by github.com/dedis/prifi/coco.(*SigningNode).Listen
+	/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:44 +0x63
+
+
+
+
+	=== RUN TestTreeFromStaticConfig
+	host0 announces
+	host1 announces
+	host2 announces
+	host4 announces
+	host3 announces
+	host5 announces
+	host2 reports ElGamal Collective Signature succeeded
+	panic: EC_POINT_point2oct: error:100E0090:lib(16):func(224):reason(144)
+
+	goroutine 40 [running]:
+	runtime.panic(0x58c3c0, 0xc208001ed0)
+		/usr/local/go/src/pkg/runtime/panic.c:279 +0xf5
+	github.com/dedis/crypto/openssl.(*point).Encode(0xc2080a70a0, 0x0, 0x0, 0x0)
+		/home/iulia/go/src/github.com/dedis/crypto/openssl/curve.go:220 +0x16b
+	github.com/dedis/prifi/coco.hashElGamal(0x7fabda799928, 0xc2080190e0, 0x0, 0x0, 0x0, 0x7fabda799838, 0xc2080a70a0, 0x0, 0x0)
+		/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:185 +0x58
+	github.com/dedis/prifi/coco.(*SigningNode).VerifyResponses(0xc20809cdd0, 0x0, 0x0)
+		/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:170 +0x261
+	github.com/dedis/prifi/coco.(*SigningNode).Respond(0xc20809cdd0)
+		/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:146 +0x4bb
+	github.com/dedis/prifi/coco.(*SigningNode).Challenge(0xc20809cdd0, 0xc208001d90)
+		/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:117 +0x28e
+	github.com/dedis/prifi/coco.func·001()
+		/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:40 +0x243
+	created by github.com/dedis/prifi/coco.(*SigningNode).Listen
+		/home/iulia/go/src/github.com/dedis/prifi/coco/collectiveSigning.go:44 +0x63
+
