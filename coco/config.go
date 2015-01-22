@@ -8,6 +8,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
+	"os"
+	"regexp"
+	"strconv"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
@@ -62,7 +66,7 @@ type Node struct {
 type HostConfig struct {
 	SNodes []*SigningNode          // an array of signing nodes
 	Hosts  map[string]*SigningNode // maps hostname to host
-	Dir    *directory              // the directory mapping hostnames to goPeers
+	Dir    *GoDirectory            // the directory mapping hostnames to goPeers
 }
 
 func (hc *HostConfig) Verify() error {
@@ -140,7 +144,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
 // NewHostConfig creates a new host configuration that can be populated with
 // hosts.
 func NewHostConfig() *HostConfig {
-	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*SigningNode), Dir: newDirectory()}
+	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*SigningNode), Dir: NewGoDirectory()}
 }
 
 type ConnType int
@@ -180,6 +184,40 @@ func ConstructTree(n Node, hc *HostConfig, parent Host, suite abstract.Suite, ra
 	return sn, nil
 }
 
+var ipv4Reg = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
+var ipv4host = "NONE"
+
+// getAddress gets the localhosts IPv4 address.
+func getAddress() (string, error) {
+	name, err := os.Hostname()
+	if err != nil {
+		log.Print("Error Resolving Hostname:", err)
+		return "", err
+	}
+	if ipv4host == "NONE" {
+		as, err := net.LookupHost(name)
+		if err != nil {
+			return "", err
+		}
+		addr := ""
+		for _, a := range as {
+			log.Printf("a = %+v", a)
+			if ipv4Reg.MatchString(a) {
+				log.Print("matches")
+				addr = a
+			}
+		}
+		if addr == "" {
+			err = errors.New("No IPv4 Address for Hostname")
+		}
+		return addr, err
+	}
+	return ipv4host, nil
+}
+
+// TODO: if in tcp mode associate each hostname in the file with a different
+// port. Get the remote address of this computer to combine with those for the
+// complete hostnames to be used by the hosts.
 func LoadJSON(file []byte) (*HostConfig, error) {
 	hc := NewHostConfig()
 	var cf ConfigFile
@@ -191,17 +229,35 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 	if cf.Conn == "tcp" {
 		connT = TcpC
 	}
-	dir := newDirectory()
+	dir := NewGoDirectory()
 	hosts := make(map[string]Host)
+	nameToAddr := make(map[string]string)
 	// read the hosts lists
-	for _, h := range cf.Hosts {
-		// add to the hosts list if we havent added it before
-		if _, ok := hc.Hosts[h]; !ok {
-			if connT == GoC {
+	if connT == GoC {
+		for _, h := range cf.Hosts {
+			if _, ok := hc.Hosts[h]; !ok {
 				hosts[h] = NewGoHost(h, dir)
-			} else {
-				hosts[h] = NewTCPHost(h)
 			}
+		}
+	} else {
+		localAddr, err := getAddress()
+		if err != nil {
+			return nil, err
+		}
+		log.Println("Found localhost address:", localAddr)
+		port := 8089
+
+		for _, h := range cf.Hosts {
+			p := strconv.Itoa(port)
+			addr := localAddr + ":" + p
+			log.Println("created new host address: ", addr)
+			nameToAddr[h] = addr
+			// add to the hosts list if we havent added it before
+			if _, ok := hc.Hosts[addr]; !ok {
+				hosts[h] = NewGoHost(addr, dir)
+				hosts[h] = NewTCPHost(addr)
+			}
+			port++
 		}
 	}
 	suite := nist.NewAES128SHA256P256()
@@ -223,7 +279,10 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 		}(sn)
 	}
 	for _, sn := range hc.SNodes {
-		sn.Connect()
+		err := sn.Connect()
+		if err != nil {
+			log.Fatal("failed to connect: ", err)
+		}
 	}
 	return hc, err
 }

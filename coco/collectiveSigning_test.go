@@ -20,7 +20,7 @@ func TestStatic(t *testing.T) {
 	// number of nodes for the test
 	nNodes := 4
 	// create new directory for communication between peers
-	dir := newDirectory()
+	dir := NewGoDirectory()
 	// Create Hosts and Peers
 	h := make([]*GoHost, nNodes)
 	for i := 0; i < nNodes; i++ {
