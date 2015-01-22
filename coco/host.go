@@ -56,7 +56,7 @@ type Host interface {
 
 // HostNode is a simple implementation of Host that does not specify the
 // communication medium (goroutines/channels, network nodes/tcp, ...).
-type HostNode struct {
+type GoHost struct {
 	name     string          // the hostname
 	parent   Conn            // the Peer representing parent, nil if root
 	children map[string]Conn // a list of unique peers for each hostname
@@ -65,24 +65,24 @@ type HostNode struct {
 }
 
 // NewHostNode creates a new HostNode with a given hostname.
-func NewHostNode(hostname string, dir *directory) *HostNode {
-	h := &HostNode{name: hostname,
+func NewGoHost(hostname string, dir *directory) *GoHost {
+	h := &GoHost{name: hostname,
 		children: make(map[string]Conn),
 		peers:    make(map[string]Conn),
 		dir:      dir}
 	return h
 }
 
-func (h *HostNode) Listen() error {
+func (h *GoHost) Listen() error {
 	return nil
 }
 
-func (h *HostNode) Connect() error {
+func (h *GoHost) Connect() error {
 	return nil
 }
 
 // AddParent adds a parent node to the HostNode.
-func (h *HostNode) AddParent(c string) {
+func (h *GoHost) AddParent(c string) {
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c] = nil
 	}
@@ -91,7 +91,7 @@ func (h *HostNode) AddParent(c string) {
 
 // AddChildren variadically adds multiple Peers as children to the HostNode.
 // Only unique children will be stored.
-func (h *HostNode) AddChildren(cs ...string) {
+func (h *GoHost) AddChildren(cs ...string) {
 	for _, c := range cs {
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
@@ -100,32 +100,32 @@ func (h *HostNode) AddChildren(cs ...string) {
 	}
 }
 
-func (h *HostNode) NChildren() int {
+func (h *GoHost) NChildren() int {
 	return len(h.children)
 }
 
 // Name returns the hostname of the HostNode.
-func (h HostNode) Name() string {
+func (h GoHost) Name() string {
 	return h.name
 }
 
 // IsRoot returns true if the HostNode is the root of it's tree (if it has no
 // parent).
-func (h HostNode) IsRoot() bool {
+func (h GoHost) IsRoot() bool {
 	return h.parent == nil
 }
 
 // Peers returns the list of peers as a mapping from hostname to Conn
-func (h HostNode) Peers() map[string]Conn {
+func (h GoHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h HostNode) Children() map[string]Conn {
+func (h GoHost) Children() map[string]Conn {
 	return h.children
 }
 
 // AddPeers adds the list of peers
-func (h HostNode) AddPeers(cs ...string) {
+func (h GoHost) AddPeers(cs ...string) {
 	for _, c := range cs {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
@@ -133,7 +133,7 @@ func (h HostNode) AddPeers(cs ...string) {
 
 // WaitTick waits for a random amount of time.
 // XXX should it wait for a network change
-func (h HostNode) WaitTick() {
+func (h GoHost) WaitTick() {
 	time.Sleep(1 * time.Second)
 }
 
@@ -143,19 +143,19 @@ func (h HostNode) WaitTick() {
 
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h *HostNode) PutUp(data BinaryMarshaler) error {
+func (h *GoHost) PutUp(data BinaryMarshaler) error {
 	return h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h *HostNode) GetUp(data BinaryUnmarshaler) error {
+func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
 	return h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
-func (h *HostNode) PutDown(data []BinaryMarshaler) error {
+func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	if len(data) != len(h.children) {
 		panic("number of messages passed down != number of children")
 	}
@@ -174,7 +174,7 @@ func (h *HostNode) PutDown(data []BinaryMarshaler) error {
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
-func (h *HostNode) GetDown(data []BinaryUnmarshaler) error {
+func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var err error

@@ -22,10 +22,10 @@ func TestStatic(t *testing.T) {
 	// create new directory for communication between peers
 	dir := newDirectory()
 	// Create Hosts and Peers
-	h := make([]*HostNode, nNodes)
+	h := make([]*GoHost, nNodes)
 	for i := 0; i < nNodes; i++ {
 		hostName := "host" + strconv.Itoa(i)
-		h[i] = NewHostNode(hostName, dir)
+		h[i] = NewGoHost(hostName, dir)
 	}
 
 	// Add edges to children
@@ -48,7 +48,10 @@ func TestStatic(t *testing.T) {
 		nodes[i] = NewSigningNode(h[i], suite, rand)
 	}
 	for i := 0; i < nNodes; i++ {
-		nodes[i].Listen() // start listening for messages from within the tree
+		go func(i int) {
+			// start listening for messages from within the tree
+			nodes[i].Listen()
+		}(i)
 	}
 
 	// initialize all nodes with knowledge of
@@ -84,6 +87,31 @@ func TestTreeBigConfig(t *testing.T) {
 	hc, err := LoadConfig("data/exwax.json")
 	if err != nil {
 		t.Error()
+	}
+	hc.SNodes[0].logTest = []byte("hello world")
+	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+}
+
+// tree from configuration file data/exconf.json
+func TestMultipleRounds(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	hostConfig, _ := LoadConfig("data/exconf.json")
+	N := 1000
+
+	// Have root node initiate the signing protocol
+	// via a simple annoucement
+	for i := 0; i < N; i++ {
+		hostConfig.SNodes[0].logTest = []byte("Hello World" + strconv.Itoa(i))
+		hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].logTest})
+	}
+}
+
+func TestTCPStaticConfig(t *testing.T) {
+	hc, err := LoadConfig("data/extcpconf.json")
+	if err != nil {
+		t.Error(err)
 	}
 	hc.SNodes[0].logTest = []byte("hello world")
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})

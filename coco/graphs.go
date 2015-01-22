@@ -53,7 +53,7 @@ func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Sui
 	if h, ok := m[hostname]; ok {
 		return h
 	}
-	host := NewHostNode(hostname, newDirectory())
+	host := NewGoHost(hostname, newDirectory())
 	h := NewSigningNode(host, testSuite, testRand)
 	hc.Hosts[hostname] = h
 	m[hostname] = h
@@ -95,7 +95,10 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 	}
 	dijkstra(hosts, root)
 	for _, sn := range hc.SNodes {
-		sn.Listen()
+		go func(sn *SigningNode) {
+			// start listening for messages from within the tree
+			sn.Listen()
+		}(sn)
 	}
 	jhc, err := LoadJSON([]byte(hc.String()))
 	return jhc, err

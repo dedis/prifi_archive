@@ -198,7 +198,7 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 		// add to the hosts list if we havent added it before
 		if _, ok := hc.Hosts[h]; !ok {
 			if connT == GoC {
-				hosts[h] = NewHostNode(h, dir)
+				hosts[h] = NewGoHost(h, dir)
 			} else {
 				hosts[h] = NewTCPHost(h)
 			}
@@ -217,7 +217,10 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 		log.Fatal(err)
 	}*/
 	for _, sn := range hc.SNodes {
-		sn.Listen()
+		go func(sn *SigningNode) {
+			// start listening for messages from within the tree
+			sn.Listen()
+		}(sn)
 	}
 	for _, sn := range hc.SNodes {
 		sn.Connect()

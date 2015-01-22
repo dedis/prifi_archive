@@ -54,6 +54,9 @@ func (h *TCPHost) Listen() error {
 }
 
 func (h *TCPHost) Connect() error {
+	if h.parent == nil {
+		return nil
+	}
 	conn, err := net.Dial("tcp", h.parent.Name())
 	if err != nil {
 		return err
