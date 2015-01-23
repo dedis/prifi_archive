@@ -65,7 +65,11 @@ func TestStatic(t *testing.T) {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].logTest = []byte("Hello World")
-	nodes[0].Announce(&AnnouncementMessage{nodes[0].logTest})
+	err := nodes[0].Announce(&AnnouncementMessage{nodes[0].logTest})
+	if err != nil {
+		t.Log(err)
+		t.Fail()
+	}
 }
 
 // Configuration file data/exconf.json
@@ -89,7 +93,10 @@ func TestTreeBigConfig(t *testing.T) {
 		t.Error()
 	}
 	hc.SNodes[0].logTest = []byte("hello world")
-	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 // tree from configuration file data/exconf.json
@@ -102,9 +109,13 @@ func TestMultipleRounds(t *testing.T) {
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
+	var err error
 	for i := 0; i < N; i++ {
 		hostConfig.SNodes[0].logTest = []byte("Hello World" + strconv.Itoa(i))
-		hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].logTest})
+		err = hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].logTest})
+		if err != nil {
+			t.Error(err)
+		}
 	}
 }
 
@@ -114,7 +125,10 @@ func TestTCPStaticConfig(t *testing.T) {
 		t.Error(err)
 	}
 	hc.SNodes[0].logTest = []byte("hello world")
-	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {
@@ -128,7 +142,10 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	N := 1000
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].logTest = []byte("hello world")
-		hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+		err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+		if err != nil {
+			t.Error(err)
+		}
 	}
 }
 
@@ -141,7 +158,10 @@ func TestTreeBigConfigTCP(t *testing.T) {
 		t.Error()
 	}
 	hc.SNodes[0].logTest = []byte("hello world")
-	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 /*func BenchmarkTreeBigConfigTCP(b *testing.B) {

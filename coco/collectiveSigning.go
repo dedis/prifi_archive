@@ -46,7 +46,7 @@ func (sn *SigningNode) Listen() error {
 }
 
 // initiated by root, propagated by all others
-func (sn *SigningNode) Announce(am *AnnouncementMessage) {
+func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	//fmt.Println(sn.Name(), "announces")
 	// Inform all children of announcement
 	// PutDown requires each child to have his own message
@@ -56,13 +56,14 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) {
 		messgs[i] = sm
 	}
 	if err := sn.PutDown(messgs); err != nil {
-		panic("could not put down all Annoucement Messages" + err.Error())
+		return err
 	}
 	// initiate commit phase
-	sn.Commit()
+	return sn.Commit()
 }
 
-func (sn *SigningNode) Commit() {
+func (sn *SigningNode) Commit() error {
+	var err error
 	// generate secret and point commitment for this round
 	rand := sn.suite.Cipher([]byte(sn.Name()))
 	sn.v = sn.suite.Secret().Pick(rand)
@@ -75,8 +76,8 @@ func (sn *SigningNode) Commit() {
 		messgs[i] = &SigningMessage{}
 	}
 	// wait for all children to commit
-	if err := sn.GetDown(messgs); err != nil {
-		panic("could not get down all Commit Messages" + err.Error())
+	if err = sn.GetDown(messgs); err != nil {
+		return err
 	}
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
@@ -91,17 +92,18 @@ func (sn *SigningNode) Commit() {
 		}
 	}
 	if sn.IsRoot() {
-		sn.FinalizeCommits()
+		err = sn.FinalizeCommits()
 	} else {
 		// create and putup own commit message
-		sn.PutUp(SigningMessage{
+		err = sn.PutUp(SigningMessage{
 			Type: Commitment,
 			com:  &CommitmentMessage{V: sn.V, V_hat: sn.V_hat}})
 	}
+	return err
 }
 
 // initiated by root, propagated by all others
-func (sn *SigningNode) Challenge(chm *ChallengeMessage) {
+func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 	// register challenge
 	sn.c = chm.C
 	// inform all children of challenge
@@ -112,13 +114,13 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) {
 		messgs[i] = sm
 	}
 	if err := sn.PutDown(messgs); err != nil {
-		panic("could not put down all Challenge Messages" + err.Error())
+		return err
 	}
 	// initiate response phase
-	sn.Respond()
+	return sn.Respond()
 }
 
-func (sn *SigningNode) Respond() {
+func (sn *SigningNode) Respond() error {
 	// generate response   r = v - xc
 	sn.r = sn.suite.Secret()
 	sn.r.Mul(sn.privKey, sn.c).Sub(sn.v, sn.r)
@@ -130,7 +132,7 @@ func (sn *SigningNode) Respond() {
 		messgs[i] = &SigningMessage{}
 	}
 	if err := sn.GetDown(messgs); err != nil {
-		panic("could not get down all Respond Messages" + err.Error())
+		return err
 	}
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
@@ -144,20 +146,26 @@ func (sn *SigningNode) Respond() {
 		}
 	}
 
-	sn.VerifyResponses()
+	if err := sn.VerifyResponses(); err != nil {
+		return err
+	}
 	if !sn.IsRoot() {
 		// create and putup own response message
-		sn.PutUp(SigningMessage{
+		if err := sn.PutUp(SigningMessage{
 			Type: Response,
-			rm:   &ResponseMessage{sn.r_hat}})
+			rm:   &ResponseMessage{sn.r_hat}}); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // Called *only* by root node after receiving all commits
-func (sn *SigningNode) FinalizeCommits() {
+func (sn *SigningNode) FinalizeCommits() error {
 	// challenge = Hash(message, sn.V_hat)
 	sn.c = hashElGamal(sn.suite, sn.logTest, sn.V_hat)
-	sn.Challenge(&ChallengeMessage{C: sn.c})
+	err := sn.Challenge(&ChallengeMessage{C: sn.c})
+	return err
 }
 
 // Called by every node after receiving aggregate responses from descendants
@@ -173,8 +181,8 @@ func (sn *SigningNode) VerifyResponses() error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(sn.V_hat) || (sn.IsRoot() && !sn.c.Equal(c2)) {
-		fmt.Println(sn.Name(), "reports ElGamal Collective Signature failed")
-		return errors.New("Veryfing ElGamal Collective Signature failed")
+		// fmt.Println(sn.Name(), "reports ElGamal Collective Signature failed")
+		return errors.New("Veryfing ElGamal Collective Signature failed in" + sn.Name())
 	}
 
 	//fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
