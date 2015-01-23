@@ -37,14 +37,19 @@ func (h *TCPHost) Listen() error {
 		log.Println("failed to listen:", err)
 		return err
 	}
-	// XXX assumes posix max hostname length
-	bs := make([]byte, 300)
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
 			// handle error
 			log.Println("failed to accept connection")
+			continue
 		}
+		if conn == nil {
+			log.Println("!!!nil connection!!!")
+		}
+		// XXX assumes posix max hostname length
+		bs := make([]byte, 300)
 		n, err := conn.Read(bs)
 		if err != nil {
 			log.Println(err)

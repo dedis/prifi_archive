@@ -143,3 +143,18 @@ func TestTreeBigConfigTCP(t *testing.T) {
 	hc.SNodes[0].logTest = []byte("hello world")
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
 }
+
+func BenchmarkTreeBigConfigTCP(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping test in short mode.")
+	}
+	hc, err := LoadConfig("data/wax.json", "tcp")
+	if err != nil {
+		b.Error()
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		hc.SNodes[0].logTest = []byte("hello world")
+		hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	}
+}
