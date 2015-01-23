@@ -3,7 +3,7 @@
 import math
 import networkx as nx
 
-n = 100
+n = 1000
 
 
 
