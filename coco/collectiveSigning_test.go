@@ -144,7 +144,7 @@ func TestTreeBigConfigTCP(t *testing.T) {
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
 }
 
-func BenchmarkTreeBigConfigTCP(b *testing.B) {
+/*func BenchmarkTreeBigConfigTCP(b *testing.B) {
 	if testing.Short() {
 		b.Skip("skipping test in short mode.")
 	}
@@ -157,4 +157,4 @@ func BenchmarkTreeBigConfigTCP(b *testing.B) {
 		hc.SNodes[0].logTest = []byte("hello world")
 		hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
 	}
-}
+}*/
