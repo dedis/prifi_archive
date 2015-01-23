@@ -75,8 +75,14 @@ func TestStatic(t *testing.T) {
 //    / \   \
 //   2   3   5
 func TestTreeFromStaticConfig(t *testing.T) {
-	hostConfig, _ := LoadConfig("data/exconf.json")
-
+	hostConfig, err := LoadConfig("data/exconf.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = hostConfig.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	hostConfig.SNodes[0].logTest = []byte("Hello World")
@@ -86,7 +92,11 @@ func TestTreeFromStaticConfig(t *testing.T) {
 func TestTreeBigConfig(t *testing.T) {
 	hc, err := LoadConfig("data/exwax.json")
 	if err != nil {
-		t.Error()
+		t.Fatal()
+	}
+	err = hc.Run()
+	if err != nil {
+		t.Fatal(err)
 	}
 	hc.SNodes[0].logTest = []byte("hello world")
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
@@ -97,9 +107,15 @@ func TestMultipleRounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hostConfig, _ := LoadConfig("data/exconf.json")
+	hostConfig, err := LoadConfig("data/exconf.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	N := 1000
-
+	err = hostConfig.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	for i := 0; i < N; i++ {
@@ -113,6 +129,10 @@ func TestTCPStaticConfig(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	err = hc.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
 	hc.SNodes[0].logTest = []byte("hello world")
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
 }
@@ -125,6 +145,10 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	err = hc.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
 	N := 1000
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].logTest = []byte("hello world")
@@ -136,9 +160,13 @@ func TestTreeBigConfigTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hc, err := LoadConfig("data/wax.json", "tcp")
+	hc, err := LoadConfig("data/wax.json", ConfigOptions{ConnType: "tcp"})
 	if err != nil {
 		t.Error()
+	}
+	err = hc.Run()
+	if err != nil {
+		t.Fatal(err)
 	}
 	hc.SNodes[0].logTest = []byte("hello world")
 	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})

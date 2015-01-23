@@ -112,8 +112,7 @@ func (hc *HostConfig) String() string {
 		}
 		b.WriteString("\"" + sn.Name() + "\"")
 	}
-	b.WriteString("],")
-	b.WriteString("\"tree\": ")
+	b.WriteString("],\"tree\": ")
 	root := hc.SNodes[0]
 	writeHC(b, hc, root)
 	b.WriteString("}\n")
@@ -127,8 +126,7 @@ func (hc *HostConfig) String() string {
 }
 
 func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
-	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\"", ",")
-	fmt.Fprint(b, "\"children\":[")
+	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\",\"children\":[")
 	i := 0
 	for n := range p.Children() {
 		if i != 0 {
@@ -138,8 +136,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
 		writeHC(b, hc, c)
 		i++
 	}
-	fmt.Fprint(b, "]")
-	fmt.Fprint(b, "}")
+	fmt.Fprint(b, "]}")
 }
 
 // NewHostConfig creates a new host configuration that can be populated with
@@ -199,7 +196,7 @@ var ipv4Reg = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
 var ipv4host = "NONE"
 
 // getAddress gets the localhosts IPv4 address.
-func getAddress() (string, error) {
+func GetAddress() (string, error) {
 	name, err := os.Hostname()
 	if err != nil {
 		log.Print("Error Resolving Hostname:", err)
@@ -228,10 +225,21 @@ func getAddress() (string, error) {
 
 var startConfigPort = 8089
 
+type ConfigOptions struct {
+	ConnType  string   // "go", tcp"
+	Hostnames []string // if not nil replace hostnames with these
+	GenHosts  bool     // if true generate random hostnames (all tcp)
+}
+
 // TODO: if in tcp mode associate each hostname in the file with a different
 // port. Get the remote address of this computer to combine with those for the
 // complete hostnames to be used by the hosts.
-func LoadJSON(file []byte, opts ...string) (*HostConfig, error) {
+func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
+	// chose the first set of options to read in
+	opts := ConfigOptions{}
+	if len(optsSlice) > 0 {
+		opts = optsSlice[0]
+	}
 	hc := NewHostConfig()
 	var cf ConfigFile
 	err := json.Unmarshal(file, &cf)
@@ -242,10 +250,8 @@ func LoadJSON(file []byte, opts ...string) (*HostConfig, error) {
 	if cf.Conn == "tcp" {
 		connT = TcpC
 	}
-	for _, o := range opts {
-		if o == "tcp" {
-			connT = TcpC
-		}
+	if opts.ConnType == "tcp" {
+		connT = TcpC
 	}
 	dir := NewGoDirectory()
 	hosts := make(map[string]Host)
@@ -259,7 +265,7 @@ func LoadJSON(file []byte, opts ...string) (*HostConfig, error) {
 			}
 		}
 	} else {
-		localAddr, err := getAddress()
+		localAddr, err := GetAddress()
 		if err != nil {
 			return nil, err
 		}
@@ -287,45 +293,65 @@ func LoadJSON(file []byte, opts ...string) (*HostConfig, error) {
 	if rn != hc.SNodes[0] {
 		log.Fatal("root node is not the zeroth")
 	}
-	/*if err := hc.Verify(); err != nil {
-		log.Fatal(err)
-	}*/
-	for _, sn := range hc.SNodes {
+	return hc, err
+}
+
+// run the given hostnames
+func (hc *HostConfig) Run(hostnameSlice ...string) error {
+	hostnames := make(map[string]*SigningNode)
+	if hostnameSlice == nil {
+		hostnames = hc.Hosts
+	} else {
+		for _, h := range hostnameSlice {
+			sn, ok := hc.Hosts[h]
+			if !ok {
+				return errors.New("hostname given not in config file:" + h)
+			}
+			hostnames[h] = sn
+		}
+	}
+	for _, sn := range hostnames {
 		go func(sn *SigningNode) {
 			// start listening for messages from within the tree
 			sn.Host.Listen()
 		}(sn)
 	}
-	for _, sn := range hc.SNodes {
+	for _, sn := range hostnames {
 		var err error
-		for i := 0; i < 10; i++ {
+		// exponential backoff for attempting to connect to parent
+		startTime := time.Duration(200)
+		maxTime := time.Duration(60000)
+		for i := 0; i < 100; i++ {
+			log.Println("attempting to connect to parent")
 			err = sn.Connect()
 			if err == nil {
 				break
 			}
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(startTime * time.Millisecond)
+			startTime *= 2
+			if startTime > maxTime {
+				startTime = maxTime
+			}
 		}
 		if err != nil {
-			log.Fatal("failed to connect: ", err)
+			return errors.New("failed to connect")
 		}
 	}
 	// need to make sure connections are setup properly first
 	// wait for a little bit for connections to establish fully
-	if connT == TcpC {
-		time.Sleep(200 * time.Millisecond)
-	}
-	for _, sn := range hc.SNodes {
+	time.Sleep(1000 * time.Millisecond)
+	for _, sn := range hostnames {
 		go func(sn *SigningNode) {
 			// start listening for messages from within the tree
 			sn.Listen()
 		}(sn)
 	}
-	return hc, err
+	return nil
 }
 
 // LoadConfig loads a configuration file in the format specified above. It
 // populates a HostConfig with HostNode Hosts and goPeer Peers.
-func LoadConfig(fname string, opts ...string) (*HostConfig, error) {
+func LoadConfig(fname string, opts ...ConfigOptions) (*HostConfig, error) {
 	file, err := ioutil.ReadFile(fname)
 	if err != nil {
 		return nil, err
