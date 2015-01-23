@@ -12,6 +12,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
@@ -157,16 +158,21 @@ const (
 // ConstructTree does a depth-first construction of the tree specified in the
 // config file. ConstructTree must be call AFTER populating the HostConfig with
 // ALL the possible hosts.
-func ConstructTree(n Node, hc *HostConfig, parent Host, suite abstract.Suite, rand cipher.Stream, hosts map[string]Host) (*SigningNode, error) {
+func ConstructTree(n Node, hc *HostConfig, parent Host, suite abstract.Suite, rand cipher.Stream, hosts map[string]Host, nameToAddr map[string]string) (*SigningNode, error) {
 	// get the HostNode associated with n
-	h, ok := hosts[n.Name]
+	name, ok := nameToAddr[n.Name]
 	if !ok {
-		fmt.Println("unknown host in tree:", n.Name)
+		fmt.Println("unknown name in address book:", n.Name)
+		return nil, errors.New("unknown name in address book")
+	}
+	h, ok := hosts[name]
+	if !ok {
+		fmt.Println("unknown host in tree:", name)
 		return nil, errors.New("unknown host in tree")
 	}
 	hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
 	sn := hc.SNodes[len(hc.SNodes)-1]
-	hc.Hosts[n.Name] = sn
+	hc.Hosts[name] = sn
 	// if the parent of this call is nil then this must be the root node
 	if parent != nil {
 		h.AddParent(parent.Name())
@@ -174,8 +180,13 @@ func ConstructTree(n Node, hc *HostConfig, parent Host, suite abstract.Suite, ra
 	sn.X_hat = sn.pubKey
 	for _, c := range n.Children {
 		// connect this node to its children
-		h.AddChildren(c.Name)
-		csn, err := ConstructTree(c, hc, h, suite, rand, hosts)
+		cname, ok := nameToAddr[c.Name]
+		if !ok {
+			fmt.Println("unknown name in address book:", n.Name)
+			return nil, errors.New("unknown name in address book")
+		}
+		h.AddChildren(cname)
+		csn, err := ConstructTree(c, hc, h, suite, rand, hosts, nameToAddr)
 		if err != nil {
 			return nil, err
 		}
@@ -215,6 +226,8 @@ func getAddress() (string, error) {
 	return ipv4host, nil
 }
 
+var startConfigPort = 8089
+
 // TODO: if in tcp mode associate each hostname in the file with a different
 // port. Get the remote address of this computer to combine with those for the
 // complete hostnames to be used by the hosts.
@@ -236,6 +249,7 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 	if connT == GoC {
 		for _, h := range cf.Hosts {
 			if _, ok := hc.Hosts[h]; !ok {
+				nameToAddr[h] = h
 				hosts[h] = NewGoHost(h, dir)
 			}
 		}
@@ -244,25 +258,24 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Println("Found localhost address:", localAddr)
-		port := 8089
+		//log.Println("Found localhost address:", localAddr)
 
 		for _, h := range cf.Hosts {
-			p := strconv.Itoa(port)
+			p := strconv.Itoa(startConfigPort)
 			addr := localAddr + ":" + p
 			log.Println("created new host address: ", addr)
 			nameToAddr[h] = addr
 			// add to the hosts list if we havent added it before
 			if _, ok := hc.Hosts[addr]; !ok {
-				hosts[h] = NewGoHost(addr, dir)
-				hosts[h] = NewTCPHost(addr)
+				hosts[addr] = NewGoHost(addr, dir)
+				hosts[addr] = NewTCPHost(addr)
 			}
-			port++
+			startConfigPort++
 		}
 	}
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
-	rn, err := ConstructTree(cf.Tree, hc, nil, suite, rand, hosts)
+	rn, err := ConstructTree(cf.Tree, hc, nil, suite, rand, hosts, nameToAddr)
 	if err != nil {
 		return hc, err
 	}
@@ -275,14 +288,32 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 	for _, sn := range hc.SNodes {
 		go func(sn *SigningNode) {
 			// start listening for messages from within the tree
-			sn.Listen()
+			sn.Host.Listen()
 		}(sn)
 	}
 	for _, sn := range hc.SNodes {
-		err := sn.Connect()
+		var err error
+		for i := 0; i < 10; i++ {
+			err = sn.Connect()
+			if err == nil {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
 		if err != nil {
 			log.Fatal("failed to connect: ", err)
 		}
+	}
+	// need to make sure connections are setup properly first
+	// wait for a little bit for connections to establish fully
+	if connT == TcpC {
+		time.Sleep(200 * time.Millisecond)
+	}
+	for _, sn := range hc.SNodes {
+		go func(sn *SigningNode) {
+			// start listening for messages from within the tree
+			sn.Listen()
+		}(sn)
 	}
 	return hc, err
 }

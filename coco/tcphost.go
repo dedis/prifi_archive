@@ -2,11 +2,17 @@ package coco
 
 // TCPHost is a simple implementation of Host that does not specify the
 import (
+	"errors"
 	"log"
 	"net"
 	"sync"
 	"time"
 )
+
+func init() {
+	// specialize logger
+	log.SetFlags(log.Lshortfile)
+}
 
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
@@ -25,33 +31,36 @@ func NewTCPHost(hostname string) *TCPHost {
 }
 
 func (h *TCPHost) Listen() error {
-	log.Println("tcphost: attempting to start listening")
+	var err error
 	ln, err := net.Listen("tcp", h.name)
 	if err != nil {
 		log.Println("failed to listen:", err)
 		return err
 	}
+	// XXX assumes posix max hostname length
+	bs := make([]byte, 300)
 	for {
-		log.Println("listening on host: ", h.name)
 		conn, err := ln.Accept()
-		log.Println("accepted connection")
 		if err != nil {
 			// handle error
 			log.Println("failed to accept connection")
 		}
-
-		// accept children connections but no one else
-		p, ok := h.children[conn.RemoteAddr().String()]
-		if !ok {
-			log.Println("connection request not from child:", conn.RemoteAddr().String())
+		n, err := conn.Read(bs)
+		if err != nil {
+			log.Println(err)
 			conn.Close()
 			continue
 		}
-		if p != nil {
-			log.Println("connection attempt from peer with connection already")
+		name := string(bs[:n])
+		// accept children connections but no one else
+		_, ok := h.children[name]
+		if !ok {
+			log.Println("connection request not from child:", name)
+			conn.Close()
+			continue
 		}
 		tp := NewTCPConnFromNet(conn)
-		h.children[conn.RemoteAddr().String()] = tp
+		h.children[name] = tp
 	}
 	return nil
 }
@@ -63,6 +72,14 @@ func (h *TCPHost) Connect() error {
 	conn, err := net.Dial("tcp", h.parent.Name())
 	if err != nil {
 		return err
+	}
+	bs := []byte(h.Name())
+	n, err := conn.Write(bs)
+	if err != nil {
+		return err
+	}
+	if n != len(bs) {
+		return errors.New("tcp connect failed did not write full name")
 	}
 	h.parent = NewTCPConnFromNet(conn)
 	return nil
