@@ -73,11 +73,10 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	return h
 }
 
-func (h *GoHost) Listen() error {
+func (h *GoHost) Connect() error {
 	return nil
 }
-
-func (h *GoHost) Connect() error {
+func (h *GoHost) Listen() error {
 	return nil
 }
 
