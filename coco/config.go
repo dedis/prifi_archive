@@ -231,7 +231,7 @@ var startConfigPort = 8089
 // TODO: if in tcp mode associate each hostname in the file with a different
 // port. Get the remote address of this computer to combine with those for the
 // complete hostnames to be used by the hosts.
-func LoadJSON(file []byte) (*HostConfig, error) {
+func LoadJSON(file []byte, opts ...string) (*HostConfig, error) {
 	hc := NewHostConfig()
 	var cf ConfigFile
 	err := json.Unmarshal(file, &cf)
@@ -241,6 +241,11 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 	connT := GoC
 	if cf.Conn == "tcp" {
 		connT = TcpC
+	}
+	for _, o := range opts {
+		if o == "tcp" {
+			connT = TcpC
+		}
 	}
 	dir := NewGoDirectory()
 	hosts := make(map[string]Host)
@@ -263,7 +268,7 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 		for _, h := range cf.Hosts {
 			p := strconv.Itoa(startConfigPort)
 			addr := localAddr + ":" + p
-			log.Println("created new host address: ", addr)
+			//log.Println("created new host address: ", addr)
 			nameToAddr[h] = addr
 			// add to the hosts list if we havent added it before
 			if _, ok := hc.Hosts[addr]; !ok {
@@ -320,11 +325,11 @@ func LoadJSON(file []byte) (*HostConfig, error) {
 
 // LoadConfig loads a configuration file in the format specified above. It
 // populates a HostConfig with HostNode Hosts and goPeer Peers.
-func LoadConfig(fname string) (*HostConfig, error) {
+func LoadConfig(fname string, opts ...string) (*HostConfig, error) {
 	file, err := ioutil.ReadFile(fname)
 	if err != nil {
 		return nil, err
 	}
-	return LoadJSON(file)
+	return LoadJSON(file, opts...)
 
 }

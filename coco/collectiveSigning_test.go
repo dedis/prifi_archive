@@ -131,3 +131,15 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 		hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
 	}
 }
+
+func TestTreeBigConfigTCP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	hc, err := LoadConfig("data/wax.json", "tcp")
+	if err != nil {
+		t.Error()
+	}
+	hc.SNodes[0].logTest = []byte("hello world")
+	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+}
