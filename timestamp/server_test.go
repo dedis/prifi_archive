@@ -7,9 +7,6 @@ import (
 	"github.com/dedis/prifi/coco"
 )
 
-//      server-node
-//       /
-//  client node
 func TestStatic(t *testing.T) {
 	// Crypto setup
 	// suite := nist.NewAES128SHA256P256()
@@ -34,6 +31,7 @@ func TestStatic(t *testing.T) {
 	client.servers[server.Name()] = ngc
 
 	go server.Listen()
+	go client.Listen()
 	client.Put(server.Name(),
 		&TimeStampMessage{
 			Type: StampRequestType,
