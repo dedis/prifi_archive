@@ -59,12 +59,32 @@ func (p Proof) Calc(newHash func() hash.Hash, leaf []byte) []byte {
 
 // Check a purported Proof against given root and leaf hashes.
 func (p Proof) Check(newHash func() hash.Hash, root, leaf []byte) bool {
-	// fmt.Println("\n\n\n")
 	chk := p.Calc(newHash, leaf)
-	// fmt.Println("chk:", chk)
-	// fmt.Println("root:", root)
 	// compare returns 1 if equal, so return is true when check is good
 	return subtle.ConstantTimeCompare(chk, root) != 0
+}
+
+func CheckProofs(newHash func() hash.Hash, root HashId, leaves []HashId, proofs []Proof) {
+	// fmt.Println("Created mtRoot:", mtRoot)
+	for i := range proofs {
+		if proofs[i].Check(newHash, root, leaves[i]) == false {
+			panic("check failed at leaf")
+		}
+	}
+}
+
+func (p *Proof) PrintProof(proofNumber int) {
+	fmt.Println("Proof number=", proofNumber)
+	for _, x := range *p {
+		fmt.Println(x)
+	}
+	// 	fmt.Println("\n")
+}
+
+func PrintProofs(proofs []Proof) {
+	for i, p := range proofs {
+		p.PrintProof(i)
+	}
 }
 
 func sibling(i int) int {
@@ -86,12 +106,12 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 	for n := 1; n < nleaves; n <<= 1 {
 		depth++
 	}
+
 	// if nleaves is not a power of 2, we add 0s to fill in up to pow2
 	var i int
 	for nleaves, i = (1 << uint(depth)), nleavesArg; i < nleaves; i++ {
 		leaves = append(leaves, make([]byte, newHash().Size()))
 	}
-	// fmt.Println("leaves", leaves)
 	// fmt.Println("depth=", depth, "nleaves=", nleavesArg)
 
 	// Build the Merkle tree
@@ -125,25 +145,12 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 	for i := 0; i < nleaves; i++ {
 		p := make([]HashId, depth)[:0]
 		p = append(p, root)
-		// for d := 0; d < depth; d++ {
 		for d := depth - 1; d >= 0; d-- {
-			// fmt.Println("TREE d=", d, tree[depth-d-1])
-			// fmt.Println(depth-d-1, i>>uint(d))
-
 			h := tree[depth-d][sibling(i>>uint(d))]
 			if h != nil {
 				p = append(p, h)
 			}
 		}
-		// 	fmt.Println(tree[depth][sibling(i)])
-		// 	p = append(p, tree[depth][sibling(i)])
-		// }
-
-		// else {
-		// 	aux := make([]byte, newHash().Size())
-		// 	fmt.Println(aux)
-		// 	p = append(p, aux)
-		// }
 		proofs[i] = Proof(p)
 	}
 	return root, proofs[:nleavesArg]

@@ -87,20 +87,11 @@ func (s *Server) Listen() {
 		for _, msg := range Queue[PROCESSING] {
 			leaves = append(leaves, HashId(msg.tsm.sreq.Val))
 		}
-		// fmt.Println("client leaves", leaves)
 		// create Merkle tree for this round
 		mtRoot, proofs := ProofTree(s.suite.Hash, leaves)
-		fmt.Println("Create mtRoot:", mtRoot)
-		for i, p := range proofs {
-			fmt.Println("Proof ", i)
-			for _, x := range p {
-				fmt.Println(x)
-			}
-			fmt.Println("\n")
-		}
+		// CheckProofs(s.suite.Hash, mtRoot, leaves, proofs)
 
 		for _, msg := range Queue[PROCESSING] {
-			// fmt.Println("Replying to", string(msg.to))
 			s.Put(msg.to,
 				TimeStampMessage{
 					Type: StampReplyType,

@@ -22,18 +22,10 @@ func TestPath(t *testing.T) {
 	}
 
 	root, proofs := ProofTree(newHash, leaves)
-	// println("root:", hex.EncodeToString(root))
-	// fmt.Println("root:", root)
 	for i := range proofs {
-		// println("leaf", i, hex.EncodeToString(leaves[i]))
-		// fmt.Println("proof ", i, ":", proofs[i])
 		if proofs[i].Check(newHash, root, leaves[i]) == false {
-			// t.Error("check failed at leaf", i)
-			panic("check failed at leaf")
+			t.Error("check failed at leaf", i)
 		}
-		// for j := range proofs[i] {
-		// 	println("  ", j, hex.EncodeToString(proofs[i][j]))
-		// }
 	}
 }
 
@@ -52,23 +44,13 @@ func TestPathLong(t *testing.T) {
 			for j := range leaves[i] {
 				leaves[i][j] = byte(i)
 			}
-			// println("leaf", i, ":", hex.EncodeToString(leaves[i]))
-			// fmt.Println("leaf", i, ":", leaves[i])
 		}
 
 		root, proofs := ProofTree(newHash, leaves)
-		// println("root:", hex.EncodeToString(root))
-		// fmt.Println("root:", root)
 		for i := range proofs {
-			// println("leaf", i, hex.EncodeToString(leaves[i]))
-			// fmt.Println("proof ", i, ":", proofs[i])
 			if proofs[i].Check(newHash, root, leaves[i]) == false {
-				// t.Error("check failed at leaf", i)
-				panic("check failed at leaf")
+				t.Error("check failed at leaf", i)
 			}
-			// for j := range proofs[i] {
-			// 	println("  ", j, hex.EncodeToString(proofs[i][j]))
-			// }
 		}
 	}
 }
