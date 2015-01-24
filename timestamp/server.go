@@ -69,21 +69,38 @@ func (s *Server) Listen() {
 
 	ticker := time.Tick(1 * time.Second)
 	for _ = range ticker {
+		fmt.Println("in ticker")
 		mux.Lock()
 		READING, PROCESSING = PROCESSING, READING
 		Queue[READING] = Queue[READING][:0]
 		mux.Unlock()
+
+		// give up if nothing to process
+		if len(Queue[PROCESSING]) == 0 {
+			// TODO: some form of empty merkle tree root
+			// could be needed when integrating with collective signing
+			continue
+		}
+
 		// pull out to be Merkle Tree leaves
 		leaves := make([]HashId, 0)
 		for _, msg := range Queue[PROCESSING] {
 			leaves = append(leaves, HashId(msg.tsm.sreq.Val))
 		}
+		// fmt.Println("client leaves", leaves)
 		// create Merkle tree for this round
-		mtRoot, _ := ProofTree(s.suite.Hash, leaves)
+		mtRoot, proofs := ProofTree(s.suite.Hash, leaves)
 		fmt.Println("Create mtRoot:", mtRoot)
+		for i, p := range proofs {
+			fmt.Println("Proof ", i)
+			for _, x := range p {
+				fmt.Println(x)
+			}
+			fmt.Println("\n")
+		}
 
 		for _, msg := range Queue[PROCESSING] {
-			fmt.Println("Replying to", string(msg.to))
+			// fmt.Println("Replying to", string(msg.to))
 			s.Put(msg.to,
 				TimeStampMessage{
 					Type: StampReplyType,
@@ -97,6 +114,6 @@ func (s *Server) Name() string {
 }
 
 func (s *Server) Put(name string, data coco.BinaryMarshaler) {
-	fmt.Println("putting ", data)
+	// fmt.Println("putting ", data)
 	s.clients[name].Put(data)
 }

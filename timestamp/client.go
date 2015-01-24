@@ -42,6 +42,6 @@ func (c *Client) Name() string {
 }
 
 func (c *Client) Put(name string, data coco.BinaryMarshaler) {
-	fmt.Println("putting ", data)
+	// fmt.Println("putting ", data)
 	c.servers[name].Put(data)
 }
