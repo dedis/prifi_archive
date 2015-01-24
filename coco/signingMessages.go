@@ -25,6 +25,7 @@ const (
 
 type SigningMessage struct {
 	Type MessageType
+	Err  error // to signal error to upper level
 	am   *AnnouncementMessage
 	com  *CommitmentMessage
 	chm  *ChallengeMessage

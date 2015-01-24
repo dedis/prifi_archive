@@ -23,7 +23,7 @@ type StampRequest struct {
 }
 type StampReply struct {
 	Sig []byte // Signature on the root
-	// Prf Proof  // Merkle proof of value
+	Prf Proof  // Merkle proof of value
 }
 
 // Request to obtain an old log-entry and, optionally,

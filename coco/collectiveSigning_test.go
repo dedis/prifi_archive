@@ -46,6 +46,10 @@ func TestStatic(t *testing.T) {
 	nodes := make([]*SigningNode, nNodes)
 	for i := 0; i < nNodes; i++ {
 		nodes[i] = NewSigningNode(h[i], suite, rand)
+
+		// To test the already keyed signing node, uncomment
+		// privKey := suite.Secret().Pick(rand)
+		// nodes[i] = NewKeyedSigningNode(h[i], suite, privKey)
 	}
 	for i := 0; i < nNodes; i++ {
 		go func(i int) {
@@ -61,6 +65,15 @@ func TestStatic(t *testing.T) {
 	nodes[1].X_hat.Add(nodes[1].pubKey, nodes[2].X_hat)
 	nodes[1].X_hat.Add(nodes[1].X_hat, nodes[3].X_hat)
 	nodes[0].X_hat.Add(nodes[0].pubKey, nodes[1].X_hat)
+
+	// test that X_Hats of non-leaves are != their pub keys
+	firstLeaf := 2
+	for i := 0; i < firstLeaf; i++ {
+		if nodes[0].X_hat.Equal(nodes[0].pubKey) {
+			panic("pub key equal x hat")
+		}
+
+	}
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement

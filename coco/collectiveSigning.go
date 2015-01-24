@@ -121,6 +121,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 }
 
 func (sn *SigningNode) Respond() error {
+	var err error
 	// generate response   r = v - xc
 	sn.r = sn.suite.Secret()
 	sn.r.Mul(sn.privKey, sn.c).Sub(sn.v, sn.r)
@@ -131,11 +132,14 @@ func (sn *SigningNode) Respond() error {
 	for i := range messgs {
 		messgs[i] = &SigningMessage{}
 	}
-	if err := sn.GetDown(messgs); err != nil {
+	if err = sn.GetDown(messgs); err != nil {
 		return err
 	}
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
+		if sm.Err != nil {
+			return sm.Err
+		}
 		switch sm.Type {
 		default:
 			// Not possible in current system where little randomness is allowed
@@ -146,18 +150,20 @@ func (sn *SigningNode) Respond() error {
 		}
 	}
 
-	if err := sn.VerifyResponses(); err != nil {
-		return err
-	}
+	err = sn.VerifyResponses()
 	if !sn.IsRoot() {
-		// create and putup own response message
-		if err := sn.PutUp(SigningMessage{
-			Type: Response,
-			rm:   &ResponseMessage{sn.r_hat}}); err != nil {
-			return err
+		// report verify response error
+		if err != nil {
+			return sn.PutUp(SigningMessage{
+				Type: Error,
+				Err:  err})
 		}
+		// create and putup own response message
+		return sn.PutUp(SigningMessage{
+			Type: Response,
+			rm:   &ResponseMessage{sn.r_hat}})
 	}
-	return nil
+	return err
 }
 
 // Called *only* by root node after receiving all commits

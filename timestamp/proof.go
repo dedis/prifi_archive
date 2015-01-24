@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"hash"
 
 	"github.com/dedis/crypto/abstract"
@@ -48,6 +49,7 @@ func (p Proof) Calc(newHash func() hash.Hash, leaf []byte) []byte {
 // Check a purported Proof against given root and leaf hashes.
 func (p Proof) Check(newHash func() hash.Hash, root, leaf []byte) bool {
 	chk := p.Calc(newHash, leaf)
+	// compare returns 1 if equal, so return is true when check is good
 	return subtle.ConstantTimeCompare(chk, root) != 0
 }
 
@@ -72,6 +74,7 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 		nnext := (nprev + 1) >> 1 // # hashes total at level i
 		nnode := nprev >> 1       // # new nodes at level i
 		println("nprev", nprev, "nnext", nnext, "nnode", nnode)
+		fmt.Println("nprev", nprev, "nnext", nnext, "nnode", nnode)
 		tree[d] = make([]HashId, nnext)
 		tnext := tree[d]
 		for i := 0; i < nnode; i++ {
