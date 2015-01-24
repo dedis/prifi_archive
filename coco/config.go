@@ -3,6 +3,7 @@ package coco
 import (
 	"bytes"
 	"crypto/cipher"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,20 +26,7 @@ file format: json
 conn: indicates what protocol should be used
 	by default it uses the "tcp" protocol
 	"tcp": uses TcpConn for communications
-	"goroutine": uses GoConn for communications
-
-multiprocess: indicates whether each node should be run in its own process
-	true: run each in its own process
-	false: run each in its own goroutine
-	--> create executable to run a signing node
-
-process_hosts: indicates what hosts to run these processes on
-	default: just this one
-	[] // non empty list: tries ssh'ing ?
-	???: how to do this best
-		cross compile the SigningNode binary
-		scp this to the host node (after establishing ssh key pairs)
-		ssh run command
+	"goroutine": uses GoConn for communications [default]
 
 ex.json
 {
@@ -52,14 +40,20 @@ ex.json
 			  children: [{name: host6}]}}
 }
 */
+
 type ConfigFile struct {
 	Conn  string   `json:"conn,omitempty"`
 	Hosts []string `json:"hosts"`
 	Tree  Node     `json:"tree"`
 }
 
+// why can't I just deal with nist.Point
+type JSONPoint json.RawMessage
+
 type Node struct {
 	Name     string `json:"name"`
+	PriKey   string `json:"prikey,omitempty"`
+	PubKey   string `json:"pubkey,omitempty"`
 	Children []Node `json:"children,omitempty"`
 }
 
@@ -89,7 +83,9 @@ func publicKeyCheck(n *SigningNode, hc *HostConfig) error {
 	return nil
 }
 
-func traverseTree(p *SigningNode, hc *HostConfig, f func(*SigningNode, *HostConfig) error) error {
+func traverseTree(p *SigningNode,
+	hc *HostConfig,
+	f func(*SigningNode, *HostConfig) error) error {
 	if err := f(p, hc); err != nil {
 		return err
 	}
@@ -105,6 +101,8 @@ func traverseTree(p *SigningNode, hc *HostConfig, f func(*SigningNode, *HostConf
 
 func (hc *HostConfig) String() string {
 	b := bytes.NewBuffer([]byte{})
+
+	// write the hosts
 	b.WriteString("{\"hosts\": [")
 	for i, sn := range hc.SNodes {
 		if i != 0 {
@@ -113,21 +111,31 @@ func (hc *HostConfig) String() string {
 		b.WriteString("\"" + sn.Name() + "\"")
 	}
 	b.WriteString("],")
+
+	// write the tree structure
 	b.WriteString("\"tree\": ")
 	root := hc.SNodes[0]
 	writeHC(b, hc, root)
 	b.WriteString("}\n")
+
+	// format the resulting JSON for readability
 	bformatted := bytes.NewBuffer([]byte{})
 	err := json.Indent(bformatted, b.Bytes(), "", "\t")
 	if err != nil {
 		fmt.Println(string(b.Bytes()))
 		fmt.Println("ERROR: ", err)
 	}
+
 	return string(bformatted.Bytes())
 }
 
 func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
-	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\"", ",")
+	// Node{name, pubkey, x_hat, children}
+	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\",")
+	fmt.Fprint(b, "\"prikey\":", "\""+string(hex.EncodeToString(p.privKey.Encode()))+"\",")
+	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(p.pubKey.Encode()))+"\",")
+
+	// recursively format children
 	fmt.Fprint(b, "\"children\":[")
 	i := 0
 	for n := range p.Children() {
@@ -138,8 +146,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
 		writeHC(b, hc, c)
 		i++
 	}
-	fmt.Fprint(b, "]")
-	fmt.Fprint(b, "}")
+	fmt.Fprint(b, "]}")
 }
 
 // NewHostConfig creates a new host configuration that can be populated with
@@ -158,26 +165,96 @@ const (
 // ConstructTree does a depth-first construction of the tree specified in the
 // config file. ConstructTree must be call AFTER populating the HostConfig with
 // ALL the possible hosts.
-func ConstructTree(n Node, hc *HostConfig, parent Host, suite abstract.Suite, rand cipher.Stream, hosts map[string]Host, nameToAddr map[string]string) (*SigningNode, error) {
-	// get the HostNode associated with n
+func ConstructTree(
+	n Node,
+	hc *HostConfig,
+	parent string,
+	suite abstract.Suite,
+	rand cipher.Stream,
+	hosts map[string]Host,
+	nameToAddr map[string]string,
+	opts ConfigOptions) (abstract.Point, error) {
+	// passes up its X_hat, and/or an error
+
+	// get the name associated with this address
 	name, ok := nameToAddr[n.Name]
 	if !ok {
 		fmt.Println("unknown name in address book:", n.Name)
 		return nil, errors.New("unknown name in address book")
 	}
+
+	// generate indicates whether we should generate the signing
+	// node for this hostname
+	generate := opts.Host == "" || opts.Host == name
+
+	// check to make sure the this hostname is in the tree
+	// it can be backed by a nil pointer
 	h, ok := hosts[name]
 	if !ok {
 		fmt.Println("unknown host in tree:", name)
 		return nil, errors.New("unknown host in tree")
 	}
-	hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
-	sn := hc.SNodes[len(hc.SNodes)-1]
-	hc.Hosts[name] = sn
-	// if the parent of this call is nil then this must be the root node
-	if parent != nil {
-		h.AddParent(parent.Name())
+
+	var prikey abstract.Secret
+	var pubkey abstract.Point
+	var sn *SigningNode
+
+	// if the JSON holds the fields field is set load from there
+	if len(n.PubKey) != 0 {
+		log.Println("decoding point")
+		encoded, err := hex.DecodeString(string(n.PubKey))
+		if err != nil {
+			log.Print("failed to decode hex from encoded")
+			return nil, err
+		}
+		pubkey = suite.Point()
+		err = pubkey.Decode(encoded)
+		if err != nil {
+			log.Print("failed to decode point from hex")
+			return nil, err
+		}
+		log.Println("decoding point")
+		encoded, err = hex.DecodeString(string(n.PriKey))
+		if err != nil {
+			log.Print("failed to decode hex from encoded")
+			return nil, err
+		}
+		prikey = suite.Secret()
+		err = prikey.Decode(encoded)
+		if err != nil {
+			log.Print("failed to decode point from hex")
+			return nil, err
+		}
 	}
-	sn.X_hat = sn.pubKey
+	if generate {
+		if prikey != nil {
+			// if we have been given a private key load that
+			hc.SNodes = append(hc.SNodes, NewKeyedSigningNode(h, suite, prikey))
+		} else {
+			// otherwise generate a random new one
+			hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
+		}
+		sn = hc.SNodes[len(hc.SNodes)-1]
+		hc.Hosts[name] = sn
+		if prikey == nil {
+			prikey = sn.privKey
+			pubkey = sn.pubKey
+		}
+		// log.Println("pubkey:", sn.pubKey)
+		// log.Println("given: ", pubkey)
+	} else {
+		log.Fatal("public keys have not been given and not generating")
+	}
+	// if the parent of this call is empty then this must be the root node
+	if parent != "" && generate {
+		h.AddParent(parent)
+	}
+	// log.Println("name: ", n.Name)
+	// log.Println("prikey: ", prikey)
+	// log.Println("pubkey: ", pubkey)
+	x_hat := suite.Point().Null()
+	x_hat.Add(x_hat, pubkey)
+	// log.Println("x_hat: ", x_hat)
 	for _, c := range n.Children {
 		// connect this node to its children
 		cname, ok := nameToAddr[c.Name]
@@ -185,32 +262,49 @@ func ConstructTree(n Node, hc *HostConfig, parent Host, suite abstract.Suite, ra
 			fmt.Println("unknown name in address book:", n.Name)
 			return nil, errors.New("unknown name in address book")
 		}
-		h.AddChildren(cname)
-		csn, err := ConstructTree(c, hc, h, suite, rand, hosts, nameToAddr)
+
+		if generate {
+			h.AddChildren(cname)
+		}
+
+		// recursively construct the children
+		cpubkey, err := ConstructTree(c, hc, h.Name(), suite, rand, hosts, nameToAddr, opts)
 		if err != nil {
 			return nil, err
 		}
-		sn.X_hat.Add(sn.X_hat, csn.X_hat)
+
+		// if generating all csn will be availible
+		// log.Print("adding from child: ", x_hat, cpubkey)
+		x_hat.Add(x_hat, cpubkey)
 	}
-	return sn, nil
+	if generate {
+		sn.X_hat = x_hat
+	}
+	// log.Println("name: ", n.Name)
+	// log.Println("final x_hat: ", x_hat)
+	// log.Println("final pubkey: ", pubkey)
+	return x_hat, nil
 }
 
 var ipv4Reg = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
 var ipv4host = "NONE"
 
 // getAddress gets the localhosts IPv4 address.
-func getAddress() (string, error) {
+func GetAddress() (string, error) {
 	name, err := os.Hostname()
 	if err != nil {
 		log.Print("Error Resolving Hostname:", err)
 		return "", err
 	}
+
 	if ipv4host == "NONE" {
 		as, err := net.LookupHost(name)
 		if err != nil {
 			return "", err
 		}
+
 		addr := ""
+
 		for _, a := range as {
 			log.Printf("a = %+v", a)
 			if ipv4Reg.MatchString(a) {
@@ -218,6 +312,7 @@ func getAddress() (string, error) {
 				addr = a
 			}
 		}
+
 		if addr == "" {
 			err = errors.New("No IPv4 Address for Hostname")
 		}
@@ -228,108 +323,153 @@ func getAddress() (string, error) {
 
 var startConfigPort = 8089
 
+type ConfigOptions struct {
+	ConnType  string   // "go", tcp"
+	Hostnames []string // if not nil replace hostnames with these
+	GenHosts  bool     // if true generate random hostnames (all tcp)
+	Host      string   // hostname to load into memory: "" for all
+}
+
 // TODO: if in tcp mode associate each hostname in the file with a different
 // port. Get the remote address of this computer to combine with those for the
 // complete hostnames to be used by the hosts.
-func LoadJSON(file []byte, opts ...string) (*HostConfig, error) {
+func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
+	opts := ConfigOptions{}
+	if len(optsSlice) > 0 {
+		opts = optsSlice[0]
+	}
+
 	hc := NewHostConfig()
 	var cf ConfigFile
 	err := json.Unmarshal(file, &cf)
 	if err != nil {
 		return hc, err
 	}
+
 	connT := GoC
 	if cf.Conn == "tcp" {
 		connT = TcpC
 	}
-	for _, o := range opts {
-		if o == "tcp" {
-			connT = TcpC
-		}
+
+	// options override file
+	if opts.ConnType == "tcp" {
+		connT = TcpC
 	}
+
 	dir := NewGoDirectory()
 	hosts := make(map[string]Host)
 	nameToAddr := make(map[string]string)
-	// read the hosts lists
+
 	if connT == GoC {
 		for _, h := range cf.Hosts {
 			if _, ok := hc.Hosts[h]; !ok {
 				nameToAddr[h] = h
+				// it doesn't make sense to only make 1 go host
 				hosts[h] = NewGoHost(h, dir)
 			}
 		}
-	} else {
-		localAddr, err := getAddress()
-		if err != nil {
-			return nil, err
+
+	} else if connT == TcpC {
+		localAddr := ""
+
+		if opts.GenHosts {
+			localAddr, err = GetAddress()
+			if err != nil {
+				return nil, err
+			}
 		}
-		//log.Println("Found localhost address:", localAddr)
 
 		for _, h := range cf.Hosts {
-			p := strconv.Itoa(startConfigPort)
-			addr := localAddr + ":" + p
-			//log.Println("created new host address: ", addr)
+
+			addr := h
+			if opts.GenHosts {
+				p := strconv.Itoa(startConfigPort)
+				addr = localAddr + ":" + p
+				//log.Println("created new host address: ", addr)
+				startConfigPort++
+			}
+
 			nameToAddr[h] = addr
 			// add to the hosts list if we havent added it before
 			if _, ok := hc.Hosts[addr]; !ok {
-				hosts[addr] = NewGoHost(addr, dir)
-				hosts[addr] = NewTCPHost(addr)
+				// only create the tcp hosts requested
+				if opts.Host == "" || opts.Host == addr {
+					hosts[addr] = NewTCPHost(addr)
+				} else {
+					hosts[addr] = nil // it is there but not backed
+				}
 			}
-			startConfigPort++
 		}
 	}
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
-	rn, err := ConstructTree(cf.Tree, hc, nil, suite, rand, hosts, nameToAddr)
-	if err != nil {
-		return hc, err
+	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)
+	return hc, err
+}
+
+// run the given hostnames
+func (hc *HostConfig) Run(hostnameSlice ...string) error {
+	hostnames := make(map[string]*SigningNode)
+	if hostnameSlice == nil {
+		hostnames = hc.Hosts
+	} else {
+
+		for _, h := range hostnameSlice {
+			sn, ok := hc.Hosts[h]
+			if !ok {
+				return errors.New("hostname given not in config file:" + h)
+			}
+			hostnames[h] = sn
+		}
 	}
-	if rn != hc.SNodes[0] {
-		log.Fatal("root node is not the zeroth")
-	}
-	/*if err := hc.Verify(); err != nil {
-		log.Fatal(err)
-	}*/
-	for _, sn := range hc.SNodes {
+	for _, sn := range hostnames {
 		go func(sn *SigningNode) {
 			// start listening for messages from within the tree
 			sn.Host.Listen()
 		}(sn)
 	}
-	for _, sn := range hc.SNodes {
+
+	for _, sn := range hostnames {
 		var err error
-		for i := 0; i < 10; i++ {
+		// exponential backoff for attempting to connect to parent
+		startTime := time.Duration(200)
+		maxTime := time.Duration(60000)
+		for i := 0; i < 100; i++ {
+			log.Println("attempting to connect to parent")
 			err = sn.Connect()
 			if err == nil {
 				break
 			}
-			time.Sleep(200 * time.Millisecond)
+
+			time.Sleep(startTime * time.Millisecond)
+			startTime *= 2
+			if startTime > maxTime {
+				startTime = maxTime
+			}
 		}
 		if err != nil {
-			log.Fatal("failed to connect: ", err)
+			return errors.New("failed to connect")
 		}
 	}
+
 	// need to make sure connections are setup properly first
 	// wait for a little bit for connections to establish fully
-	if connT == TcpC {
-		time.Sleep(200 * time.Millisecond)
-	}
-	for _, sn := range hc.SNodes {
+	time.Sleep(1000 * time.Millisecond)
+	for _, sn := range hostnames {
 		go func(sn *SigningNode) {
 			// start listening for messages from within the tree
 			sn.Listen()
 		}(sn)
 	}
-	return hc, err
+	return nil
 }
 
 // LoadConfig loads a configuration file in the format specified above. It
 // populates a HostConfig with HostNode Hosts and goPeer Peers.
-func LoadConfig(fname string, opts ...string) (*HostConfig, error) {
+func LoadConfig(fname string, opts ...ConfigOptions) (*HostConfig, error) {
 	file, err := ioutil.ReadFile(fname)
 	if err != nil {
 		return nil, err
 	}
 	return LoadJSON(file, opts...)
-
 }
