@@ -225,7 +225,8 @@ func ConstructTree(
 			log.Print("failed to decode point from hex")
 			return nil, err
 		}
-	} else if generate {
+	}
+	if generate {
 		if prikey != nil {
 			// if we have been given a private key load that
 			hc.SNodes = append(hc.SNodes, NewKeyedSigningNode(h, suite, prikey))
