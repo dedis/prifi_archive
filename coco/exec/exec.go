@@ -10,20 +10,32 @@
 package main
 
 import (
+	"flag"
 	"log"
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco"
 )
 
+var hostname string
+var configFile string
+
+func init() {
+	flag.StringVar(&hostname, "hostname", "", "the hostname of this node")
+	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
+}
+
 func main() {
+	flag.Parse()
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
-	addr, err := GetAddress()
-	if err != nil {
-		log.Fatal("unable to get address: ", addr)
+	if hostname == "" {
+		log.Fatal("no hostname given")
 	}
-	tcpHost := coco.NewTCPHost()
+	// open the testfile
+	coco.LoadConfig(configFile, ConfigOptions{ConnType: "tcp", Host: hostname})
+
+	tcpHost := coco.NewTCPHost(hostname)
 	coco.NewSigningNode(tcpHost, suite, rand)
 	// parse config
 	// add children and parent

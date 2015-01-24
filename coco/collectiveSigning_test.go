@@ -125,7 +125,6 @@ func TestMultipleRounds(t *testing.T) {
 	}
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
-	var err error
 	for i := 0; i < N; i++ {
 		hostConfig.SNodes[0].logTest = []byte("Hello World" + strconv.Itoa(i))
 		err = hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].logTest})
@@ -136,7 +135,7 @@ func TestMultipleRounds(t *testing.T) {
 }
 
 func TestTCPStaticConfig(t *testing.T) {
-	hc, err := LoadConfig("data/extcpconf.json")
+	hc, err := LoadConfig("data/extcpconf.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}
@@ -155,7 +154,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hc, err := LoadConfig("data/extcpconf.json")
+	hc, err := LoadConfig("data/extcpconf.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}
@@ -177,7 +176,7 @@ func TestTreeBigConfigTCP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hc, err := LoadConfig("data/wax.json", ConfigOptions{ConnType: "tcp"})
+	hc, err := LoadConfig("data/wax.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error()
 	}
