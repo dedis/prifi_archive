@@ -132,8 +132,8 @@ func (hc *HostConfig) String() string {
 func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
 	// Node{name, pubkey, x_hat, children}
 	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\",")
-	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(p.pubKey.Encode()))+"\",")
 	fmt.Fprint(b, "\"prikey\":", "\""+string(hex.EncodeToString(p.privKey.Encode()))+"\",")
+	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(p.pubKey.Encode()))+"\",")
 
 	// recursively format children
 	fmt.Fprint(b, "\"children\":[")
@@ -195,11 +195,11 @@ func ConstructTree(
 		return nil, errors.New("unknown host in tree")
 	}
 
-	// pull out the public key from the json
-	// initialize x_hat to be that public key
-	var prikey abstract.Point
+	var prikey abstract.Secret
 	var pubkey abstract.Point
-	var x_hat abstract.Point
+	var sn *SigningNode
+
+	// if the JSON holds the fields field is set load from there
 	if len(n.PubKey) != 0 {
 		log.Println("decoding point")
 		encoded, err := hex.DecodeString(string(n.PubKey))
@@ -219,73 +219,41 @@ func ConstructTree(
 			log.Print("failed to decode hex from encoded")
 			return nil, err
 		}
-		prikey = suite.Point()
+		prikey = suite.Secret()
 		err = prikey.Decode(encoded)
 		if err != nil {
 			log.Print("failed to decode point from hex")
 			return nil, err
 		}
-		if generate {
-			sn.privKey = prikey
-			sn.pubKey = pubkey
-			sn.X_hat = pubkey
+	} else if generate {
+		if prikey != nil {
+			// if we have been given a private key load that
+			hc.SNodes = append(hc.SNodes, NewKeyedSigningNode(h, suite, prikey))
+		} else {
+			// otherwise generate a random new one
+			hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
 		}
-	}
-
-	// only generate the signing node is specified
-	var sn *SigningNode
-	if generate {
-		hc.SNodes = append(hc.SNodes, NewKeyedSigningNode(h, suite, prikey))
 		sn = hc.SNodes[len(hc.SNodes)-1]
 		hc.Hosts[name] = sn
+		if prikey == nil {
+			prikey = sn.privKey
+			pubkey = sn.pubKey
+		}
+		// log.Println("pubkey:", sn.pubKey)
+		// log.Println("given: ", pubkey)
+	} else {
+		log.Fatal("public keys have not been given and not generating")
 	}
-
 	// if the parent of this call is empty then this must be the root node
 	if parent != "" && generate {
 		h.AddParent(parent)
 	}
-
-	// pull out the public key from the json
-	// initialize x_hat to be that public key
-	var prikey abstract.Point
-	var pubkey abstract.Point
-	var x_hat abstract.Point
-	if len(n.PubKey) != 0 {
-		log.Println("decoding point")
-		encoded, err := hex.DecodeString(string(n.PubKey))
-		if err != nil {
-			log.Print("failed to decode hex from encoded")
-			return nil, err
-		}
-		pubkey = suite.Point()
-		err = pubkey.Decode(encoded)
-		if err != nil {
-			log.Print("failed to decode point from hex")
-			return nil, err
-		}
-		log.Println("decoding point")
-		encoded, err = hex.DecodeString(string(n.PriKey))
-		if err != nil {
-			log.Print("failed to decode hex from encoded")
-			return nil, err
-		}
-		prikey = suite.Point()
-		err = prikey.Decode(encoded)
-		if err != nil {
-			log.Print("failed to decode point from hex")
-			return nil, err
-		}
-		if generate {
-			sn.privKey = prikey
-			sn.pubKey = pubkey
-			sn.X_hat = pubkey
-		}
-	} else {
-
-		pubkey = suite.Point()
-	}
-	x_hat = pubkey
-
+	// log.Println("name: ", n.Name)
+	// log.Println("prikey: ", prikey)
+	// log.Println("pubkey: ", pubkey)
+	x_hat := suite.Point().Null()
+	x_hat.Add(x_hat, pubkey)
+	// log.Println("x_hat: ", x_hat)
 	for _, c := range n.Children {
 		// connect this node to its children
 		cname, ok := nameToAddr[c.Name]
@@ -305,12 +273,15 @@ func ConstructTree(
 		}
 
 		// if generating all csn will be availible
-		log.Print("adding from child: ", x_hat, cpubkey)
+		// log.Print("adding from child: ", x_hat, cpubkey)
 		x_hat.Add(x_hat, cpubkey)
-		if generate && opts.Host == "" {
-			sn.X_hat.Add(sn.X_hat, cpubkey)
-		}
 	}
+	if generate {
+		sn.X_hat = x_hat
+	}
+	// log.Println("name: ", n.Name)
+	// log.Println("final x_hat: ", x_hat)
+	// log.Println("final pubkey: ", pubkey)
 	return x_hat, nil
 }
 
