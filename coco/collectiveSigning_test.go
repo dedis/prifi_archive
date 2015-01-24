@@ -46,6 +46,10 @@ func TestStatic(t *testing.T) {
 	nodes := make([]*SigningNode, nNodes)
 	for i := 0; i < nNodes; i++ {
 		nodes[i] = NewSigningNode(h[i], suite, rand)
+
+		// To test the already keyed signing node, uncomment
+		// privKey := suite.Secret().Pick(rand)
+		// nodes[i] = NewKeyedSigningNode(h[i], suite, privKey)
 	}
 	for i := 0; i < nNodes; i++ {
 		go func(i int) {

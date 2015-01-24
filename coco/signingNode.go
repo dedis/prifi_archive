@@ -35,6 +35,14 @@ func NewSigningNode(hn Host, suite abstract.Suite, random cipher.Stream) *Signin
 	return sn
 }
 
+func NewKeyedSigningNode(hn Host, suite abstract.Suite, privKey abstract.Secret) *SigningNode {
+	sn := &SigningNode{Host: hn, suite: suite, privKey: privKey}
+	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
+	sn.X_hat = suite.Point().Null()
+	sn.peerKeys = make(map[string]abstract.Point)
+	return sn
+}
+
 func (sn *SigningNode) addPeer(conn string, pubKey abstract.Point) {
 	sn.Host.AddPeers(conn)
 	sn.peerKeys[conn] = pubKey
