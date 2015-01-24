@@ -25,11 +25,11 @@ const (
 
 type SigningMessage struct {
 	Type MessageType
-	Err  error // to signal error to upper level
 	am   *AnnouncementMessage
 	com  *CommitmentMessage
 	chm  *ChallengeMessage
 	rm   *ResponseMessage
+	err  *ErrorMessage
 }
 
 func (sm SigningMessage) MarshalBinary() ([]byte, error) {
@@ -47,6 +47,8 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 		sub, err = sm.chm.MarshalBinary()
 	case Response:
 		sub, err = sm.rm.MarshalBinary()
+	case Error:
+		sub, err = sm.err.MarshalBinary()
 	}
 	if err == nil {
 		b.Write(sub)
@@ -71,6 +73,9 @@ func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
 	case Response:
 		sm.rm = &ResponseMessage{}
 		err = sm.rm.UnmarshalBinary(msgBytes)
+	case Error:
+		sm.err = &ErrorMessage{}
+		err = sm.err.UnmarshalBinary(msgBytes)
 	}
 	return err
 }
@@ -91,6 +96,10 @@ type ChallengeMessage struct {
 
 type ResponseMessage struct {
 	R_hat abstract.Secret // response
+}
+
+type ErrorMessage struct {
+	Err error
 }
 
 type TestMessage struct {
@@ -145,5 +154,19 @@ func (rm ResponseMessage) MarshalBinary() ([]byte, error) {
 func (rm *ResponseMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, rm, nist.NewAES128SHA256P256())
+	return err
+}
+
+func (em ErrorMessage) MarshalBinary() ([]byte, error) {
+	var b bytes.Buffer
+	enc := gob.NewEncoder(&b)
+	err := enc.Encode(em.Err)
+	return b.Bytes(), err
+}
+
+func (em *ErrorMessage) UnmarshalBinary(data []byte) error {
+	b := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(b)
+	err := dec.Decode(&em.Err)
 	return err
 }
