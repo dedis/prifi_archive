@@ -69,7 +69,7 @@ func TestStatic(t *testing.T) {
 	// test that X_Hats of non-leaves are != their pub keys
 	firstLeaf := 2
 	for i := 0; i < firstLeaf; i++ {
-		if nodes[0].X_hat.Equal(nodes[0].pubKey) {
+		if nodes[i].X_hat.Equal(nodes[i].pubKey) {
 			panic("pub key equal x hat")
 		}
 

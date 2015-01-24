@@ -137,14 +137,13 @@ func (sn *SigningNode) Respond() error {
 	}
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
-		if sm.Err != nil {
-			return sm.Err
-		}
 		switch sm.Type {
 		default:
 			// Not possible in current system where little randomness is allowed
 			// In real system failing is required
 			panic("Reply to challenge is not a response")
+		case Error:
+			return sm.err.Err
 		case Response:
 			sn.r_hat.Add(sn.r_hat, sm.rm.R_hat)
 		}
@@ -156,7 +155,7 @@ func (sn *SigningNode) Respond() error {
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
-				Err:  err})
+				err:  &ErrorMessage{Err: err}})
 		}
 		// create and putup own response message
 		return sn.PutUp(SigningMessage{
