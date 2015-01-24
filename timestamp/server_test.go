@@ -4,18 +4,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco"
 )
 
 func TestStatic(t *testing.T) {
 	// Crypto setup
-	// suite := nist.NewAES128SHA256P256()
+	suite := nist.NewAES128SHA256P256()
 	// rand := suite.Cipher([]byte("example"))
 
 	// create new directory for communication between peers
 	dir := coco.NewGoDirectory()
 
-	server := NewServer("server", dir)
+	server := NewServer("server", dir, suite)
 	client := NewClient("client0", dir)
 
 	ngc, err := coco.NewGoConn(dir, server.Name(), client.Name())

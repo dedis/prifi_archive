@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"hash"
 
 	"github.com/dedis/crypto/abstract"
@@ -73,6 +74,7 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 		nnext := (nprev + 1) >> 1 // # hashes total at level i
 		nnode := nprev >> 1       // # new nodes at level i
 		println("nprev", nprev, "nnext", nnext, "nnode", nnode)
+		fmt.Println("nprev", nprev, "nnext", nnext, "nnode", nnode)
 		tree[d] = make([]HashId, nnext)
 		tnext := tree[d]
 		for i := 0; i < nnode; i++ {

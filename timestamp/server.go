@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco"
 )
 
@@ -15,15 +16,18 @@ import (
 var ROUND_TIME time.Duration = 1 * time.Second
 
 type Server struct {
+	suite abstract.Suite
+
 	name    string
 	clients map[string]*coco.GoConn
 
 	dir *coco.GoDirectory
 }
 
-func NewServer(name string, dir *coco.GoDirectory) (s *Server) {
+func NewServer(name string, dir *coco.GoDirectory, suite abstract.Suite) (s *Server) {
 	s = &Server{name: name, dir: dir}
 	s.clients = make(map[string]*coco.GoConn)
+	s.suite = suite
 	return
 }
 
@@ -63,27 +67,27 @@ func (s *Server) Listen() {
 		}(c)
 	}
 
-	fmt.Println("Before ticker")
 	ticker := time.Tick(1 * time.Second)
 	for _ = range ticker {
 		mux.Lock()
 		READING, PROCESSING = PROCESSING, READING
 		Queue[READING] = Queue[READING][:0]
 		mux.Unlock()
-		// aggregate messages from this round
-		var sig []byte
+		// pull out to be Merkle Tree leaves
+		leaves := make([]HashId, 0)
 		for _, msg := range Queue[PROCESSING] {
-			// aggregate stamp requests
-			// fmt.Println("aggregating:", string(msg.tsm.sreq.Val))
-			sig = msg.tsm.sreq.Val
+			leaves = append(leaves, HashId(msg.tsm.sreq.Val))
 		}
+		// create Merkle tree for this round
+		mtRoot, _ := ProofTree(s.suite.Hash, leaves)
+		fmt.Println("Create mtRoot:", mtRoot)
 
 		for _, msg := range Queue[PROCESSING] {
 			fmt.Println("Replying to", string(msg.to))
 			s.Put(msg.to,
 				TimeStampMessage{
 					Type: StampReplyType,
-					srep: &StampReply{Sig: sig}})
+					srep: &StampReply{Sig: mtRoot}})
 		}
 	}
 }
