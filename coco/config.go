@@ -114,8 +114,12 @@ func (hc *HostConfig) String() string {
 
 	// write the tree structure
 	b.WriteString("\"tree\": ")
-	root := hc.SNodes[0]
-	writeHC(b, hc, root)
+	if len(hc.SNodes) != 0 {
+		root := hc.SNodes[0]
+		writeHC(b, hc, root)
+	} else {
+		b.WriteString("{},")
+	}
 	b.WriteString("}\n")
 
 	// format the resulting JSON for readability

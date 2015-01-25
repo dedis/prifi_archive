@@ -26,7 +26,12 @@ func TestPubKeysConfig(t *testing.T) {
 func TestPubKeysOneNode(t *testing.T) {
 	// has hosts 8089 - 9094 @ 172.27.187.80
 	done := make(chan bool)
-	hosts := []string{"172.27.187.80:8089", "172.27.187.80:8090", "172.27.187.80:8092", "172.27.187.80:8091", "172.27.187.80:8093", "172.27.187.80:8094"}
+	hosts := []string{"172.27.187.80:8095",
+		"172.27.187.80:8096",
+		"172.27.187.80:8097",
+		"172.27.187.80:8098",
+		"172.27.187.80:8099",
+		"172.27.187.80:8100"}
 	for _, host := range hosts {
 		go func(host string) {
 			hc, err := LoadConfig("data/exconf_wkeys.json", ConfigOptions{ConnType: "tcp", Host: host})
