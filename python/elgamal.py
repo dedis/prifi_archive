@@ -40,7 +40,7 @@ class PublicKey:
 
 class PrivateKey(PublicKey):
     def __init__(self, group, secret = None):
-        if secret == None:
+        if secret is None:
             secret = group.random_secret()
         element = group.multiply(group.generator(), secret)
         PublicKey.__init__(self, group, element)

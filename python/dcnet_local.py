@@ -2,12 +2,15 @@ import argparse
 import json
 import os
 import time
+from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 import dcnet
+from dcnet import global_group
 
 from cells.null import NullDecoder, NullEncoder
 from certify.null import NullAccumulator, NullCertifier
-from dh import PublicKey, PrivateKey
+
+from elgamal import PublicKey, PrivateKey
 
 def main():
     t0 = time.time()
@@ -21,32 +24,32 @@ def main():
         data = json.load(fp)
         clients = data["clients"]
         client_ids = [c["id"] for c in clients]
-        client_keys = [PublicKey(c["key"]) for c in clients]
+        client_keys = [PublicKey(global_group, c["key"]) for c in clients]
         trustees = data["servers"]
         trustee_ids = [t["id"] for t in trustees]
-        trustee_keys = [PublicKey(t["key"]) for t in trustees]
+        trustee_keys = [PublicKey(global_group, t["key"]) for t in trustees]
 
     # and session data
     with open(os.path.join(opts.config_dir, "session.json"), "r", encoding="utf-8") as fp:
         data = json.load(fp)
         session_id = data["session-id"]
-        nym_keys = [PublicKey(c["dhkey"]) for c in data["clients"]]
+        nym_keys = [PublicKey(global_group, c["dhkey"]) for c in data["clients"]]
 
     # load the post-shuffle slots
     with open(os.path.join(opts.config_dir, "shuffle.json"), "r", encoding="utf-8") as fp:
         data = json.load(fp)
-        slot_keys = [PublicKey(x) for x in data["slots"]]
+        slot_keys = [PublicKey(global_group, e) for e in data["slots"]]
 
     # start multiple clients in the same process
-    # load private keys from individualfiles
+    # load private keys from individual files
     clients = []
     for iden in client_ids:
         with open(os.path.join(opts.config_dir, "{}.json".format(iden)), "r", encoding="utf-8") as fp:
             data = json.load(fp)
-            private_key = PrivateKey(x = data["private_key"])
+            private_key = PrivateKey(global_group, data["private_key"])
         with open(os.path.join(opts.config_dir, "{}-{}.json".format(iden, session_id)), "r", encoding="utf-8") as fp:
             data = json.load(fp)
-            nym_private_key = PrivateKey(x = data["private_key"])
+            nym_private_key = PrivateKey(global_group, data["private_key"])
         client = dcnet.Client(private_key, trustee_keys, NullCertifier(), NullEncoder())
         client.add_own_nym(nym_private_key)
         client.add_nyms(slot_keys)
@@ -57,7 +60,7 @@ def main():
     for iden in trustee_ids:
         with open(os.path.join(opts.config_dir, "{}.json".format(iden)), "r", encoding="utf-8") as fp:
             data = json.load(fp)
-            private_key = PrivateKey(x = data["private_key"])
+            private_key = PrivateKey(global_group, data["private_key"])
         trustee = dcnet.Trustee(private_key, client_keys)
         trustee.add_nyms(slot_keys)
         trustees.append(trustee)
@@ -70,32 +73,51 @@ def main():
     trap_keys = []
     for trustee in trustees:
         trustee.sync(None)
-        trap_keys.append(trustee.trap_keys[-1].pubkey)
+        trap_keys.append(trustee.trap_keys[-1].public_key())
 
     for client in clients:
         client.sync(None, trap_keys)
 
-    for idx in range(len(trustees)):
-        trustee = trustees[idx]
-        ciphertext = trustee.produce_interval_ciphertext()
-        relay.store_trustee_ciphertext(idx, ciphertext)
+    cleartexts = []
+    for i in range(1):
+        relay.decode_start()
+        for idx in range(len(trustees)):
+            trustee = trustees[idx]
+            ciphertext = trustee.produce_ciphertext()
+            relay.decode_trustee(ciphertext)
 
-    client_ciphertexts = []
-    for client in clients:
-        client_ciphertexts.append(client.produce_ciphertexts())
-    print(relay.process_ciphertext(client_ciphertexts))
+        for idx in range(len(clients)):
+            client = clients[idx]
+            ciphertext = client.produce_ciphertexts()
+            relay.decode_client(ciphertext)
 
-    print(time.time() - t0)
-    t0 = time.time()
-
-    client_ciphertexts = []
-    for client in clients:
-        client.send(client.own_nym_keys[0][1], bytes("Hello", "UTF-8"))
-        client_ciphertexts.append(client.produce_ciphertexts())
-    print(relay.process_ciphertext(client_ciphertexts))
+        cleartexts.append(relay.decode_cell())
+    print(cleartexts)
 
     print(time.time() - t0)
     t0 = time.time()
+
+    cleartexts = []
+    for i in range(len(clients)):
+        relay.decode_start()
+        for idx in range(len(trustees)):
+            trustee = trustees[idx]
+            ciphertext = trustee.produce_ciphertext()
+            relay.decode_trustee(ciphertext)
+
+        for i, client in enumerate(clients):
+            ciphertext = client.produce_ciphertexts()
+            cleartext = long_to_bytes(0)
+            if i == 0:
+                cleartext = bytes("Hello", "UTF-8")
+            ciphertext = long_to_bytes(
+                    bytes_to_long(ciphertext) ^ bytes_to_long(cleartext))
+            relay.decode_client(ciphertext)
+
+        cleartexts.append(relay.decode_cell())
+    print(cleartexts)
+
+    print(time.time() - t0)
 
 if __name__ == "__main__":
     main()

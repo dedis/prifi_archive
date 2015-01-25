@@ -1,65 +1,71 @@
 import argparse
-import json
 import os
-import random
-import requests
+import socket
+import sys
+import logging
 
-from bottle import request, route, run
-
+import config
 import dcnet
-
-@route("/interval_conclusion", method="POST")
-def interval_conclusion():
-    return _interval_conclusion(request.json)
-
-def _interval_conclusion(interval_data):
-    # XXX hack to get payload_len for now
-    message = "This is client-0's message.".encode("utf-8")
-    payload_len = len(message)
-    
-    trustee_id = trustee.id
-    cell = trustee.encode(payload_len)
-    d = {
-        "trustee_id" : trustee_id,
-        "data" : cell,
-    }
-    r = relay_call("trustee_ciphertext", d)
-    return None
-
-def relay_call(name, data):
-    return requests.post("http://{}/{}".format(relay_address, name),
-                        headers={"content-type" : "application/json"},
-                        data=json.dumps(data))
+import net.message as m
+from utils import verbosity
+logger = logging.getLogger(__file__.rpartition('/')[2])
+logger.addHandler(logging.NullHandler())
 
 def main():
-    global trustee
-    global relay_address
-
     p = argparse.ArgumentParser(description="Basic DC-net trustee")
-    p.add_argument("-p", "--port", type=int, metavar="N", default=8888, dest="port")
-    p.add_argument("data_dir")
+    p.add_argument("config_dir")
     p.add_argument("private_data")
+    p.add_argument("-v", type=str, help="display more output (default: WARN)",
+                   choices=verbosity.keys(), default="WARN", dest="verbose")
     opts = p.parse_args()
+    logger.setLevel(verbosity[opts.verbose])
 
-    # start new trustee using id and key from private_data
-    with open(opts.private_data, "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        trustee_id = data["id"]
-        private_key = data["private_key"]
-        trustee = dcnet.Trustee(trustee_id, private_key)
-    # load addresses from system config
-    with open(os.path.join(opts.data_dir, "system.json"), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        # XXX only using first relay for now
-        relay_address = data["relays"][0]["ip"]
-    # and public keys from session config
-    with open(os.path.join(opts.data_dir, "session.json"), "r", encoding="utf-8") as fp:
-        data = json.load(fp)
-        client_keys = [c["dhkey"] for c in data["clients"]]
-        trustee.compute_secrets(client_keys)
+    # XXX error handling
+    system_config = config.load(config.SystemConfig,
+            os.path.join(opts.config_dir, "system.json"))
+    session_config = config.load(config.SessionConfig,
+            os.path.join(opts.config_dir, "session.json"))
+    private = config.load(config.Private, opts.private_data)
 
-    # start the http server
-    run(port=opts.port)
+    try:
+        node_id = system_config.trustees.ids.index(private.id)
+    except ValueError:
+        sys.exit("Trustee is not in system config")
+    node = m.pack(m.TRUSTEE_CONNECT, node=node_id)
+
+    trustee = dcnet.Trustee(private.secret, system_config.clients.keys)
+    trustee.add_nyms(session_config.clients.keys)
+    trustee.sync(None, None)
+
+    # connect to the relay
+    try:
+        conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        conn.connect((system_config.relay.host, system_config.relay.port))
+        conn.send(node)
+    except OSError as e:
+        sys.exit("Could not connect to relay: {}".format(e))
+
+    # stream the ciphertext to the relay
+    nsize = m.sizes[m.RELAY_TNEXT]
+    tnxts = {}
+    tnxt = {}
+    try:
+        while True:
+            buf = conn.recv(nsize, socket.MSG_WAITALL)
+            try:
+                nxt = tnxts[buf]
+            except KeyError:
+                m.unpack(buf, tnxt)
+                nxt = tnxt['nxt']
+                tnxts[buf] = nxt
+            ciphertext = trustee.produce_ciphertext(nxt)
+            n = conn.send(ciphertext)
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        logger.error("Could not read from relay: {}".format(e))
+    conn.close()
+
 
 if __name__ == "__main__":
     main()

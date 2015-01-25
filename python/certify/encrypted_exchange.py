@@ -47,7 +47,7 @@ class EncryptedAccumulator(EncryptedBase):
             pseed = self.verifier.group.add(shared, ciphertexts[sdx][1][1])
             seed = self.verifier.group.decode(pseed)
             aes = AES.new(seed, AES.MODE_CTR, counter = Counter.new(128))
-            for ndx in range(len(nciphertexts[sdx])):
+            for ndx in nciphertexts[sdx].keys():
                 for cdx in range(len(nciphertexts[sdx][ndx])):
                     nciphertexts[sdx][ndx][cdx] = aes.decrypt(nciphertexts[sdx][ndx][cdx])
 
@@ -74,7 +74,7 @@ class EncryptedCertifier(EncryptedBase):
         own = self.verifier.generate_ciphertext(generator, seed)
 
         aes = AES.new(long_to_bytes(seed), AES.MODE_CTR, counter = Counter.new(128))
-        for ndx in range(len(ciphertexts)):
+        for ndx in ciphertexts.keys():
             for cdx in range(len(ciphertexts[ndx])):
                 ciphertexts[ndx][cdx] = aes.encrypt(ciphertexts[ndx][cdx])
         return (ciphertexts, (other, own))
