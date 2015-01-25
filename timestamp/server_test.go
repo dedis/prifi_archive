@@ -38,16 +38,19 @@ func TestStatic(t *testing.T) {
 	// start listening
 	go server.Listen()
 	go client.Listen()
+	go client.showHistory()
 
 	// have client send messages
 	nMessages := 4
-	for i := 0; i < nMessages; i++ {
-		client.Put(server.Name(),
-			&TimeStampMessage{
-				Type: StampRequestType,
-				sreq: &StampRequest{Val: []byte("messg" + strconv.Itoa(i))}})
+	nRounds := 2
+	for r := 0; r < nRounds; r++ {
+		for i := 0; i < nMessages; i++ {
+			// TODO: messages should be sent hashed eventually
+			messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
+			go client.TimeStamp(messg, server.Name())
 
+		}
+		time.Sleep(3 * time.Second)
 	}
-
-	time.Sleep(10 * time.Second)
+	time.Sleep(15 * time.Second)
 }

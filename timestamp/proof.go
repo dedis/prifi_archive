@@ -71,6 +71,7 @@ func CheckProofs(newHash func() hash.Hash, root HashId, leaves []HashId, proofs 
 			panic("check failed at leaf")
 		}
 	}
+	fmt.Println("----------Proofs successful")
 }
 
 func (p *Proof) PrintProof(proofNumber int) {

@@ -57,7 +57,8 @@ func (s *Server) Listen() {
 					fmt.Println("Message of unknown type")
 				case StampRequestType:
 					// fmt.Println("Server getting message", tsm)
-					fmt.Println("Stamp Request val:", string(tsm.sreq.Val))
+					// fmt.Println("Stamp Request val:", string(tsm.sreq.Val))
+					// fmt.Println("Server received reqno", tsm.ReqNo)
 					mux.Lock()
 					Queue[READING] = append(Queue[READING],
 						MustReplyMessage{tsm: tsm, to: c.Name()})
@@ -89,13 +90,16 @@ func (s *Server) Listen() {
 		}
 		// create Merkle tree for this round
 		mtRoot, proofs := ProofTree(s.suite.Hash, leaves)
-		// CheckProofs(s.suite.Hash, mtRoot, leaves, proofs)
+		CheckProofs(s.suite.Hash, mtRoot, leaves, proofs)
 
-		for _, msg := range Queue[PROCESSING] {
+		for i, msg := range Queue[PROCESSING] {
+			// fmt.Println("Server send back for reqno", msg.tsm.ReqNo)
 			s.Put(msg.to,
 				TimeStampMessage{
-					Type: StampReplyType,
-					srep: &StampReply{Sig: mtRoot}})
+					Type:  StampReplyType,
+					ReqNo: msg.tsm.ReqNo,
+					srep:  &StampReply{Sig: mtRoot, Prf: proofs[i]}})
+			// fmt.Println("Send confirmed for", msg.tsm.ReqNo)
 		}
 	}
 }
