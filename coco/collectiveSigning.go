@@ -3,6 +3,7 @@ package coco
 import (
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/dedis/crypto/abstract"
 	// "strconv"
@@ -186,11 +187,11 @@ func (sn *SigningNode) VerifyResponses() error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(sn.V_hat) || (sn.IsRoot() && !sn.c.Equal(c2)) {
-		fmt.Println(sn.Name(), "reports ElGamal Collective Signature failed")
+		log.Println(sn.Name(), "reports ElGamal Collective Signature failed")
 		return errors.New("Veryfing ElGamal Collective Signature failed in" + sn.Name())
 	}
 
-	fmt.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
+	log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
 	return nil
 }
 

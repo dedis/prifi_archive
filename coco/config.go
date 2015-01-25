@@ -129,8 +129,11 @@ func (hc *HostConfig) String() string {
 	return string(bformatted.Bytes())
 }
 
-func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
+func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) error {
 	// Node{name, pubkey, x_hat, children}
+	if p == nil {
+		return errors.New("node does not exist")
+	}
 	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\",")
 	fmt.Fprint(b, "\"prikey\":", "\""+string(hex.EncodeToString(p.privKey.Encode()))+"\",")
 	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(p.pubKey.Encode()))+"\",")
@@ -143,10 +146,14 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) {
 			b.WriteString(", ")
 		}
 		c := hc.Hosts[n]
-		writeHC(b, hc, c)
+		err := writeHC(b, hc, c)
+		if err != nil {
+			b.WriteString("\"" + n + "\"")
+		}
 		i++
 	}
 	fmt.Fprint(b, "]}")
+	return nil
 }
 
 // NewHostConfig creates a new host configuration that can be populated with
@@ -242,8 +249,6 @@ func ConstructTree(
 		}
 		// log.Println("pubkey:", sn.pubKey)
 		// log.Println("given: ", pubkey)
-	} else {
-		log.Fatal("public keys have not been given and not generating")
 	}
 	// if the parent of this call is empty then this must be the root node
 	if parent != "" && generate {
@@ -268,7 +273,8 @@ func ConstructTree(
 		}
 
 		// recursively construct the children
-		cpubkey, err := ConstructTree(c, hc, h.Name(), suite, rand, hosts, nameToAddr, opts)
+		// log.Print("ConstructTree:", h, suite, rand, hosts, nameToAddr, opts)
+		cpubkey, err := ConstructTree(c, hc, name, suite, rand, hosts, nameToAddr, opts)
 		if err != nil {
 			return nil, err
 		}

@@ -12,6 +12,8 @@ package main
 import (
 	"flag"
 	"log"
+	"net"
+	"time"
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco"
@@ -19,13 +21,24 @@ import (
 
 var hostname string
 var configFile string
+var logger string
 
 func init() {
 	flag.StringVar(&hostname, "hostname", "", "the hostname of this node")
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
+	flag.StringVar(&logger, "logger", "", "remote logging interface")
 }
 
 func main() {
+	// open connection with remote logging interface if there is one
+	if logger != "" {
+		conn, err := net.Dial("tcp", logger)
+		if err != nil {
+			log.Println("ERROR: error establishing logging connection: ", err)
+		} else {
+			log.SetOutput(conn)
+		}
+	}
 	flag.Parse()
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
@@ -33,13 +46,21 @@ func main() {
 		log.Fatal("no hostname given")
 	}
 	// open the testfile
-	coco.LoadConfig(configFile, ConfigOptions{ConnType: "tcp", Host: hostname})
-
-	tcpHost := coco.NewTCPHost(hostname)
-	coco.NewSigningNode(tcpHost, suite, rand)
-	// parse config
-	// add children and parent
-	// listen for connections
-	// connect to parent
-	// connect to children
+	hc, err := coco.LoadConfig(configFile, coco.ConfigOptions{ConnType: "tcp", Host: hostname})
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = hc.Run(hostname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if hc.SNodes[0].IsRoot() {
+		hc.SNodes[0].logTest = []byte("Hello World")
+		err = hc.SNodes[0].Announce(&coco.AnnouncementMessage{hc.SNodes[0].logTest})
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		time.Sleep(5 * time.Second)
+	}
 }

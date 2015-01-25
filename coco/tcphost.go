@@ -9,11 +9,6 @@ import (
 	"time"
 )
 
-func init() {
-	// specialize logger
-	log.SetFlags(log.Lshortfile)
-}
-
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
 	name     string          // the hostname
