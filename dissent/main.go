@@ -15,7 +15,7 @@ import (
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/crypto/test"
 	"github.com/dedis/crypto/openssl"
-	"dissent/dcnet"
+	"github.com/dedis/prifi/dcnet"
 	//"github.com/elazarl/goproxy"
 )
 

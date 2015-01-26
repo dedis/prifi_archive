@@ -53,7 +53,7 @@ func (n *TestNode) nodeSetup(name string, peerkeys []abstract.Point) {
 	for j := range(peerkeys) {
 		dh := n.suite.Point().Mul(peerkeys[j], n.spri)
 		//println(" DH",dh.String())
-		n.peerstreams[j] = abstract.PointStream(n.suite, dh)
+		n.peerstreams[j] = n.suite.Cipher(dh.Encode())
 	}
 }
 
@@ -63,7 +63,7 @@ func TestSetup(suite abstract.Suite, factory CellFactory,
 	// Use a pseudorandom stream from a well-known seed
 	// for all our setup randomness,
 	// so we can reproduce the same keys etc on each node.
-	rand := abstract.HashStream(suite, []byte("DCTest"), nil)
+	rand := suite.Cipher([]byte("DCTest"))
 
 	nodes := make([]*TestNode, nclients+ntrustees)
 	base := suite.Point().Base()
@@ -125,10 +125,10 @@ func TestSetup(suite abstract.Suite, factory CellFactory,
 
 	// Create a set of fake history streams for the relay and clients
 	hist := []byte("xyz")
-	relay.Histoream = abstract.HashStream(suite, hist, nil)
+	relay.Histoream = suite.Cipher(hist)
 	//relay.Histoream = abstract.TraceStream(os.Stdout, relay.Histoream)
 	for i := range(clients) {
-		clients[i].Histoream = abstract.HashStream(suite, hist, nil)
+		clients[i].Histoream = suite.Cipher(hist)
 		//clients[i].Histoream = abstract.TraceStream(os.Stdout,
 		//					clients[i].Histoream)
 	}

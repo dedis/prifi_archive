@@ -38,7 +38,10 @@ func (c *simpleCoder) ClientSetup(suite abstract.Suite,
 	npeers := len(peerstreams)
 	c.dcstreams = make([]cipher.Stream, npeers)
 	for j := range(peerstreams) {
-		c.dcstreams[j] = abstract.SubStream(suite, peerstreams[j])
+		// next 3 lines copied from old SubStream code in d167467
+		key := make([]byte, suite.Cipher(nil).KeySize())
+		peerstreams[j].XORKeyStream(key, key)
+		c.dcstreams[j] = suite.Cipher(key)
 	}
 }
 

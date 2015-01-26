@@ -5,6 +5,7 @@ import (
 	//"encoding/hex"
 	"crypto/cipher"
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/random"
 )
 
 type ownedCoder struct {
@@ -92,7 +93,7 @@ func (c *ownedCoder) commonSetup(suite abstract.Suite) {
 
 	// Divide the embeddable data in the verifiable point
 	// between an encryption key and a MAC check
-	c.keylen = suite.KeyLen()
+	c.keylen = suite.Cipher(nil).KeySize()
 	c.maclen = suite.Point().PickLen() - c.keylen
 	if c.maclen < c.keylen*3/4 {
 		panic("misconfigured ciphersuite: MAC too small!")
@@ -122,7 +123,10 @@ func (c *ownedCoder) ClientSetup(suite abstract.Suite,
 	for j := range(peerstreams) {
 		c.vkeys[j] = suite.Secret().Pick(peerstreams[j])
 		c.vkey.Add(c.vkey, c.vkeys[j])
-		c.dcstreams[j] = abstract.SubStream(suite, peerstreams[j])
+		// next 3 lines copied from old SubStream code in d167467
+		key := make([]byte, c.keylen)
+		peerstreams[j].XORKeyStream(key, key)
+		c.dcstreams[j] = suite.Cipher(key)
 	}
 }
 
@@ -174,7 +178,7 @@ func (c *ownedCoder) inlineEncode(payload []byte, p abstract.Point) {
 
 	// Embed the payload and MAC into a Point representing the message
 	hdr := append(payload, mac...)
-	mp,_ := c.suite.Point().Pick(hdr, abstract.RandomStream)
+	mp,_ := c.suite.Point().Pick(hdr, random.Stream)
 
 	// Add this to the blinding point we already computed to transmit.
 	p.Add(p, mp)
@@ -186,11 +190,11 @@ func (c *ownedCoder) ownerEncode(payload, payout []byte, p abstract.Point) {
 
 	// Pick a fresh random key with which to encrypt the payload
 	key := make([]byte, c.keylen)
-	abstract.RandomStream.XORKeyStream(key,key)
+	random.Stream.XORKeyStream(key, key)
 	//println("key",hex.EncodeToString(key))
 
 	// Encrypt the payload with it
-	c.suite.Stream(key).XORKeyStream(payout, payload)
+	c.suite.Cipher(key).XORKeyStream(payout, payload)
 
 	// Compute a MAC over the encrypted payload
 	h := c.suite.Hash()
@@ -203,7 +207,7 @@ func (c *ownedCoder) ownerEncode(payload, payout []byte, p abstract.Point) {
 	if len(hdr) != p.PickLen() {
 		panic("oops, length of key+mac turned out wrong")
 	}
-	mp,_ := c.suite.Point().Pick(hdr, abstract.RandomStream)
+	mp,_ := c.suite.Point().Pick(hdr, random.Stream)
 	//println("encoded data:",hex.EncodeToString(hdr))
 	//println("encoded point:",mp.String())
 
@@ -393,7 +397,6 @@ func (c *ownedCoder) ownerDecode(hdr []byte) []byte {
 	}
 
 	// Decrypt and return the payload data
-	c.suite.Stream(key).XORKeyStream(dat, dat)
+	c.suite.Cipher(key).XORKeyStream(dat, dat)
 	return dat
 }
-

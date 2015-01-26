@@ -8,7 +8,7 @@ import (
 	"time"
 	"encoding/binary"
 	"github.com/dedis/crypto/abstract"
-	"dissent/dcnet"
+	"github.com/dedis/prifi/dcnet"
 )
 
 type Trustee struct {
