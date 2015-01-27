@@ -5,6 +5,7 @@ import (
 	"testing"
 	// "fmt"
 	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/coconet"
 )
 
 //       0
@@ -20,27 +21,27 @@ func TestStatic(t *testing.T) {
 	// number of nodes for the test
 	nNodes := 4
 	// create new directory for communication between peers
-	dir := NewGoDirectory()
+	dir := coconet.NewGoDirectory()
 	// Create Hosts and Peers
-	h := make([]*GoHost, nNodes)
+	h := make([]*coconet.GoHost, nNodes)
 	for i := 0; i < nNodes; i++ {
 		hostName := "host" + strconv.Itoa(i)
-		h[i] = NewGoHost(hostName, dir)
+		h[i] = coconet.NewGoHost(hostName, dir)
 	}
 
 	// Add edges to children
 	//gc, _ = NewGoConn(directory, h[0].name, h[1].name)
-	h[0].AddChildren(h[1].name)
+	h[0].AddChildren(h[1].Name())
 	//gc, _ = NewGoConn(directory, h[1].name, h[2].name)
 	//gc2, _ = NewGoConn(directory, h[1].name, h[3].name)
-	h[1].AddChildren(h[2].name, h[3].name)
+	h[1].AddChildren(h[2].Name(), h[3].Name())
 	// Add edges to parents
 	//gc, _ = NewGoConn(directory, h[1].name, h[0].name)
-	h[1].AddParent(h[0].name)
+	h[1].AddParent(h[0].Name())
 	//gc, _ = NewGoConn(directory, h[2].name, h[1].name)
-	h[2].AddParent(h[1].name)
+	h[2].AddParent(h[1].Name())
 	//gc, _ = NewGoConn(directory, h[3].name, h[1].name)
-	h[3].AddParent(h[1].name)
+	h[3].AddParent(h[1].Name())
 
 	// Create Signing Nodes out of the hosts
 	nodes := make([]*SigningNode, nNodes)
