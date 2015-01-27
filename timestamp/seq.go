@@ -1,9 +1,9 @@
 package time
 
 import (
-	"io"
-	"errors"
 	"encoding/binary"
+	"errors"
+	"io"
 )
 
 const (
@@ -40,7 +40,7 @@ func getSeq(buf []byte, ref uint64) (uint64, int) {
 	x := ref
 	var s uint
 	for i, b := range buf {
-		x &^= 0x7f << s		// clear out the next 7 bits
+		x &^= 0x7f << s // clear out the next 7 bits
 		if b < 0x80 {
 			if i > 9 || i == 9 && b > 1 {
 				return 0, -(i + 1) // overflow
@@ -63,7 +63,7 @@ func readSeq(r io.ByteReader, ref uint64) (uint64, error) {
 		if err != nil {
 			return x, err
 		}
-		x &^= 0x7f << s		// clear out the next 7 bits
+		x &^= 0x7f << s // clear out the next 7 bits
 		if b < 0x80 {
 			if i > 9 || i == 9 && b > 1 {
 				return x, overflow
@@ -74,4 +74,3 @@ func readSeq(r io.ByteReader, ref uint64) (uint64, error) {
 		s += 7
 	}
 }
-

@@ -9,14 +9,14 @@ import (
 )
 
 type Client struct {
-	name    string
-	servers map[string]*coco.GoConn // servers I "work" with
-	dir     *coco.GoDirectory       // directory of connection with servers
+	name      string
+	TSServers map[string]*coco.GoConn // TSServers I "work" with
+	dir       *coco.GoDirectory       // directory of connection with TSServers
 
-	// client history maps request numbers to replies from server
-	// maybe at later phases we will want pair(reqno, server) as key
+	// client history maps request numbers to replies from TSServer
+	// maybe at later phases we will want pair(reqno, TSServer) as key
 	history map[SeqNo]TimeStampMessage
-	reqno   SeqNo // next request number in communications with server
+	reqno   SeqNo // next request number in communications with TSServer
 
 	// maps response request numbers to channels confirming
 	// where response confirmations are sent
@@ -39,7 +39,7 @@ func (cli *Client) handleRequest(tsm *TimeStampMessage) {
 }
 
 func (cli *Client) Listen() {
-	for _, c := range cli.servers {
+	for _, c := range cli.TSServers {
 		go func(c *coco.GoConn) {
 			for {
 				tsm := &TimeStampMessage{}
@@ -52,7 +52,7 @@ func (cli *Client) Listen() {
 
 func NewClient(name string, dir *coco.GoDirectory) (c *Client) {
 	c = &Client{name: name, dir: dir}
-	c.servers = make(map[string]*coco.GoConn)
+	c.TSServers = make(map[string]*coco.GoConn)
 	c.history = make(map[SeqNo]TimeStampMessage)
 	c.doneChan = make(map[SeqNo]chan bool)
 	c.roundChan = make(chan int)
@@ -64,13 +64,13 @@ func (c *Client) Name() string {
 }
 
 func (c *Client) Put(name string, data coco.BinaryMarshaler) {
-	myConn := c.servers[name]
+	myConn := c.TSServers[name]
 	myConn.Put(data)
 }
 
-// When client asks for val to be timestamped by a server
+// When client asks for val to be timestamped by a TSServer
 // It blocks until it get a stamp reply back
-func (c *Client) TimeStamp(val []byte, serverName string) {
+func (c *Client) TimeStamp(val []byte, TSServerName string) {
 	// new request requires new done channel
 	c.Mux.Lock()
 	c.reqno++
@@ -78,8 +78,8 @@ func (c *Client) TimeStamp(val []byte, serverName string) {
 	c.doneChan[c.reqno] = make(chan bool, 1)
 	c.Mux.Unlock()
 
-	// send request to server
-	c.Put(serverName,
+	// send request to TSServer
+	c.Put(TSServerName,
 		&TimeStampMessage{
 			Type:  StampRequestType,
 			ReqNo: myReqno,

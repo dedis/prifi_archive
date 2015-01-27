@@ -30,7 +30,7 @@ type StampReply struct {
 
 // Request to obtain an old log-entry and, optionally,
 // a cryptographic proof that it happened before a given newer entry.
-// The server may be unable to process if Seq is beyond the retention window.
+// The TSServer may be unable to process if Seq is beyond the retention window.
 type EntryRequest struct {
 	Seq SeqNo // Sequence number of old entry requested
 }
@@ -41,7 +41,7 @@ type EntryReply struct {
 // Request a cryptographic Merkle proof that log-entry Old happened before New.
 // Produces a path to a Merkle tree node containing a hash of the node itself
 // and the root of the history values committed within the node.
-// The server may be unable to process if Old is beyond the retention window.
+// The TSServer may be unable to process if Old is beyond the retention window.
 type ProofRequest struct {
 	Old, New SeqNo // Sequence number of old and new log records
 }

@@ -9,32 +9,32 @@ import (
 	"github.com/dedis/prifi/coco"
 )
 
-// File defines the server side of the interaction between
-// Servers and Clients with the purpose of timestampting client messages
-// Server will probably be intergrated with the SigningNodes eventually
+// File defines the TSServer side of the interaction between
+// TSServers and Clients with the purpose of timestampting client messages
+// TSServer will probably be intergrated with the SigningNodes eventually
 
 var ROUND_TIME time.Duration = 1 * time.Second
 
-type Server struct {
+type TSServer struct {
 	// suite abstract.Suite
 
 	name    string
 	clients map[string]*coco.GoConn
 	nRounds int
-	mux     sync.Mutex
 
 	// dir *coco.GoDirectory
 
 	sn *coco.SigningNode
 
 	// for aggregating messages from clients
+	mux        sync.Mutex
 	Queue      [][]MustReplyMessage
 	READING    int
 	PROCESSING int
 }
 
-func NewServer(name string) (s *Server) {
-	s = &Server{name: name}
+func NewTSServer(name string) (s *TSServer) {
+	s = &TSServer{name: name}
 	s.clients = make(map[string]*coco.GoConn)
 
 	s.READING = 0
@@ -43,14 +43,14 @@ func NewServer(name string) (s *Server) {
 }
 
 // struct to ease keeping track of who requires a reply after
-// tsm is processed/ aggregated by the server
+// tsm is processed/ aggregated by the TSServer
 type MustReplyMessage struct {
 	tsm TimeStampMessage
 	to  string // name of reply destination
 }
 
 // TODO: error handling
-func (s *Server) Listen(role string) {
+func (s *TSServer) Listen(role string) {
 	s.Queue = make([][]MustReplyMessage, 2)
 	Queue := s.Queue
 	READING := s.READING
@@ -68,7 +68,7 @@ func (s *Server) Listen(role string) {
 				default:
 					fmt.Println("Message of unknown type")
 				case StampRequestType:
-					// fmt.Println("Server getting message", tsm)
+					// fmt.Println("TSServer getting message", tsm)
 					s.mux.Lock()
 					Queue[READING] = append(Queue[READING],
 						MustReplyMessage{tsm: tsm, to: c.Name()})
@@ -83,7 +83,7 @@ func (s *Server) Listen(role string) {
 	case "root":
 		ticker := time.Tick(1 * time.Second)
 		for _ = range ticker {
-			// send an announcement message to all other servers
+			// send an announcement message to all other TSServers
 			s.sn.Announce(&coco.AnnouncementMessage{LogTest: []byte("New Round")})
 			s.AggregateCommits()
 		}
@@ -97,7 +97,7 @@ func (s *Server) Listen(role string) {
 
 }
 
-func (s *Server) AggregateCommits() {
+func (s *TSServer) AggregateCommits() {
 	s.mux.Lock()
 	// get data from s once
 	Queue := s.Queue
@@ -142,10 +142,10 @@ func (s *Server) AggregateCommits() {
 	s.mux.Unlock()
 }
 
-func (s *Server) Name() string {
+func (s *TSServer) Name() string {
 	return s.name
 }
 
-func (s *Server) Put(name string, data coco.BinaryMarshaler) {
+func (s *TSServer) Put(name string, data coco.BinaryMarshaler) {
 	s.clients[name].Put(data)
 }
