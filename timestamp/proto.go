@@ -7,12 +7,12 @@ import (
 
 //"time"
 
-type SeqNoType byte
+type SeqNo byte
 
 type LogEntry struct {
-	Seq  SeqNoType // Consecutively-incrementing log entry sequence number
-	Root HashId    // Merkle root of values committed this time-step
-	Time *int64    // Optional wall-clock time this entry was created
+	Seq  SeqNo  // Consecutively-incrementing log entry sequence number
+	Root HashId // Merkle root of values committed this time-step
+	Time *int64 // Optional wall-clock time this entry was created
 }
 
 type SignedEntry struct {
@@ -32,7 +32,7 @@ type StampReply struct {
 // a cryptographic proof that it happened before a given newer entry.
 // The server may be unable to process if Seq is beyond the retention window.
 type EntryRequest struct {
-	Seq SeqNoType // Sequence number of old entry requested
+	Seq SeqNo // Sequence number of old entry requested
 }
 type EntryReply struct {
 	Log SignedEntry // Signed log entry
@@ -43,7 +43,7 @@ type EntryReply struct {
 // and the root of the history values committed within the node.
 // The server may be unable to process if Old is beyond the retention window.
 type ProofRequest struct {
-	Old, New SeqNoType // Sequence number of old and new log records
+	Old, New SeqNo // Sequence number of old and new log records
 }
 type ProofReply struct {
 	Prf Proof // Requested Merkle proof
@@ -71,7 +71,7 @@ const (
 )
 
 type TimeStampMessage struct {
-	ReqNo SeqNoType // Request sequence number
+	ReqNo SeqNo // Request sequence number
 	// ErrorReply *ErrorReply // Generic error reply to any request
 	Type MessageType
 	sreq *StampRequest
@@ -99,7 +99,7 @@ func (tsm TimeStampMessage) MarshalBinary() ([]byte, error) {
 
 func (sm *TimeStampMessage) UnmarshalBinary(data []byte) error {
 	sm.Type = MessageType(data[0])
-	sm.ReqNo = SeqNoType(data[1])
+	sm.ReqNo = SeqNo(data[1])
 	msgBytes := data[2:]
 	var err error
 	switch sm.Type {
