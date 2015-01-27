@@ -169,7 +169,7 @@ func (sn *SigningNode) Respond() error {
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits() error {
 	// challenge = Hash(message, sn.V_hat)
-	sn.c = hashElGamal(sn.suite, sn.logTest, sn.V_hat)
+	sn.c = hashElGamal(sn.suite, sn.LogTest, sn.V_hat)
 	err := sn.Challenge(&ChallengeMessage{C: sn.c})
 	return err
 }
@@ -182,7 +182,7 @@ func (sn *SigningNode) VerifyResponses() error {
 	P = sn.suite.Point()
 	T = sn.suite.Point()
 	T.Add(T.Mul(nil, sn.r_hat), P.Mul(sn.X_hat, sn.c))
-	c2 := hashElGamal(sn.suite, sn.logTest, T)
+	c2 := hashElGamal(sn.suite, sn.LogTest, T)
 
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted

@@ -23,17 +23,17 @@ func TestTreeFromRandomGraph(t *testing.T) {
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
-	hc.SNodes[0].logTest = []byte("Hello World")
+	hc.SNodes[0].LogTest = []byte("Hello World")
 	//fmt.Println(hc.SNodes[0].NChildren())
 	//fmt.Println(hc.SNodes[0].Peers())
-	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
 }
 
 func Benchmark1000Nodes(b *testing.B) {
 	hc, _ := LoadConfig("data/wax.json")
-	hc.SNodes[0].logTest = []byte("Hello World")
+	hc.SNodes[0].LogTest = []byte("Hello World")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].logTest})
+		hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
 	}
 }

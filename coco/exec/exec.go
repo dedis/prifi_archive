@@ -15,7 +15,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco"
 )
 
@@ -40,8 +39,6 @@ func main() {
 		}
 	}
 	flag.Parse()
-	suite := nist.NewAES128SHA256P256()
-	rand := suite.Cipher([]byte("example"))
 	if hostname == "" {
 		log.Fatal("no hostname given")
 	}
@@ -56,7 +53,7 @@ func main() {
 	}
 	if hc.SNodes[0].IsRoot() {
 		hc.SNodes[0].LogTest = []byte("Hello World")
-		err = hc.SNodes[0].Announce(&coco.AnnouncementMessage{hc.SNodes[0].logTest})
+		err = hc.SNodes[0].Announce(&coco.AnnouncementMessage{hc.SNodes[0].LogTest})
 		if err != nil {
 			log.Fatal(err)
 		}

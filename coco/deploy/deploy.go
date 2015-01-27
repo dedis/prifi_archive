@@ -168,7 +168,7 @@ func main() {
 		if zoo {
 			h = "dmv29@" + h
 		}
-		cmd := exec.Command("scp", "-C", "-B", "exec", h+":"+"cocoexec")
+		cmd := exec.Command("scp", "-C", "exec", h+":"+"cocoexec")
 		cmd.Stdout = LogWriter
 		cmd.Stderr = LogWriter
 		err := cmd.Run()
@@ -186,8 +186,13 @@ func main() {
 		if zoo {
 			h = "dmv29@" + h
 		}
-		cmd := exec.Command("ssh", "-o", "BatchMode", h,
-			"'./cocoexec -hostname "+host+" -config "+f.Name()+" -logger "+logserver+"'")
+		exec.Command("ssh", h,
+			"'chmod +x cocoexec'").Run()
+		cline := "ssh " + h + " " +
+			"'/home/accts/dmv29/cocoexec -hostname " + host + " -config " + f.Name() + " -logger " + logserver + "'"
+		log.Println(cline)
+		cmd := exec.Command("ssh", h,
+			"'/home/accts/dmv29/cocoexec -hostname "+host+" -config "+f.Name()+" -logger "+logserver+"'")
 		cmd.Stdout = LogWriter
 		cmd.Stderr = LogWriter
 		err := cmd.Run()
