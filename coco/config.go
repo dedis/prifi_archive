@@ -13,6 +13,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dedis/crypto/abstract"
@@ -338,6 +339,7 @@ type ConfigOptions struct {
 	Hostnames []string // if not nil replace hostnames with these
 	GenHosts  bool     // if true generate random hostnames (all tcp)
 	Host      string   // hostname to load into memory: "" for all
+	Port      string   // if specified rewrites all ports to be this
 }
 
 // TODO: if in tcp mode associate each hostname in the file with a different
@@ -397,6 +399,15 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 				addr = localAddr + ":" + p
 				//log.Println("created new host address: ", addr)
 				startConfigPort++
+			} else if opts.Port != "" {
+				log.Println("attempting to rewrite port: ", opts.Port)
+				// if the port has been specified change the port
+				hostport := strings.Split(addr, ":")
+				log.Println(hostport)
+				if len(hostport) == 2 {
+					addr = hostport[0] + ":" + opts.Port
+				}
+				log.Println(addr)
 			}
 
 			nameToAddr[h] = addr

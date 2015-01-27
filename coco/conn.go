@@ -15,6 +15,7 @@ type Conn interface {
 	Connect() error
 	Put(BinaryMarshaler) error   // sends data through the connection
 	Get(BinaryUnmarshaler) error // gets data from connection
+	Close()
 }
 
 /* Alternative Bytes Based Conn
@@ -102,6 +103,8 @@ func (c GoConn) ToFrom() string {
 func (c GoConn) Connect() error {
 	return nil
 }
+
+func (c GoConn) Close() {}
 
 // Put sends data to the goConn through the channel.
 func (c *GoConn) Put(data BinaryMarshaler) error {
@@ -191,4 +194,10 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 		return errors.New(" connection not established")
 	}
 	return tc.dec.Decode(bum)
+}
+
+func (tc *TCPConn) Close() {
+	if tc.conn != nil {
+		tc.conn.Close()
+	}
 }

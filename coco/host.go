@@ -52,6 +52,8 @@ type Host interface {
 
 	Connect() error
 	Listen() error
+
+	Close()
 }
 
 // HostNode is a simple implementation of Host that does not specify the
@@ -98,6 +100,8 @@ func (h *GoHost) AddChildren(cs ...string) {
 		h.children[c] = h.peers[c]
 	}
 }
+
+func (h *GoHost) Close() {}
 
 func (h *GoHost) NChildren() int {
 	return len(h.children)
