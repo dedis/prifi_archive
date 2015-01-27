@@ -9,48 +9,54 @@ import (
 	"github.com/dedis/prifi/coco"
 )
 
-func TestStatic(t *testing.T) {
+func TestStaticMultipleClients(t *testing.T) {
+	nClients := 10
+	nMessages := 4 // per round
+	nRounds := 5
+
 	// Crypto setup
 	suite := nist.NewAES128SHA256P256()
-	// rand := suite.Cipher([]byte("example"))
-
 	// create new directory for communication between peers
 	dir := coco.NewGoDirectory()
 
-	// create server,client
+	// create server, clients
 	server := NewServer("server", dir, suite)
-	client := NewClient("client0", dir)
+	client := make([]*Client, 0, nClients)
+	for i := 0; i < nClients; i++ {
+		client = append(client, NewClient("client"+strconv.Itoa(i), dir))
 
-	// intialize server
-	ngc, err := coco.NewGoConn(dir, server.Name(), client.Name())
-	if err != nil {
-		panic(err)
+		// intialize server conn to client
+		ngc, err := coco.NewGoConn(dir, server.Name(), client[i].Name())
+		if err != nil {
+			panic(err)
+		}
+		server.clients[client[i].Name()] = ngc
+
+		// intialize client connection to server
+		ngc, err = coco.NewGoConn(dir, client[i].Name(), server.Name())
+		if err != nil {
+			panic(err)
+		}
+		client[i].servers[server.Name()] = ngc
+
+		go client[i].Listen()
+		go client[i].showHistory()
 	}
-	server.clients[client.Name()] = ngc
 
-	// intialize client
-	ngc, err = coco.NewGoConn(dir, client.Name(), server.Name())
-	if err != nil {
-		panic(err)
-	}
-	client.servers[server.Name()] = ngc
-
-	// start listening
 	go server.Listen()
-	go client.Listen()
-	go client.showHistory()
 
 	// have client send messages
-	nMessages := 4
-	nRounds := 2
 	for r := 0; r < nRounds; r++ {
-		for i := 0; i < nMessages; i++ {
-			// TODO: messages should be sent hashed eventually
-			messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
-			go client.TimeStamp(messg, server.Name())
+		for _, client := range client {
 
+			for i := 0; i < nMessages; i++ {
+				// TODO: messages should be sent hashed eventually
+				messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
+				go client.TimeStamp(messg, server.Name())
+
+			}
 		}
+		// wait between rounds
 		time.Sleep(3 * time.Second)
 	}
-	time.Sleep(15 * time.Second)
 }

@@ -64,14 +64,15 @@ func (p Proof) Check(newHash func() hash.Hash, root, leaf []byte) bool {
 	return subtle.ConstantTimeCompare(chk, root) != 0
 }
 
-func CheckProofs(newHash func() hash.Hash, root HashId, leaves []HashId, proofs []Proof) {
+func CheckProofs(newHash func() hash.Hash, root HashId, leaves []HashId, proofs []Proof) bool {
 	// fmt.Println("Created mtRoot:", mtRoot)
 	for i := range proofs {
 		if proofs[i].Check(newHash, root, leaves[i]) == false {
 			panic("check failed at leaf")
+			// return fakse
 		}
 	}
-	fmt.Println("----------Proofs successful")
+	return true
 }
 
 func (p *Proof) PrintProof(proofNumber int) {

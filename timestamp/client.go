@@ -15,13 +15,12 @@ type Client struct {
 
 	// client history maps request numbers to replies from server
 	// maybe at later phases we will want pair(reqno, server) as key
-	history map[SeqNoType]TimeStampMessage
-	reqno   SeqNoType // next request number in communications with server
-	// historyMux sync.Mutex
+	history map[SeqNo]TimeStampMessage
+	reqno   SeqNo // next request number in communications with server
 
 	// maps response request numbers to channels confirming
 	// where response confirmations are sent
-	doneChan map[SeqNoType]chan bool
+	doneChan map[SeqNo]chan bool
 
 	nRounds     int        // # of last round messages received in, as perceived by client
 	curRoundSig []byte     // merkle tree root of last round
@@ -54,8 +53,8 @@ func (cli *Client) Listen() {
 func NewClient(name string, dir *coco.GoDirectory) (c *Client) {
 	c = &Client{name: name, dir: dir}
 	c.servers = make(map[string]*coco.GoConn)
-	c.history = make(map[SeqNoType]TimeStampMessage)
-	c.doneChan = make(map[SeqNoType]chan bool)
+	c.history = make(map[SeqNo]TimeStampMessage)
+	c.doneChan = make(map[SeqNo]chan bool)
 	c.roundChan = make(chan int)
 	return
 }
@@ -69,14 +68,14 @@ func (c *Client) Put(name string, data coco.BinaryMarshaler) {
 	myConn.Put(data)
 }
 
+// When client asks for val to be timestamped by a server
+// It blocks until it get a stamp reply back
 func (c *Client) TimeStamp(val []byte, serverName string) {
 	// new request requires new done channel
 	c.Mux.Lock()
 	c.reqno++
-	c.doneChan[c.reqno] = make(chan bool, 1)
-
 	myReqno := c.reqno
-	fmt.Println("client putting out", myReqno)
+	c.doneChan[c.reqno] = make(chan bool, 1)
 	c.Mux.Unlock()
 
 	// send request to server
@@ -89,36 +88,35 @@ func (c *Client) TimeStamp(val []byte, serverName string) {
 	// get channel associated with request
 	c.Mux.Lock()
 	myChan := c.doneChan[myReqno]
-	// delete(c.doneChan, myReqno)
 	c.Mux.Unlock()
 
 	// wait for response to request
-	fmt.Println("wating for", myReqno)
 	<-myChan
+
+	// delete channel as it is of no longer meaningful
+	c.Mux.Lock()
+	delete(c.doneChan, myReqno)
+	c.Mux.Unlock()
 }
 
 func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
-	// fmt.Println("Client processing", tsm.ReqNo)
 	// update client history
 	c.Mux.Lock()
 	c.history[tsm.ReqNo] = *tsm
 	done := c.doneChan[tsm.ReqNo]
 
-	// can keep track of rounds
+	// can keep track of rounds by looking at changes in the signature
+	// sent back in a messages
 	if bytes.Compare(tsm.srep.Sig, c.curRoundSig) != 0 {
 		c.curRoundSig = tsm.srep.Sig
 		c.nRounds++
-		if c.nRounds != 1 {
-			c.Mux.Unlock()
-			c.roundChan <- c.nRounds
-		} else {
-			c.Mux.Unlock()
-		}
+
+		c.Mux.Unlock()
+		c.roundChan <- c.nRounds
 	} else {
 		c.Mux.Unlock()
 	}
 
-	fmt.Println("Message reqno", tsm.ReqNo, "processed in round", c.nRounds)
 	done <- true
 }
 
@@ -126,7 +124,10 @@ func (c *Client) showHistory() {
 	for {
 		select {
 		case nRound := <-c.roundChan:
-			fmt.Println("All round", nRound, "responses received")
+			if nRound != 1 {
+				// If not all replies received by client it will block infinitely
+				// fmt.Println("All round", nRound-1, "responses received by", c.Name())
+			}
 			// c.historyMux.Lock()
 			// for _, msg := range c.history {
 			// 	fmt.Println("ReqNo =", msg.reqno, "Signature =", msg.Sig)
