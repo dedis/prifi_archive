@@ -22,7 +22,7 @@ type SigningNode struct {
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
 
-	logTest  []byte                    // for testing purposes
+	LogTest  []byte                    // for testing purposes
 	peerKeys map[string]abstract.Point // map of all peer public keys
 }
 

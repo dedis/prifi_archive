@@ -443,8 +443,8 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 		var err error
 		// exponential backoff for attempting to connect to parent
 		startTime := time.Duration(200)
-		maxTime := time.Duration(60000)
-		for i := 0; i < 100; i++ {
+		maxTime := time.Duration(1000)
+		for i := 0; i < 20; i++ {
 			log.Println("attempting to connect to parent")
 			err = sn.Connect()
 			if err == nil {
@@ -457,6 +457,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 				startTime = maxTime
 			}
 		}
+		log.Println("Succssfully connected to parent")
 		if err != nil {
 			return errors.New("failed to connect")
 		}

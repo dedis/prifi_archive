@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/dedis/prifi/coco"
 )
@@ -35,33 +36,42 @@ func init() {
 	flag.StringVar(&logFile, "log", "", "log file to write to")
 }
 
-func LaunchZoo() {
-
-}
+var Done chan bool
 
 func handleLogRequest(conn net.Conn) {
 	buf := make([]byte, 0, 4096)
 	for {
 		n, err := conn.Read(buf)
+		if err == io.EOF {
+			// log.Println("EOF")
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
 		if err != nil {
-			fmt.Println("read error:", err)
+			log.Println("READ ERROR:", err)
 			break
 		}
 		log.Print(string(buf[:n])) // duplex to file
 	}
+	Done <- true
 }
 
 func StartLoggingServer(port string) {
 	ln, err := net.Listen("tcp", ":9000")
 	if err != nil {
-		// handle error
+		fmt.Println(err)
+		log.Fatal(err)
 	}
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			log.Println("ERROR: error accepting connection: ", err)
+			continue
 			// handle error
 		}
+		log.Println("accepted connection")
 		go handleLogRequest(conn)
+
 	}
 }
 
@@ -94,6 +104,7 @@ func main() {
 
 	log.Println("parsing hosts")
 	logserver := addr + ":9000"
+	log.Print(logserver)
 	// parse out the hostnames
 	var hostnames []string
 	if hostList != "" {
@@ -159,7 +170,6 @@ func main() {
 	cmd.Stderr = LogWriter
 	cmd.Env = append([]string{"GOOS=linux"}, os.Environ()...)
 	cmd.Run()
-
 	log.Println("sending executable")
 	// scp that file to the hosts
 	// send this file to the hosts (using proper authentication)
@@ -168,32 +178,41 @@ func main() {
 		if zoo {
 			h = "dmv29@" + h
 		}
-		cmd := exec.Command("scp", "-C", "-B", "exec", h+":"+"cocoexec")
+		cmd := exec.Command("scp", "-C", "exec", h+":"+"cocoexec")
 		cmd.Stdout = LogWriter
 		cmd.Stderr = LogWriter
 		err := cmd.Run()
 		if err != nil {
 			log.Fatal(err)
 		}
+		err = exec.Command("ssh", h,
+			"'chmod +x cocoexec'").Run()
+		if err != nil {
+			log.Print(err)
+		}
 		if zoo {
 			break
 		}
 	}
-
+	// time.Sleep(2 * time.Second)
 	// ssh run the file on each of the hosts
 	for _, host := range hostnames {
 		h := strings.Split(host, ":")[0]
 		if zoo {
 			h = "dmv29@" + h
 		}
-		cmd := exec.Command("ssh", "-o", "BatchMode", h,
-			"'./cocoexec -hostname "+host+" -config "+f.Name()+" -logger "+logserver+"'")
+		cmd := exec.Command("ssh", h,
+			"eval '~/cocoexec -hostname "+host+" -config "+f.Name()+" -logger "+logserver+"'")
+		log.Println(cmd.Args)
 		cmd.Stdout = LogWriter
 		cmd.Stderr = LogWriter
-		err := cmd.Run()
+		err := cmd.Start()
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
-
+	for i := range hostnames {
+		<-Done
+		log.Println(i, "host is done")
+	}
 }
