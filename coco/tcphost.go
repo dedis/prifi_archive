@@ -85,6 +85,12 @@ func (h *TCPHost) Connect() error {
 	return nil
 }
 
+func (h *TCPHost) Close() {
+	for _, p := range h.peers {
+		p.Close()
+	}
+}
+
 // AddParent adds a parent node to the TCPHost.
 func (h *TCPHost) AddParent(c string) {
 	if _, ok := h.peers[c]; !ok {
