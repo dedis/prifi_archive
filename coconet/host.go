@@ -1,4 +1,4 @@
-package coco
+package coconet
 
 import (
 	"sync"
@@ -70,6 +70,10 @@ type GoHost struct {
 	children map[string]Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
 	dir      *GoDirectory
+}
+
+func (h *GoHost) GetDirectory() *GoDirectory {
+	return h.dir
 }
 
 // NewHostNode creates a new HostNode with a given hostname.

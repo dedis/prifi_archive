@@ -1,4 +1,4 @@
-package time
+package timestamp
 
 import (
 	"bytes"
@@ -8,6 +8,13 @@ import (
 //"time"
 
 type SeqNo byte
+
+// struct to ease keeping track of who requires a reply after
+// tsm is processed/ aggregated by the TSServer
+type MustReplyMessage struct {
+	Tsm TimeStampMessage
+	To  string // name of reply destination
+}
 
 type LogEntry struct {
 	Seq  SeqNo  // Consecutively-incrementing log entry sequence number
@@ -30,7 +37,7 @@ type StampReply struct {
 
 // Request to obtain an old log-entry and, optionally,
 // a cryptographic proof that it happened before a given newer entry.
-// The server may be unable to process if Seq is beyond the retention window.
+// The TSServer may be unable to process if Seq is beyond the retention window.
 type EntryRequest struct {
 	Seq SeqNo // Sequence number of old entry requested
 }
@@ -41,7 +48,7 @@ type EntryReply struct {
 // Request a cryptographic Merkle proof that log-entry Old happened before New.
 // Produces a path to a Merkle tree node containing a hash of the node itself
 // and the root of the history values committed within the node.
-// The server may be unable to process if Old is beyond the retention window.
+// The TSServer may be unable to process if Old is beyond the retention window.
 type ProofRequest struct {
 	Old, New SeqNo // Sequence number of old and new log records
 }
@@ -74,8 +81,8 @@ type TimeStampMessage struct {
 	ReqNo SeqNo // Request sequence number
 	// ErrorReply *ErrorReply // Generic error reply to any request
 	Type MessageType
-	sreq *StampRequest
-	srep *StampReply
+	Sreq *StampRequest
+	Srep *StampReply
 }
 
 func (tsm TimeStampMessage) MarshalBinary() ([]byte, error) {
@@ -87,9 +94,9 @@ func (tsm TimeStampMessage) MarshalBinary() ([]byte, error) {
 	// marshal sub message based on its Type
 	switch tsm.Type {
 	case StampRequestType:
-		sub, err = tsm.sreq.MarshalBinary()
+		sub, err = tsm.Sreq.MarshalBinary()
 	case StampReplyType:
-		sub, err = tsm.srep.MarshalBinary()
+		sub, err = tsm.Srep.MarshalBinary()
 	}
 	if err == nil {
 		b.Write(sub)
@@ -104,40 +111,40 @@ func (sm *TimeStampMessage) UnmarshalBinary(data []byte) error {
 	var err error
 	switch sm.Type {
 	case StampRequestType:
-		sm.sreq = &StampRequest{}
-		err = sm.sreq.UnmarshalBinary(msgBytes)
+		sm.Sreq = &StampRequest{}
+		err = sm.Sreq.UnmarshalBinary(msgBytes)
 	case StampReplyType:
-		sm.srep = &StampReply{}
-		err = sm.srep.UnmarshalBinary(msgBytes)
+		sm.Srep = &StampReply{}
+		err = sm.Srep.UnmarshalBinary(msgBytes)
 
 	}
 	return err
 }
 
-func (sreq StampRequest) MarshalBinary() ([]byte, error) {
+func (Sreq StampRequest) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
-	err := enc.Encode(sreq.Val)
+	err := enc.Encode(Sreq.Val)
 	return b.Bytes(), err
 }
 
-func (sreq *StampRequest) UnmarshalBinary(data []byte) error {
+func (Sreq *StampRequest) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(b)
-	err := dec.Decode(&sreq.Val)
+	err := dec.Decode(&Sreq.Val)
 	return err
 }
 
-func (srep StampReply) MarshalBinary() ([]byte, error) {
+func (Srep StampReply) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
-	err := enc.Encode(srep.Sig)
+	err := enc.Encode(Srep.Sig)
 	return b.Bytes(), err
 }
 
-func (srep *StampReply) UnmarshalBinary(data []byte) error {
+func (Srep *StampReply) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(b)
-	err := dec.Decode(&srep.Sig)
+	err := dec.Decode(&Srep.Sig)
 	return err
 }

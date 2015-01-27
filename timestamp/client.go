@@ -1,22 +1,22 @@
-package time
+package timestamp
 
 import (
 	"bytes"
 	"fmt"
 	"sync"
 
-	"github.com/dedis/prifi/coco"
+	"github.com/dedis/prifi/coconet"
 )
 
 type Client struct {
-	name    string
-	servers map[string]*coco.GoConn // servers I "work" with
-	dir     *coco.GoDirectory       // directory of connection with servers
+	name string
+	Sns  map[string]*coconet.GoConn // sns I "work" with
+	dir  *coconet.GoDirectory       // directory of connection with sns
 
-	// client history maps request numbers to replies from server
-	// maybe at later phases we will want pair(reqno, server) as key
+	// client history maps request numbers to replies from TSServer
+	// maybe at later phases we will want pair(reqno, TSServer) as key
 	history map[SeqNo]TimeStampMessage
-	reqno   SeqNo // next request number in communications with server
+	reqno   SeqNo // next request number in communications with TSServer
 
 	// maps response request numbers to channels confirming
 	// where response confirmations are sent
@@ -39,8 +39,8 @@ func (cli *Client) handleRequest(tsm *TimeStampMessage) {
 }
 
 func (cli *Client) Listen() {
-	for _, c := range cli.servers {
-		go func(c *coco.GoConn) {
+	for _, c := range cli.Sns {
+		go func(c *coconet.GoConn) {
 			for {
 				tsm := &TimeStampMessage{}
 				c.Get(tsm)
@@ -50,9 +50,9 @@ func (cli *Client) Listen() {
 	}
 }
 
-func NewClient(name string, dir *coco.GoDirectory) (c *Client) {
+func NewClient(name string, dir *coconet.GoDirectory) (c *Client) {
 	c = &Client{name: name, dir: dir}
-	c.servers = make(map[string]*coco.GoConn)
+	c.Sns = make(map[string]*coconet.GoConn)
 	c.history = make(map[SeqNo]TimeStampMessage)
 	c.doneChan = make(map[SeqNo]chan bool)
 	c.roundChan = make(chan int)
@@ -63,14 +63,14 @@ func (c *Client) Name() string {
 	return c.name
 }
 
-func (c *Client) Put(name string, data coco.BinaryMarshaler) {
-	myConn := c.servers[name]
+func (c *Client) Put(name string, data coconet.BinaryMarshaler) {
+	myConn := c.Sns[name]
 	myConn.Put(data)
 }
 
-// When client asks for val to be timestamped by a server
+// When client asks for val to be timestamped by a TSServer
 // It blocks until it get a stamp reply back
-func (c *Client) TimeStamp(val []byte, serverName string) {
+func (c *Client) TimeStamp(val []byte, TSServerName string) {
 	// new request requires new done channel
 	c.Mux.Lock()
 	c.reqno++
@@ -78,12 +78,12 @@ func (c *Client) TimeStamp(val []byte, serverName string) {
 	c.doneChan[c.reqno] = make(chan bool, 1)
 	c.Mux.Unlock()
 
-	// send request to server
-	c.Put(serverName,
+	// send request to TSServer
+	c.Put(TSServerName,
 		&TimeStampMessage{
 			Type:  StampRequestType,
 			ReqNo: myReqno,
-			sreq:  &StampRequest{Val: val}})
+			Sreq:  &StampRequest{Val: val}})
 
 	// get channel associated with request
 	c.Mux.Lock()
@@ -107,8 +107,8 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 
 	// can keep track of rounds by looking at changes in the signature
 	// sent back in a messages
-	if bytes.Compare(tsm.srep.Sig, c.curRoundSig) != 0 {
-		c.curRoundSig = tsm.srep.Sig
+	if bytes.Compare(tsm.Srep.Sig, c.curRoundSig) != 0 {
+		c.curRoundSig = tsm.Srep.Sig
 		c.nRounds++
 
 		c.Mux.Unlock()
@@ -120,7 +120,7 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	done <- true
 }
 
-func (c *Client) showHistory() {
+func (c *Client) ShowHistory() {
 	for {
 		select {
 		case nRound := <-c.roundChan:

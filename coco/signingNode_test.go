@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/coconet"
 )
 
 func TestReadWrite(t *testing.T) {
@@ -15,7 +16,7 @@ func TestReadWrite(t *testing.T) {
 	testBytes := []byte("Hello World")
 	s := suite.Secret().Pick(rand)
 	m := TestMessage{S: s, Bytes: testBytes}
-	h := NewGoHost("exampleHost", nil)
+	h := coconet.NewGoHost("exampleHost", nil)
 	sn := NewSigningNode(h, suite, rand)
 
 	dataBytes := sn.Write(m)

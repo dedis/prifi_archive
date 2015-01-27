@@ -1,5 +1,6 @@
 package coco
 
+<<<<<<< HEAD
 import (
 	"strconv"
 	"testing"

@@ -18,6 +18,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/coconet"
 )
 
 /*
@@ -62,7 +63,7 @@ type Node struct {
 type HostConfig struct {
 	SNodes []*SigningNode          // an array of signing nodes
 	Hosts  map[string]*SigningNode // maps hostname to host
-	Dir    *GoDirectory            // the directory mapping hostnames to goPeers
+	Dir    *coconet.GoDirectory    // the directory mapping hostnames to goPeers
 }
 
 func (hc *HostConfig) Verify() error {
@@ -164,7 +165,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) error {
 // NewHostConfig creates a new host configuration that can be populated with
 // hosts.
 func NewHostConfig() *HostConfig {
-	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*SigningNode), Dir: NewGoDirectory()}
+	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*SigningNode), Dir: coconet.NewGoDirectory()}
 }
 
 type ConnType int
@@ -183,7 +184,7 @@ func ConstructTree(
 	parent string,
 	suite abstract.Suite,
 	rand cipher.Stream,
-	hosts map[string]Host,
+	hosts map[string]coconet.Host,
 	nameToAddr map[string]string,
 	opts ConfigOptions) (abstract.Point, error) {
 	// passes up its X_hat, and/or an error
@@ -368,8 +369,8 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		connT = TcpC
 	}
 
-	dir := NewGoDirectory()
-	hosts := make(map[string]Host)
+	dir := coconet.NewGoDirectory()
+	hosts := make(map[string]coconet.Host)
 	nameToAddr := make(map[string]string)
 
 	if connT == GoC {
@@ -377,7 +378,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 			if _, ok := hc.Hosts[h]; !ok {
 				nameToAddr[h] = h
 				// it doesn't make sense to only make 1 go host
-				hosts[h] = NewGoHost(h, dir)
+				hosts[h] = coconet.NewGoHost(h, dir)
 			}
 		}
 
@@ -417,7 +418,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 			if _, ok := hc.Hosts[addr]; !ok {
 				// only create the tcp hosts requested
 				if opts.Host == "" || opts.Host == addr {
-					hosts[addr] = NewTCPHost(addr)
+					hosts[addr] = coconet.NewTCPHost(addr)
 				} else {
 					hosts[addr] = nil // it is there but not backed
 				}

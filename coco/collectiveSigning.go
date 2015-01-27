@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/prifi/coconet"
 	// "strconv"
 	// "os"
 )
@@ -51,7 +52,7 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	//fmt.Println(sn.Name(), "announces")
 	// Inform all children of announcement
 	// PutDown requires each child to have his own message
-	messgs := make([]BinaryMarshaler, sn.NChildren())
+	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
 		sm := SigningMessage{Type: Announcement, am: am}
 		messgs[i] = sm
@@ -72,7 +73,7 @@ func (sn *SigningNode) Commit() error {
 	// initialize product of point commitments
 	sn.V_hat = sn.V
 	// grab space for children messages
-	messgs := make([]BinaryUnmarshaler, sn.NChildren())
+	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
 	for i := range messgs {
 		messgs[i] = &SigningMessage{}
 	}
@@ -109,7 +110,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 	sn.c = chm.C
 	// inform all children of challenge
 	// PutDown requires each child to have his own message
-	messgs := make([]BinaryMarshaler, sn.NChildren())
+	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
 		sm := SigningMessage{Type: Challenge, chm: chm}
 		messgs[i] = sm
@@ -129,7 +130,7 @@ func (sn *SigningNode) Respond() error {
 	// initialize sum of children's responses
 	sn.r_hat = sn.r
 	// wait for all children to respond
-	messgs := make([]BinaryUnmarshaler, sn.NChildren())
+	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
 	for i := range messgs {
 		messgs[i] = &SigningMessage{}
 	}
