@@ -119,7 +119,7 @@ func (hc *HostConfig) String() string {
 		root := hc.SNodes[0]
 		writeHC(b, hc, root)
 	} else {
-		b.WriteString("{},")
+		b.WriteString("{}")
 	}
 	b.WriteString("}\n")
 
@@ -391,7 +391,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 			}
 		}
 
-		for _, h := range cf.Hosts {
+		for i, h := range cf.Hosts {
 
 			addr := h
 			if opts.GenHosts {
@@ -408,6 +408,8 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 					addr = hostport[0] + ":" + opts.Port
 				}
 				log.Println(addr)
+			} else if len(opts.Hostnames) != 0 {
+				addr = opts.Hostnames[i]
 			}
 
 			nameToAddr[h] = addr

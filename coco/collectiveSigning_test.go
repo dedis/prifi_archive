@@ -161,6 +161,9 @@ func TestTCPStaticConfig(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	for _, n := range hc.SNodes {
+		n.Close()
+	}
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {
@@ -183,6 +186,9 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 			t.Error(err)
 		}
 	}
+	for _, n := range hc.SNodes {
+		n.Close()
+	}
 }
 
 func TestTreeBigConfigTCP(t *testing.T) {
@@ -201,6 +207,9 @@ func TestTreeBigConfigTCP(t *testing.T) {
 	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
 	if err != nil {
 		t.Error(err)
+	}
+	for _, n := range hc.SNodes {
+		n.Close()
 	}
 }
 

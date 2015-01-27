@@ -55,9 +55,6 @@ func main() {
 		log.Fatal("no hostname given")
 	}
 
-	// wait for other nodes to come online
-	// time.Sleep(5 * time.Second)
-
 	// load the configuration
 	fmt.Println("loading configuration")
 	hc, err := coco.LoadConfig(configFile, coco.ConfigOptions{ConnType: "tcp", Host: hostname})
@@ -72,6 +69,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	fmt.Println("RUNNING")
 	defer hc.SNodes[0].Close()
 
@@ -79,8 +77,8 @@ func main() {
 	if hc.SNodes[0].IsRoot() {
 		start := time.Now()
 		iters := 10
-		for i := 0; i < iters; i++ {
 
+		for i := 0; i < iters; i++ {
 			fmt.Println("ANNOUNCING")
 			hc.SNodes[0].LogTest = []byte("Hello World")
 			err = hc.SNodes[0].Announce(&coco.AnnouncementMessage{hc.SNodes[0].LogTest})
@@ -88,6 +86,7 @@ func main() {
 				log.Fatal(err)
 			}
 		}
+
 		elapsed := time.Since(start)
 		log.Printf("took %d ns/op\n", elapsed.Nanoseconds()/int64(iters))
 	} else {

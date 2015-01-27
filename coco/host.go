@@ -34,8 +34,11 @@ import (
 type Host interface {
 	Name() string
 
+	// ??? Should this return the internal datastructure or a copy of it
+	// ??? how many children can a host expect to have
 	Peers() map[string]Conn // returns the peers list: all connected nodes
 	Children() map[string]Conn
+
 	AddPeers(hostnames ...string)   // add a node but don't make it child or parent
 	AddParent(hostname string)      // ad a parent connection
 	AddChildren(hostname ...string) // add child connections
@@ -43,17 +46,20 @@ type Host interface {
 
 	IsRoot() bool // true if this host is the root of the tree
 
+	// blocking network calls over the tree
 	PutUp(BinaryMarshaler) error       // send data to parent in host tree
 	GetUp(BinaryUnmarshaler) error     // get data from parent in host tree (blocking)
 	PutDown([]BinaryMarshaler) error   // send data to children in host tree
 	GetDown([]BinaryUnmarshaler) error // get data from children in host tree (blocking)
 
+	// ??? Could be replaced by listeners (condition variables) that wait for a
+	// change to the root status to the node (i.e. through an add parent call)
 	WaitTick() // Sleeps for network implementation dependent amount of time
 
-	Connect() error
-	Listen() error
+	Connect() error // connects to parent
+	Listen() error  // listen for incoming connections
 
-	Close()
+	Close() // connections need to be cleaned up
 }
 
 // HostNode is a simple implementation of Host that does not specify the

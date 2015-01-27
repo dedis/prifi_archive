@@ -26,16 +26,19 @@ func TestPubKeysConfig(t *testing.T) {
 func TestPubKeysOneNode(t *testing.T) {
 	// has hosts 8089 - 9094 @ 172.27.187.80
 	done := make(chan bool)
-	hosts := []string{"172.27.187.80:8095",
-		"172.27.187.80:8096",
-		"172.27.187.80:8097",
-		"172.27.187.80:8098",
-		"172.27.187.80:8099",
-		"172.27.187.80:8100"}
+	hosts := []string{
+		"172.27.187.80:6095",
+		"172.27.187.80:6096",
+		"172.27.187.80:6097",
+		"172.27.187.80:6098",
+		"172.27.187.80:6099",
+		"172.27.187.80:6100"}
+	nodes := make(map[string]*SigningNode)
 	for _, host := range hosts {
 		go func(host string) {
-			hc, err := LoadConfig("data/exconf_wkeys.json", ConfigOptions{ConnType: "tcp", Host: host})
+			hc, err := LoadConfig("data/exconf_wkeys.json", ConfigOptions{ConnType: "tcp", Host: host, Hostnames: hosts})
 			if err != nil {
+				done <- true
 				t.Fatal(err)
 			}
 			log.Println("Loaded Config For: ", host)
@@ -43,8 +46,10 @@ func TestPubKeysOneNode(t *testing.T) {
 			log.Println(hc.String())
 			err = hc.Run(host)
 			if err != nil {
+				done <- true
 				t.Fatal(err)
 			}
+			nodes[host] = hc.SNodes[0]
 			log.Println("announcing")
 			if hc.SNodes[0].IsRoot() {
 				hc.SNodes[0].LogTest = []byte("Hello World")
@@ -53,8 +58,12 @@ func TestPubKeysOneNode(t *testing.T) {
 					t.Fatal(err)
 				}
 				done <- true
+				hc.SNodes[0].Close()
 			}
 		}(host)
 	}
 	<-done
+	for _, sn := range nodes {
+		sn.Close()
+	}
 }

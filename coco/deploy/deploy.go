@@ -21,6 +21,7 @@ import (
 //   deploy -mode "planetlab"|"zoo" -hosts "host1,host2" -config "cfg.json"
 //
 // example: go run deploy.go -mode zoo -config ../data/zoo.json -u name
+//          go run deploy.go -mode pl -arch 386 -u yale_dissent -config ../data/zoo.json -hosts h1,h2,h3,h4,h5,h6
 
 var configFile string
 var mode string
@@ -28,6 +29,8 @@ var hostList string
 var logFile string
 var portRewrite string
 var username string
+var rarch string
+var ros string
 
 var LogWriter io.Writer
 
@@ -38,6 +41,8 @@ func init() {
 	flag.StringVar(&logFile, "log", "", "log file to write to")
 	flag.StringVar(&portRewrite, "p", "", "rewrite rule for hosts, what their port should be")
 	flag.StringVar(&username, "u", "", "the username that should be used when logging into hosts")
+	flag.StringVar(&rarch, "arch", "amd64", "the architecture of the hostmachines")
+	flag.StringVar(&ros, "os", "linux", "the operating system of the hostmachines")
 }
 
 var WG sync.WaitGroup
@@ -180,7 +185,7 @@ func main() {
 	cmd := exec.Command("go", "build", "-v", "github.com/dedis/prifi/coco/exec")
 	cmd.Stdout = LogWriter
 	cmd.Stderr = LogWriter
-	cmd.Env = append([]string{"GOOS=linux"}, os.Environ()...)
+	cmd.Env = append([]string{"GOOS=" + ros, "GOARCH=" + rarch}, os.Environ()...)
 	cmd.Run()
 	log.Println("sending executable")
 

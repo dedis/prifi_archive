@@ -11,11 +11,13 @@ import (
 // Conn is an abstract bidirectonal connection. It abstracts away the network
 // layer as well as the data-format for communication.
 type Conn interface {
-	Name() string
-	Connect() error
+	Name() string // the "to" of the connection
+
+	Connect() error // connect with the "to"
+	Close()         // clean up the connection
+
 	Put(BinaryMarshaler) error   // sends data through the connection
 	Get(BinaryUnmarshaler) error // gets data from connection
-	Close()
 }
 
 /* Alternative Bytes Based Conn
@@ -61,9 +63,11 @@ type GoConn struct {
 	// the directory maps each (from,to) pair to a channel for sending
 	// (from,to). When receiving one reads from the channel (from, to). Thus
 	// the sender "owns" the channel.
-	dir  *GoDirectory
-	from string
-	to   string
+	dir    *GoDirectory
+	from   string
+	to     string
+	fromto string
+	tofrom string
 }
 
 // PeerExists is an ignorable error that says that this peer has already been
@@ -74,7 +78,7 @@ var PeerExists error = errors.New("peer already exists in given directory")
 // hostname. It returns an ignorable PeerExists error if this peer already
 // exists.
 func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
-	gc := &GoConn{dir, from, to}
+	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from}
 	dir.Lock()
 	fromto := gc.FromTo()
 	defer dir.Unlock()
@@ -93,11 +97,11 @@ func (c GoConn) Name() string {
 }
 
 func (c GoConn) FromTo() string {
-	return c.from + "::::" + c.to
+	return c.fromto
 }
 
 func (c GoConn) ToFrom() string {
-	return c.to + "::::" + c.from
+	return c.tofrom
 }
 
 func (c GoConn) Connect() error {
@@ -173,6 +177,9 @@ func (tc TCPConn) Connect() error {
 	tc.conn = conn
 	// gob encoders call MarshalBinary and UnmarshalBinary
 	// TODO replace gob with minimal Put, Get interface
+	// gob nicely handles reading from the connection
+	// otherwise we would have to deal with making the tcp
+	// read and write blocking rather than non-blocking.
 	tc.enc = gob.NewEncoder(conn)
 	tc.dec = gob.NewDecoder(conn)
 	return nil
