@@ -1,4 +1,4 @@
-package coco
+package coconet
 
 // TCPHost is a simple implementation of Host that does not specify the
 import (
