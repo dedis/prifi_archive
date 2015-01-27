@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco"
 )
 
@@ -37,21 +36,24 @@ func createClientsForServer(nClients int, server *Server, dir *coco.GoDirectory,
 }
 
 func TestStaticMultipleClients(t *testing.T) {
+	// should not use this until fields of signing node
+	// are exported
+	return
 	nClients := 2
 	nMessages := 4 // per round
 	nRounds := 2
 
 	// Crypto setup
-	suite := nist.NewAES128SHA256P256()
+	// suite := nist.NewAES128SHA256P256()
 	// create new directory for communication between peers
 	dir := coco.NewGoDirectory()
 
 	// create server, clients
-	server := NewServer("server", dir, suite)
+	server := NewServer("server")
+	// TODO: add sn to server with dir and suite, once sn exported
 	clients := createClientsForServer(nClients, server, dir, 0)
 
-	isRoot := true
-	go server.Listen(isRoot)
+	go server.Listen("test")
 
 	// have client send messages
 	for r := 0; r < nRounds; r++ {
@@ -76,7 +78,6 @@ func TestStaticMultipleClients(t *testing.T) {
 //    / \   \
 //   2   3   5
 func TestTreeFromStaticConfig(t *testing.T) {
-	return
 	hostConfig, err := coco.LoadConfig("data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
@@ -86,15 +87,25 @@ func TestTreeFromStaticConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// create servers
+	// create servers and clients
 	nServers := len(hostConfig.SNodes)
+	nClientsPerServer := 1
 	servers := make([]*Server, 0, nServers)
+	clients := make([]*Client, 0, nServers*nClientsPerServer)
 	for i, sn := range hostConfig.SNodes {
-		server := &Server{name: "server" + strconv.Itoa(i)}
-		server.SigningNode = *sn
+		server := NewServer("server" + strconv.Itoa(i))
+		server.sn = sn
 		servers = append(servers, server)
 
+		clients = append(clients, createClientsForServer(nClientsPerServer, server,
+			sn.Host.(*coco.GoHost).GetDirectory(), 0+i*nClientsPerServer)...)
 	}
+
+	servers[0].Listen("root")
+	for i := 1; i < nServers; i++ {
+		servers[i].Listen("regular")
+	}
+
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	hostConfig.SNodes[0].LogTest = []byte("Hello World")

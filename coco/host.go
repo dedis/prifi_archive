@@ -66,6 +66,10 @@ type GoHost struct {
 	dir      *GoDirectory
 }
 
+func (h *GoHost) GetDirectory() *GoDirectory {
+	return h.dir
+}
+
 // NewHostNode creates a new HostNode with a given hostname.
 func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,

@@ -62,3 +62,7 @@ func (sn *SigningNode) Read(data []byte) (interface{}, error) {
 	}
 	return messg, nil
 }
+
+func (sn *SigningNode) GetSuite() abstract.Suite {
+	return sn.suite
+}

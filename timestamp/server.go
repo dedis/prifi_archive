@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco"
 )
 
@@ -17,16 +16,16 @@ import (
 var ROUND_TIME time.Duration = 1 * time.Second
 
 type Server struct {
-	suite abstract.Suite
+	// suite abstract.Suite
 
 	name    string
 	clients map[string]*coco.GoConn
 	nRounds int
 	mux     sync.Mutex
 
-	dir *coco.GoDirectory
+	// dir *coco.GoDirectory
 
-	coco.SigningNode
+	sn *coco.SigningNode
 
 	// for aggregating messages from clients
 	Queue      [][]MustReplyMessage
@@ -34,10 +33,9 @@ type Server struct {
 	PROCESSING int
 }
 
-func NewServer(name string, dir *coco.GoDirectory, suite abstract.Suite) (s *Server) {
-	s = &Server{name: name, dir: dir}
+func NewServer(name string) (s *Server) {
+	s = &Server{name: name}
 	s.clients = make(map[string]*coco.GoConn)
-	s.suite = suite
 
 	s.READING = 0
 	s.PROCESSING = 1
@@ -52,7 +50,7 @@ type MustReplyMessage struct {
 }
 
 // TODO: error handling
-func (s *Server) Listen(isRoot bool) {
+func (s *Server) Listen(role string) {
 	s.Queue = make([][]MustReplyMessage, 2)
 	Queue := s.Queue
 	READING := s.READING
@@ -80,15 +78,23 @@ func (s *Server) Listen(isRoot bool) {
 		}(c)
 	}
 
-	if isRoot == true {
-		fmt.Println(s.Name(), "is root")
+	switch role {
+
+	case "root":
 		ticker := time.Tick(1 * time.Second)
 		for _ = range ticker {
 			// send an announcement message to all other servers
-			// s.Announce(&coco.AnnouncementMessage{LogTest: []byte("New Round")})
+			s.sn.Announce(&coco.AnnouncementMessage{LogTest: []byte("New Round")})
+			s.AggregateCommits()
+		}
+
+	case "test":
+		ticker := time.Tick(1 * time.Second)
+		for _ = range ticker {
 			s.AggregateCommits()
 		}
 	}
+
 }
 
 func (s *Server) AggregateCommits() {
@@ -117,8 +123,8 @@ func (s *Server) AggregateCommits() {
 	s.mux.Unlock()
 
 	// create Merkle tree for this round
-	mtRoot, proofs := ProofTree(s.suite.Hash, leaves)
-	if CheckProofs(s.suite.Hash, mtRoot, leaves, proofs) == true {
+	mtRoot, proofs := ProofTree(s.sn.GetSuite().Hash, leaves)
+	if CheckProofs(s.sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
 		fmt.Println("Proofs successful for round " + strconv.Itoa(s.nRounds))
 	} else {
 		panic("Proofs unsuccessful for round " + strconv.Itoa(s.nRounds))
