@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ var portRewrite string
 var username string
 var rarch string
 var ros string
+var clean string
 
 var LogWriter io.Writer
 
@@ -43,6 +45,7 @@ func init() {
 	flag.StringVar(&username, "u", "", "the username that should be used when logging into hosts")
 	flag.StringVar(&rarch, "arch", "amd64", "the architecture of the hostmachines")
 	flag.StringVar(&ros, "os", "linux", "the operating system of the hostmachines")
+	flag.StringVar(&clean, "clean", "false", "clean config files off of host")
 }
 
 var WG sync.WaitGroup
@@ -103,20 +106,48 @@ func SetupLogs() {
 	log.SetOutput(LogWriter)
 }
 
+func BuildExec() chan bool {
+	ch := make(chan bool)
+	go func(ch chan bool) {
+		log.Println("starting build process")
+		// build the coco/exec for the target architectures
+		cmd := exec.Command("go", "build", "-v", "../exec")
+		cmd.Stdout = LogWriter
+		cmd.Stderr = LogWriter
+		cmd.Env = append([]string{"GOOS=" + ros, "GOARCH=" + rarch}, os.Environ()...)
+		log.Println("about to run build")
+		err := cmd.Run()
+		if err != nil {
+			log.Println(err)
+		}
+		log.Println("sending to done:", ch)
+		ch <- true
+	}(ch)
+	return ch
+}
+
 func main() {
-	zoo := true
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	flag.Parse()
+	zoo := true
+	if mode == "pl" || mode == "planetlab" {
+		zoo = false
+	}
 	SetupLogs()
+	Done := BuildExec()
 	// establish logging server to listen to remote connections
 	go StartLoggingServer(":9000")
 	log.Println("started logging server")
 	addr, err := coco.GetAddress()
 	if err != nil {
-		log.Fatal(err)
+		addr = ""
 	}
 
 	log.Println("parsing hosts")
 	logserver := addr + ":9000"
+	if addr != "" {
+		logserver = ""
+	}
 	log.Print(logserver)
 
 	// parse out the hostnames
@@ -161,80 +192,109 @@ func main() {
 
 	log.Println("sending configuration file")
 	// send this file to the hosts (using proper authentication)
+	var wg sync.WaitGroup
+	// if clean == "true" {
+	// 	for _, host := range hostnames {
+	// 		wg.Add(1)
+	// 		go func(host string) {
+	// 			defer wg.Done()
+	// 			h := strings.Split(host, ":")[0]
+	// 			if username != "" {
+	// 				h = username + "@" + h
+	// 			}
+	// 			cmd := exec.Command("ssh", h,
+	// 				"rm config*")
+	// 			log.Println(cmd.Args)
+	// 			cmd.Stdout = LogWriter
+	// 			cmd.Stderr = LogWriter
+	// 			err := cmd.Run()
+	// 			if err != nil {
+	// 				log.Println(h, err)
+	// 			}
+	// 		}(host)
+	// 	}
+	// 	wg.Wait()
+	// }
+	log.Println("waiting for done: ", Done)
+	<-Done
+	log.Println("done")
 	for _, host := range hostnames {
-		h := strings.Split(host, ":")[0]
-		if username != "" {
-			h = username + "@" + h
-		}
-		log.Println("starting scp: ", h)
-		cmd := exec.Command("scp", "-C", "-B", f.Name(), h+":"+f.Name())
-		cmd.Stdout = LogWriter
-		cmd.Stderr = LogWriter
-		err := cmd.Run()
-		if err != nil {
-			log.Fatal("scp failed on: ", h, err)
-		}
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			h := strings.Split(host, ":")[0]
+			if username != "" {
+				h = username + "@" + h
+			}
+			log.Println("starting scp: ", h)
+			cmd := exec.Command("scp", "-C", "-B", f.Name(), h+":"+f.Name())
+			cmd.Stdout = LogWriter
+			cmd.Stderr = LogWriter
+			err := cmd.Run()
+			if err != nil {
+				log.Fatal("scp failed on: ", h, err)
+			}
+		}(host)
 		// only need to send one file to the zoo
 		if zoo {
 			break
 		}
 	}
-
-	log.Println("starting build process")
-	// build the coco/exec for the target architectures
-	cmd := exec.Command("go", "build", "-v", "github.com/dedis/prifi/coco/exec")
-	cmd.Stdout = LogWriter
-	cmd.Stderr = LogWriter
-	cmd.Env = append([]string{"GOOS=" + ros, "GOARCH=" + rarch}, os.Environ()...)
-	cmd.Run()
+	wg.Wait()
+	log.Println("waiting for build to finish")
+	// <-buildDone
 	log.Println("sending executable")
 
 	// scp that file to the hosts
 	// send this file to the hosts (using proper authentication)
 	for _, host := range hostnames {
-		h := strings.Split(host, ":")[0]
-		if username != "" {
-			h = username + "@" + h
-		}
-		cmd := exec.Command("scp", "-C", "exec", h+":"+"cocoexec")
-		cmd.Stdout = LogWriter
-		cmd.Stderr = LogWriter
-		err := cmd.Run()
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = exec.Command("ssh", h,
-			"'chmod +x cocoexec'").Run()
-		if err != nil {
-			log.Print(err)
-		}
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			h := strings.Split(host, ":")[0]
+			if username != "" {
+				h = username + "@" + h
+			}
+			cmd := exec.Command("scp", "-C", "exec", h+":"+"cocoexec")
+			cmd.Stdout = LogWriter
+			cmd.Stderr = LogWriter
+			log.Println("scp binary to ", h)
+			err := cmd.Run()
+			if err != nil {
+				log.Fatal(h, ": scp:", err)
+			}
+			err = exec.Command("ssh", h,
+				"eval 'chmod +x cocoexec'").Run()
+			if err != nil {
+				log.Print(h, ": chmod:", err)
+			}
+		}(host)
 		if zoo {
 			break
 		}
 	}
-	// time.Sleep(2 * time.Second)
-	// ssh run the file on each of the hosts
-	cmds := make([]*exec.Cmd, 0, len(hostnames))
-	for _, host := range hostnames {
-		h := strings.Split(host, ":")[0]
-		if zoo {
-			h = username + "@" + h
-		}
-		cmd := exec.Command("ssh", h,
-			"eval '~/cocoexec -hostname "+host+" -config "+f.Name()+" -logger "+logserver+"'")
-		cmds = append(cmds, cmd)
-		log.Println(cmd.Args)
-		cmd.Stdout = LogWriter
-		cmd.Stderr = LogWriter
-		err := cmd.Start()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
+	wg.Wait()
 
-	// wait for all of the cmds to start
-	for _, c := range cmds {
-		c.Wait()
+	// ssh run the file on each of the hosts
+	for _, host := range hostnames {
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			h := strings.Split(host, ":")[0]
+			if username != "" {
+				h = username + "@" + h
+			}
+			cmd := exec.Command("ssh", h,
+				"eval './cocoexec -hostname "+host+" -config "+f.Name()+" -logger "+logserver+"'")
+			log.Println(cmd.Args)
+			cmd.Stdout = LogWriter
+			cmd.Stderr = LogWriter
+			err := cmd.Run()
+			if err != nil {
+				log.Println(h, err)
+			}
+		}(host)
 	}
+	wg.Wait()
 	fmt.Println("All children have completed")
 }

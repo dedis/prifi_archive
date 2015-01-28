@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 // Conn is an abstract bidirectonal connection. It abstracts away the network
@@ -189,16 +190,19 @@ func (tc TCPConn) Name() string {
 	return tc.name
 }
 
+// blocks until the put is availible
 func (tc *TCPConn) Put(bm BinaryMarshaler) error {
-	if tc.enc == nil {
-		return errors.New(" connection not established")
+	for tc.enc == nil {
+		time.Sleep(time.Second)
+		//return errors.New(" connection not established")
 	}
 	return tc.enc.Encode(bm)
 }
 
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
-	if tc.dec == nil {
-		return errors.New(" connection not established")
+	for tc.dec == nil {
+		time.Sleep(time.Second)
+		//return errors.New(" connection not established")
 	}
 	return tc.dec.Decode(bum)
 }

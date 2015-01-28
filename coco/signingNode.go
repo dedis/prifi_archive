@@ -131,7 +131,6 @@ func (sn *SigningNode) ListenToClients(role string) {
 			}
 		}(c)
 	}
-
 	switch role {
 
 	case "root":

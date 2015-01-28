@@ -34,10 +34,10 @@ import (
 type Host interface {
 	Name() string
 
-	// ??? Should this return the internal datastructure or a copy of it
-	// ??? how many children can a host expect to have
+	// Returns the internal data structure
+	// Invarient: children are always in the same order
 	Peers() map[string]Conn // returns the peers list: all connected nodes
-	Children() map[string]Conn
+	Children() []Conn
 
 	AddPeers(hostnames ...string)   // add a node but don't make it child or parent
 	AddParent(hostname string)      // ad a parent connection
@@ -65,9 +65,9 @@ type Host interface {
 // HostNode is a simple implementation of Host that does not specify the
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type GoHost struct {
-	name     string          // the hostname
-	parent   Conn            // the Peer representing parent, nil if root
-	children map[string]Conn // a list of unique peers for each hostname
+	name     string // the hostname
+	parent   Conn   // the Peer representing parent, nil if root
+	children []Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
 	dir      *GoDirectory
 }
@@ -79,7 +79,7 @@ func (h *GoHost) GetDirectory() *GoDirectory {
 // NewHostNode creates a new HostNode with a given hostname.
 func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
-		children: make(map[string]Conn),
+		children: make([]Conn, 0),
 		peers:    make(map[string]Conn),
 		dir:      dir}
 	return h
@@ -107,7 +107,7 @@ func (h *GoHost) AddChildren(cs ...string) {
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 		}
-		h.children[c] = h.peers[c]
+		h.children = append(h.children, h.peers[c])
 	}
 }
 
@@ -133,7 +133,7 @@ func (h GoHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h GoHost) Children() map[string]Conn {
+func (h GoHost) Children() []Conn {
 	return h.children
 }
 

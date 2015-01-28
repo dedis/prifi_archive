@@ -11,16 +11,16 @@ import (
 
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
-	name     string          // the hostname
-	parent   Conn            // the Peer representing parent, nil if root
-	children map[string]Conn // a list of unique peers for each hostname
+	name     string // the hostname
+	parent   Conn   // the Peer representing parent, nil if root
+	children []Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
 }
 
 // NewTCPHost creates a new TCPHost with a given hostname.
 func NewTCPHost(hostname string) *TCPHost {
 	h := &TCPHost{name: hostname,
-		children: make(map[string]Conn),
+		children: make([]Conn, 0),
 		peers:    make(map[string]Conn)}
 	return h
 }
@@ -53,14 +53,19 @@ func (h *TCPHost) Listen() error {
 		}
 		name := string(bs[:n])
 		// accept children connections but no one else
-		_, ok := h.children[name]
-		if !ok {
+		found := false
+		for i, c := range h.children {
+			if c.Name() == name {
+				tp := NewTCPConnFromNet(conn)
+				h.children[i] = tp
+				found = true
+			}
+		}
+		if !found {
 			log.Println("connection request not from child:", name)
 			conn.Close()
 			continue
 		}
-		tp := NewTCPConnFromNet(conn)
-		h.children[name] = tp
 	}
 	return nil
 }
@@ -106,7 +111,7 @@ func (h *TCPHost) AddChildren(cs ...string) {
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c] = NewTCPConn(c)
 		}
-		h.children[c] = h.peers[c]
+		h.children = append(h.children, h.peers[c])
 	}
 }
 
@@ -130,7 +135,7 @@ func (h TCPHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h TCPHost) Children() map[string]Conn {
+func (h TCPHost) Children() []Conn {
 	return h.children
 }
 
