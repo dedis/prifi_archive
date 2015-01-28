@@ -52,7 +52,7 @@ func clientsTalk(clients []*timestamp.Client, nRounds, nMessages int, sn *Signin
 			}
 		}
 		// wait between rounds
-		time.Sleep(3 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 
@@ -77,15 +77,17 @@ func TestStaticMultipleClients(t *testing.T) {
 	// clientsTalk(clients, nRounds, nMessages, TSServer)
 }
 
-// Configuration file data/exconf1.json
+// Configuration file data/exconf.json
 //       0
 //      / \
-//     1   2
+//     1   4
+//    / \   \
+//   2   3   5
 func TestTSSIntegration(t *testing.T) {
 	nMessages := 4 // per round
 	nRounds := 1
 
-	hostConfig, err := LoadConfig("data/exconf1.json")
+	hostConfig, err := LoadConfig("data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}

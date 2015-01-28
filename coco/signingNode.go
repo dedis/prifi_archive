@@ -15,18 +15,26 @@ import (
 
 var ROUND_TIME time.Duration = 1 * time.Second
 
+type SNLog struct {
+	v     abstract.Secret // round lasting secret
+	V     abstract.Point  // round lasting commitment point
+	V_hat abstract.Point  // aggregate of commit points
+
+	// merkle tree roots of children in strict order
+	CMTRoots []timestamp.HashId
+}
+
 type SigningNode struct {
 	coconet.Host
 	suite   abstract.Suite
 	pubKey  abstract.Point  // long lasting public key
 	privKey abstract.Secret // long lasting private key
 
-	v abstract.Secret // round lasting secret
-	V abstract.Point  // round lasting commitment point
 	c abstract.Secret // round lasting challenge
 	r abstract.Secret // round lasting response
 
-	V_hat abstract.Point  // aggregate of commit points
+	Log SNLog
+
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
 
@@ -41,6 +49,10 @@ type SigningNode struct {
 	Queue      [][]timestamp.MustReplyMessage
 	READING    int
 	PROCESSING int
+
+	// merkle tree roots
+	LocalMTRoot timestamp.HashId // mt root of client messages
+	MTRoot      timestamp.HashId // mt root for subtree
 }
 
 func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
@@ -123,15 +135,15 @@ func (sn *SigningNode) ListenToClients(role string) {
 	switch role {
 
 	case "root":
-		ticker := time.Tick(1 * time.Second)
+		ticker := time.Tick(250 * time.Millisecond)
 		for _ = range ticker {
 			// send an announcement message to all other TSServers
 			sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round")})
-			sn.AggregateCommits()
+			// sn.AggregateCommits()
 		}
 
 	case "test":
-		ticker := time.Tick(1 * time.Second)
+		ticker := time.Tick(250 * time.Millisecond)
 		for _ = range ticker {
 			sn.AggregateCommits()
 		}
@@ -139,7 +151,7 @@ func (sn *SigningNode) ListenToClients(role string) {
 
 }
 
-func (sn *SigningNode) AggregateCommits() {
+func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	sn.mux.Lock()
 	// get data from s once
 	Queue := sn.Queue
@@ -151,7 +163,7 @@ func (sn *SigningNode) AggregateCommits() {
 
 	// give up if nothing to process
 	if len(Queue[PROCESSING]) == 0 {
-		return
+		return make([]byte, 0), make([]timestamp.Proof, 0)
 	}
 
 	// count only productive rounds
@@ -167,9 +179,9 @@ func (sn *SigningNode) AggregateCommits() {
 	// create Merkle tree for this round
 	mtRoot, proofs := timestamp.ProofTree(sn.GetSuite().Hash, leaves)
 	if timestamp.CheckProofs(sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
-		fmt.Println("Proofs successful for round " + strconv.Itoa(sn.nRounds))
+		fmt.Println("Local Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
-		panic("Proofs unsuccessful for round " + strconv.Itoa(sn.nRounds))
+		panic("Local Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
 	}
 
 	sn.mux.Lock()
@@ -182,6 +194,8 @@ func (sn *SigningNode) AggregateCommits() {
 				Srep:  &timestamp.StampReply{Sig: mtRoot, Prf: proofs[i]}})
 	}
 	sn.mux.Unlock()
+
+	return mtRoot, proofs
 }
 
 func (sn *SigningNode) PutToClient(name string, data coconet.BinaryMarshaler) {

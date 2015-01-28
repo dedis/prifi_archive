@@ -7,6 +7,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/timestamp"
 	// "strconv"
 	// "os"
 )
@@ -64,23 +65,58 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	return sn.Commit()
 }
 
-func (sn *SigningNode) Commit() error {
-	var err error
-	// generate secret and point commitment for this round
-	rand := sn.suite.Cipher([]byte(sn.Name()))
-	sn.v = sn.suite.Secret().Pick(rand)
-	sn.V = sn.suite.Point().Mul(nil, sn.v)
-	// initialize product of point commitments
-	sn.V_hat = sn.V
+func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	// grab space for children messages
 	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
 	for i := range messgs {
 		messgs[i] = &SigningMessage{}
 	}
 	// wait for all children to commit
+	var err error
 	if err = sn.GetDown(messgs); err != nil {
+		return nil, err
+	}
+
+	return messgs, nil
+}
+
+func (sn *SigningNode) actOnCommits() (err error) {
+	if sn.IsRoot() {
+		err = sn.FinalizeCommits()
+	} else {
+		// create and putup own commit message
+		com := &CommitmentMessage{
+			V:      sn.Log.V,
+			V_hat:  sn.Log.V_hat,
+			MTRoot: sn.MTRoot}
+		err = sn.PutUp(SigningMessage{
+			Type: Commitment,
+			com:  com})
+	}
+	return
+}
+
+func (sn *SigningNode) initCommitCrypto() {
+	// generate secret and point commitment for this round
+	rand := sn.suite.Cipher([]byte(sn.Name()))
+	sn.Log = SNLog{}
+	sn.Log.v = sn.suite.Secret().Pick(rand)
+	sn.Log.V = sn.suite.Point().Mul(nil, sn.Log.v)
+	// initialize product of point commitments
+	sn.Log.V_hat = sn.Log.V
+}
+
+func (sn *SigningNode) Commit() error {
+	sn.initCommitCrypto()
+
+	// get commits from kids
+	messgs, err := sn.getDownMessgs()
+	if err != nil {
 		return err
 	}
+
+	// Merkle Tree leaves for the round
+	leaves := make([]timestamp.HashId, 0)
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
 		switch sm.Type {
@@ -90,18 +126,36 @@ func (sn *SigningNode) Commit() error {
 			fmt.Println(sm.com)
 			panic("Reply to announcement is not a commit")
 		case Commitment:
-			sn.V_hat.Add(sn.V_hat, sm.com.V_hat)
+			// fmt.Println(sm.com)
+			// fmt.Println("I", sn.Name(), "commits ", sm.com.MTRoot)
+			leaves = append(leaves, sm.com.MTRoot)
+			sn.Log.V_hat.Add(sn.Log.V_hat, sm.com.V_hat)
 		}
 	}
-	if sn.IsRoot() {
-		err = sn.FinalizeCommits()
-	} else {
-		// create and putup own commit message
-		err = sn.PutUp(SigningMessage{
-			Type: Commitment,
-			com:  &CommitmentMessage{V: sn.V, V_hat: sn.V_hat}})
-	}
-	return err
+	// so far only children mtroots in leaves
+	sn.Log.CMTRoots = leaves
+	fmt.Println("I", sn.Name(), "\n", leaves)
+
+	// add own local mtroot to leaves
+	// var localProofs []timestamp.Proof
+	sn.LocalMTRoot, _ = sn.AggregateCommits()
+
+	// if !sn.IsRoot() { // root does not receive
+	// 	timestamp.CheckProofs(sn.GetSuite().Hash, sn.LocalMTRoot, leaves, localProofs)
+	// 	fmt.Println("for", sn.Name())
+	// } else {
+	// 	fmt.Println(sn.LocalMTRoot, localProofs)
+	// }
+
+	leaves = append(leaves, sn.LocalMTRoot)
+	// add hash of whole log to leaves
+	// h := sn.suite.Hash()
+	// h.Write(sn.Log.MarshalBinary())
+	// leaves = append(leaves, h.Sum(nil))
+
+	sn.MTRoot, _ = timestamp.ProofTree(sn.GetSuite().Hash, leaves)
+
+	return sn.actOnCommits()
 }
 
 // initiated by root, propagated by all others
@@ -122,21 +176,24 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 	return sn.Respond()
 }
 
-func (sn *SigningNode) Respond() error {
-	var err error
+func (sn *SigningNode) initResponseCrypto() {
 	// generate response   r = v - xc
 	sn.r = sn.suite.Secret()
-	sn.r.Mul(sn.privKey, sn.c).Sub(sn.v, sn.r)
+	sn.r.Mul(sn.privKey, sn.c).Sub(sn.Log.v, sn.r)
 	// initialize sum of children's responses
 	sn.r_hat = sn.r
-	// wait for all children to respond
-	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
-	for i := range messgs {
-		messgs[i] = &SigningMessage{}
-	}
-	if err = sn.GetDown(messgs); err != nil {
+}
+
+func (sn *SigningNode) Respond() error {
+	var err error
+	sn.initResponseCrypto()
+
+	// get responses from kids
+	messgs, err := sn.getDownMessgs()
+	if err != nil {
 		return err
 	}
+
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
 		switch sm.Type {
@@ -169,8 +226,9 @@ func (sn *SigningNode) Respond() error {
 
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits() error {
-	// challenge = Hash(message, sn.V_hat)
-	sn.c = hashElGamal(sn.suite, sn.LogTest, sn.V_hat)
+	// challenge = Hash(message, sn.Log.V_hat)
+	// sn.c = hashElGamal(sn.suite, sn.LogTest, sn.Log.V_hat)
+	sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
 	err := sn.Challenge(&ChallengeMessage{C: sn.c})
 	return err
 }
@@ -187,7 +245,7 @@ func (sn *SigningNode) VerifyResponses() error {
 
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
-	if !T.Equal(sn.V_hat) || (sn.IsRoot() && !sn.c.Equal(c2)) {
+	if !T.Equal(sn.Log.V_hat) || (sn.IsRoot() && !sn.c.Equal(c2)) {
 		log.Println(sn.Name(), "reports ElGamal Collective Signature failed")
 		return errors.New("Veryfing ElGamal Collective Signature failed in" + sn.Name())
 	}

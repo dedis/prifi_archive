@@ -88,6 +88,8 @@ type AnnouncementMessage struct {
 type CommitmentMessage struct {
 	V     abstract.Point // commitment Point
 	V_hat abstract.Point // product of children's commitment points
+
+	MTRoot []byte // root of Merkle Tree
 }
 
 type ChallengeMessage struct {
@@ -124,12 +126,18 @@ func (am *AnnouncementMessage) UnmarshalBinary(data []byte) error {
 func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
-	return b.Bytes(), nil
+
+	enc := gob.NewEncoder(&b)
+	err := enc.Encode(cm.MTRoot)
+	return b.Bytes(), err
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
+
+	rem, _ := cm.MarshalBinary()
+	cm.MTRoot = data[len(rem):]
 	return err
 }
 

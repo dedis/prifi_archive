@@ -66,10 +66,10 @@ func (p Proof) Check(newHash func() hash.Hash, root, leaf []byte) bool {
 
 func CheckProofs(newHash func() hash.Hash, root HashId, leaves []HashId, proofs []Proof) bool {
 	// fmt.Println("Created mtRoot:", mtRoot)
+
 	for i := range proofs {
 		if proofs[i].Check(newHash, root, leaves[i]) == false {
 			panic("check failed at leaf")
-			// return fakse
 		}
 	}
 	return true
