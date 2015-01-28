@@ -63,6 +63,7 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 	sn.peerKeys = make(map[string]abstract.Point)
 
 	sn.clients = make(map[string]*coconet.GoConn)
+	sn.Queue = make([][]timestamp.MustReplyMessage, 2)
 	sn.READING = 0
 	sn.PROCESSING = 1
 	return sn
@@ -75,6 +76,7 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, privKey abstract
 	sn.peerKeys = make(map[string]abstract.Point)
 
 	sn.clients = make(map[string]*coconet.GoConn)
+	sn.Queue = make([][]timestamp.MustReplyMessage, 2)
 	sn.READING = 0
 	sn.PROCESSING = 1
 	return sn
@@ -105,7 +107,6 @@ func (sn *SigningNode) GetSuite() abstract.Suite {
 }
 
 func (sn *SigningNode) ListenToClients(role string) {
-	sn.Queue = make([][]timestamp.MustReplyMessage, 2)
 	Queue := sn.Queue
 	READING := sn.READING
 	PROCESSING := sn.PROCESSING
