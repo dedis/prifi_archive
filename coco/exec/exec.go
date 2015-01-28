@@ -35,7 +35,7 @@ func main() {
 	flag.Parse()
 	fmt.Println("Execing")
 	// open connection with remote logging interface if there is one
-	if logger != "" {
+	if false && logger != "" {
 		conn, err := net.Dial("tcp", logger)
 		if err != nil {
 			fmt.Println("ERROR ESTABLISHING LOG CONNECTION")
@@ -75,6 +75,7 @@ func main() {
 
 	// if I am root do the announcement message
 	if hc.SNodes[0].IsRoot() {
+		time.Sleep(3 * time.Second)
 		start := time.Now()
 		iters := 10
 
@@ -91,7 +92,7 @@ func main() {
 		log.Printf("took %d ns/op\n", elapsed.Nanoseconds()/int64(iters))
 	} else {
 		// otherwise wait a little bit (hopefully it finishes by the end of this)
-		time.Sleep(4 * time.Second)
+		time.Sleep(20 * time.Second)
 	}
 	fmt.Println("DONE")
 }

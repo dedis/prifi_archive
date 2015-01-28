@@ -2,6 +2,7 @@ package coco
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"testing"
 	"time"
@@ -104,6 +105,6 @@ func TestTSSIntegration(t *testing.T) {
 
 		clientsTalk(clients, nRounds, nMessages, sn)
 	}
-
+	log.Println("listening to clients")
 	hostConfig.SNodes[0].ListenToClients("root")
 }

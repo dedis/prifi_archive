@@ -75,8 +75,8 @@ func (hc *HostConfig) Verify() error {
 
 func publicKeyCheck(n *SigningNode, hc *HostConfig) error {
 	x_hat := n.pubKey
-	for cn := range n.Children() {
-		c := hc.Hosts[cn]
+	for _, cn := range n.Children() {
+		c := hc.Hosts[cn.Name()]
 		x_hat.Add(x_hat, c.X_hat)
 	}
 	/*if x_hat != n.X_hat {
@@ -91,8 +91,8 @@ func traverseTree(p *SigningNode,
 	if err := f(p, hc); err != nil {
 		return err
 	}
-	for cn := range p.Children() {
-		c := hc.Hosts[cn]
+	for _, cn := range p.Children() {
+		c := hc.Hosts[cn.Name()]
 		err := traverseTree(c, hc, f)
 		if err != nil {
 			return err
@@ -147,14 +147,14 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) error {
 	// recursively format children
 	fmt.Fprint(b, "\"children\":[")
 	i := 0
-	for n := range p.Children() {
+	for _, n := range p.Children() {
 		if i != 0 {
 			b.WriteString(", ")
 		}
-		c := hc.Hosts[n]
+		c := hc.Hosts[n.Name()]
 		err := writeHC(b, hc, c)
 		if err != nil {
-			b.WriteString("\"" + n + "\"")
+			b.WriteString("\"" + n.Name() + "\"")
 		}
 		i++
 	}
@@ -457,7 +457,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 		var err error
 		// exponential backoff for attempting to connect to parent
 		startTime := time.Duration(200)
-		maxTime := time.Duration(1000)
+		maxTime := time.Duration(2000)
 		for i := 0; i < 20; i++ {
 			log.Println("attempting to connect to parent")
 			err = sn.Connect()
