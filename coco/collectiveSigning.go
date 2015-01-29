@@ -107,6 +107,7 @@ func (sn *SigningNode) initCommitCrypto() {
 }
 
 func (sn *SigningNode) Commit() error {
+	// fmt.Println("Commit fct for ", sn.Name())
 	sn.initCommitCrypto()
 
 	// get commits from kids
@@ -132,29 +133,28 @@ func (sn *SigningNode) Commit() error {
 			sn.Log.V_hat.Add(sn.Log.V_hat, sm.com.V_hat)
 		}
 	}
-	// so far only children mtroots in leaves
-	sn.Log.CMTRoots = leaves
-	fmt.Println("I", sn.Name(), "\n", leaves)
+	// concatenate children mtroots in one binary blob
+	sn.Log.CMTRoots = make([]byte, 0)
+	for _, leaf := range leaves {
+		sn.Log.CMTRoots = append(sn.Log.CMTRoots, leaf...)
+	}
+	// fmt.Println("	I", sn.Name(), "\n", sn.Log)
 
 	// add own local mtroot to leaves
-	// var localProofs []timestamp.Proof
 	sn.LocalMTRoot, _ = sn.AggregateCommits()
-
-	// if !sn.IsRoot() { // root does not receive
-	// 	timestamp.CheckProofs(sn.GetSuite().Hash, sn.LocalMTRoot, leaves, localProofs)
-	// 	fmt.Println("for", sn.Name())
-	// } else {
-	// 	fmt.Println(sn.LocalMTRoot, localProofs)
-	// }
-
 	leaves = append(leaves, sn.LocalMTRoot)
 	// add hash of whole log to leaves
-	// h := sn.suite.Hash()
-	// h.Write(sn.Log.MarshalBinary())
-	// leaves = append(leaves, h.Sum(nil))
+	h := sn.suite.Hash()
+	logBytes, err := sn.Log.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	h.Write(logBytes)
+	leaves = append(leaves, h.Sum(nil))
 
+	// send compute MT root based on leaves and send it up to parent
+	//TODO: sort leaves
 	sn.MTRoot, _ = timestamp.ProofTree(sn.GetSuite().Hash, leaves)
-
 	return sn.actOnCommits()
 }
 
@@ -226,6 +226,7 @@ func (sn *SigningNode) Respond() error {
 
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits() error {
+	fmt.Println("Finalizing commits")
 	// challenge = Hash(message, sn.Log.V_hat)
 	// sn.c = hashElGamal(sn.suite, sn.LogTest, sn.Log.V_hat)
 	sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
@@ -241,7 +242,11 @@ func (sn *SigningNode) VerifyResponses() error {
 	P = sn.suite.Point()
 	T = sn.suite.Point()
 	T.Add(T.Mul(nil, sn.r_hat), P.Mul(sn.X_hat, sn.c))
-	c2 := hashElGamal(sn.suite, sn.LogTest, T)
+
+	var c2 abstract.Secret
+	if sn.IsRoot() {
+		c2 = hashElGamal(sn.suite, sn.MTRoot, T)
+	}
 
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted

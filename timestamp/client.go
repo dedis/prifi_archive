@@ -10,8 +10,8 @@ import (
 
 type Client struct {
 	name string
-	Sns  map[string]*coconet.GoConn // sns I "work" with
-	dir  *coconet.GoDirectory       // directory of connection with sns
+	Sns  map[string]coconet.Conn // signing nodes I work/ communicate with
+	dir  *coconet.GoDirectory    // directory of connection with sns
 
 	// client history maps request numbers to replies from TSServer
 	// maybe at later phases we will want pair(reqno, TSServer) as key
@@ -22,7 +22,7 @@ type Client struct {
 	// where response confirmations are sent
 	doneChan map[SeqNo]chan bool
 
-	nRounds     int        // # of last round messages received in, as perceived by client
+	nRounds     int        // # of last round messages were received in, as perceived by client
 	curRoundSig []byte     // merkle tree root of last round
 	roundChan   chan int   // round numberd are sent in as rounds change
 	Mux         sync.Mutex // potentially coarse grained mutex
@@ -40,7 +40,7 @@ func (cli *Client) handleRequest(tsm *TimeStampMessage) {
 
 func (cli *Client) Listen() {
 	for _, c := range cli.Sns {
-		go func(c *coconet.GoConn) {
+		go func(c coconet.Conn) {
 			for {
 				tsm := &TimeStampMessage{}
 				c.Get(tsm)
@@ -52,7 +52,7 @@ func (cli *Client) Listen() {
 
 func NewClient(name string, dir *coconet.GoDirectory) (c *Client) {
 	c = &Client{name: name, dir: dir}
-	c.Sns = make(map[string]*coconet.GoConn)
+	c.Sns = make(map[string]coconet.Conn)
 	c.history = make(map[SeqNo]TimeStampMessage)
 	c.doneChan = make(map[SeqNo]chan bool)
 	c.roundChan = make(chan int)
@@ -63,7 +63,7 @@ func (c *Client) Name() string {
 	return c.name
 }
 
-func (c *Client) Put(name string, data coconet.BinaryMarshaler) {
+func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) {
 	myConn := c.Sns[name]
 	myConn.Put(data)
 }
@@ -79,7 +79,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) {
 	c.Mux.Unlock()
 
 	// send request to TSServer
-	c.Put(TSServerName,
+	c.PutToServer(TSServerName,
 		&TimeStampMessage{
 			Type:  StampRequestType,
 			ReqNo: myReqno,

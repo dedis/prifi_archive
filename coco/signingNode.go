@@ -15,15 +15,6 @@ import (
 
 var ROUND_TIME time.Duration = 1 * time.Second
 
-type SNLog struct {
-	v     abstract.Secret // round lasting secret
-	V     abstract.Point  // round lasting commitment point
-	V_hat abstract.Point  // aggregate of commit points
-
-	// merkle tree roots of children in strict order
-	CMTRoots []timestamp.HashId
-}
-
 type SigningNode struct {
 	coconet.Host
 	suite   abstract.Suite
@@ -51,8 +42,8 @@ type SigningNode struct {
 	PROCESSING int
 
 	// merkle tree roots
-	LocalMTRoot timestamp.HashId // mt root of client messages
-	MTRoot      timestamp.HashId // mt root for subtree
+	LocalMTRoot timestamp.HashId // local mt root of client messages
+	MTRoot      timestamp.HashId // mt root for subtree, passed upwards
 }
 
 func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
@@ -106,7 +97,9 @@ func (sn *SigningNode) GetSuite() abstract.Suite {
 	return sn.suite
 }
 
-func (sn *SigningNode) ListenToClients(role string) {
+// Listen on client connections. If role is root also send annoucement
+// for all of the nRounds
+func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 	Queue := sn.Queue
 	READING := sn.READING
 	PROCESSING := sn.PROCESSING
@@ -123,7 +116,7 @@ func (sn *SigningNode) ListenToClients(role string) {
 				default:
 					fmt.Println("Message of unknown type")
 				case timestamp.StampRequestType:
-					// fmt.Println("TSServer getting message", tsm)
+					// fmt.Println(sn.Name(), " getting message")
 					sn.mux.Lock()
 					Queue[READING] = append(Queue[READING],
 						timestamp.MustReplyMessage{Tsm: tsm, To: c.Name()})
@@ -135,17 +128,27 @@ func (sn *SigningNode) ListenToClients(role string) {
 	switch role {
 
 	case "root":
+		// count only productive rounds
 		ticker := time.Tick(250 * time.Millisecond)
 		for _ = range ticker {
+			sn.nRounds++
+			if sn.nRounds > nRounds {
+				continue
+			}
 			// send an announcement message to all other TSServers
+			fmt.Println("I", sn.Name(), "Sending an annoucement")
 			sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round")})
-			// sn.AggregateCommits()
+
 		}
 
 	case "test":
 		ticker := time.Tick(250 * time.Millisecond)
 		for _ = range ticker {
 			sn.AggregateCommits()
+		}
+	case "regular":
+		for {
+			time.Sleep(1 * time.Second)
 		}
 	}
 
@@ -163,11 +166,10 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 
 	// give up if nothing to process
 	if len(Queue[PROCESSING]) == 0 {
+		fmt.Println(sn.Name(), "no processing")
+		sn.mux.Unlock()
 		return make([]byte, 0), make([]timestamp.Proof, 0)
 	}
-
-	// count only productive rounds
-	sn.nRounds++
 
 	// pull out to be Merkle Tree leaves
 	leaves := make([]timestamp.HashId, 0)
@@ -175,6 +177,11 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 		leaves = append(leaves, timestamp.HashId(msg.Tsm.Sreq.Val))
 	}
 	sn.mux.Unlock()
+
+	// non root servers keep track of rounds here
+	if !sn.IsRoot() {
+		sn.nRounds++
+	}
 
 	// create Merkle tree for this round
 	mtRoot, proofs := timestamp.ProofTree(sn.GetSuite().Hash, leaves)
@@ -186,6 +193,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 
 	sn.mux.Lock()
 	// sending replies back to clients
+	// fmt.Println("		Putting to clients")
 	for i, msg := range Queue[PROCESSING] {
 		sn.PutToClient(msg.To,
 			timestamp.TimeStampMessage{
@@ -193,6 +201,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 				ReqNo: msg.Tsm.ReqNo,
 				Srep:  &timestamp.StampReply{Sig: mtRoot, Prf: proofs[i]}})
 	}
+	// fmt.Println("		Done Putting to clients")
 	sn.mux.Unlock()
 
 	return mtRoot, proofs
