@@ -23,6 +23,8 @@ const (
 	Response
 )
 
+// Signing Messages are used for all comunications between servers
+// It is imporant for encoding/ decoding for type to be kept as first field
 type SigningMessage struct {
 	Type MessageType
 	am   *AnnouncementMessage
@@ -36,7 +38,7 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	var sub []byte
 	var err error
-	b.WriteByte(byte(sm.Type))
+	b.WriteByte(byte(sm.Type)) // first field is 1-byte long type
 	// marshal sub message based on its Type
 	switch sm.Type {
 	case Announcement:
@@ -57,7 +59,7 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 }
 
 func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
-	sm.Type = MessageType(data[0])
+	sm.Type = MessageType(data[0]) // first field is 1-byte long type
 	msgBytes := data[1:]
 	var err error
 	switch sm.Type {
@@ -109,6 +111,7 @@ type TestMessage struct {
 	Bytes []byte
 }
 
+// ANNOUCEMENT  ENCODE
 func (am AnnouncementMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
@@ -123,24 +126,28 @@ func (am *AnnouncementMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+// COMMIT ENCODE
 func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
+	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
-
+	// gob is used to encode non-crypto types
 	enc := gob.NewEncoder(&b)
 	err := enc.Encode(cm.MTRoot)
 	return b.Bytes(), err
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
+	// abstract.Write used to decode/ unmarshal crypto types
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
-
+	// gob is used to decode non-crypto types
 	rem, _ := cm.MarshalBinary()
 	cm.MTRoot = data[len(rem):]
 	return err
 }
 
+// CHALLENGE ENCODE
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
@@ -153,6 +160,7 @@ func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+// RESPONE ENCODE
 func (rm ResponseMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
 	abstract.Write(&b, &rm, nist.NewAES128SHA256P256())
@@ -165,6 +173,7 @@ func (rm *ResponseMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+// ERROR ENCODE
 func (em ErrorMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)

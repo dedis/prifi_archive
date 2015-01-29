@@ -1,7 +1,6 @@
 package coco
 
 import (
-	"fmt"
 	"log"
 	"strconv"
 	"testing"
@@ -97,11 +96,11 @@ func createClientsForTSServer(nClients int, sn *SigningNode, dir *coconet.GoDire
 }
 
 func clientsTalk(clients []*timestamp.Client, nRounds, nMessages int, sn *SigningNode) {
-	fmt.Println("clientsTalk to", sn.Name())
+	log.Println("clientsTalk to", sn.Name())
 	// have client send messages
 	for r := 0; r < nRounds; r++ {
 		for _, client := range clients {
-			fmt.Println("Here", client.Sns, client.Name())
+			log.Println("Here", client.Sns, client.Name())
 
 			for i := 0; i < nMessages; i++ {
 				// TODO: messages should be sent hashed eventually

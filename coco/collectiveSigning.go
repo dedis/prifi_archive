@@ -2,7 +2,6 @@ package coco
 
 import (
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/dedis/crypto/abstract"
@@ -65,6 +64,8 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	return sn.Commit()
 }
 
+// Used in Commit and Respond to get commits and responses from all
+// children before creating own commit and response
 func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	// grab space for children messages
 	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
@@ -80,6 +81,8 @@ func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	return messgs, nil
 }
 
+// Finalize commits by initiating the challenge pahse if root
+// Send own commitment message up to parent if non-root
 func (sn *SigningNode) actOnCommits() (err error) {
 	if sn.IsRoot() {
 		err = sn.FinalizeCommits()
@@ -96,6 +99,8 @@ func (sn *SigningNode) actOnCommits() (err error) {
 	return
 }
 
+// Create round lasting secret and commit point v and V
+// Initialize log structure for the round
 func (sn *SigningNode) initCommitCrypto() {
 	// generate secret and point commitment for this round
 	rand := sn.suite.Cipher([]byte(sn.Name()))
@@ -107,7 +112,6 @@ func (sn *SigningNode) initCommitCrypto() {
 }
 
 func (sn *SigningNode) Commit() error {
-	// fmt.Println("Commit fct for ", sn.Name())
 	sn.initCommitCrypto()
 
 	// get commits from kids
@@ -116,7 +120,7 @@ func (sn *SigningNode) Commit() error {
 		return err
 	}
 
-	// Merkle Tree leaves for the round
+	// Commits from children are the first Merkle Tree leaves for the round
 	leaves := make([]timestamp.HashId, 0)
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
@@ -124,7 +128,6 @@ func (sn *SigningNode) Commit() error {
 		default:
 			// Not possible in current system where little randomness is allowed
 			// In real system failing is required
-			fmt.Println(sm.com)
 			panic("Reply to announcement is not a commit")
 		case Commitment:
 			// fmt.Println(sm.com)
@@ -138,7 +141,6 @@ func (sn *SigningNode) Commit() error {
 	for _, leaf := range leaves {
 		sn.Log.CMTRoots = append(sn.Log.CMTRoots, leaf...)
 	}
-	// fmt.Println("	I", sn.Name(), "\n", sn.Log)
 
 	// add own local mtroot to leaves
 	sn.LocalMTRoot, _ = sn.AggregateCommits()
@@ -226,9 +228,7 @@ func (sn *SigningNode) Respond() error {
 
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits() error {
-	fmt.Println("Finalizing commits")
 	// challenge = Hash(message, sn.Log.V_hat)
-	// sn.c = hashElGamal(sn.suite, sn.LogTest, sn.Log.V_hat)
 	sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
 	err := sn.Challenge(&ChallengeMessage{C: sn.c})
 	return err
