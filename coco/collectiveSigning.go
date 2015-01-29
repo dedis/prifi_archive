@@ -3,6 +3,7 @@ package coco
 import (
 	"errors"
 	"log"
+	"sort"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coconet"
@@ -155,7 +156,7 @@ func (sn *SigningNode) Commit() error {
 	leaves = append(leaves, h.Sum(nil))
 
 	// send compute MT root based on leaves and send it up to parent
-	//TODO: sort leaves
+	sort.Sort(timestamp.ByHashId(leaves))
 	sn.MTRoot, _ = timestamp.ProofTree(sn.GetSuite().Hash, leaves)
 	return sn.actOnCommits()
 }
