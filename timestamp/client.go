@@ -9,6 +9,8 @@ import (
 )
 
 type Client struct {
+	Mux sync.Mutex // coarse grained mutex
+
 	name string
 	Sns  map[string]coconet.Conn // signing nodes I work/ communicate with
 	dir  *coconet.GoDirectory    // directory of connection with sns
@@ -22,10 +24,9 @@ type Client struct {
 	// where response confirmations are sent
 	doneChan map[SeqNo]chan bool
 
-	nRounds     int        // # of last round messages were received in, as perceived by client
-	curRoundSig []byte     // merkle tree root of last round
-	roundChan   chan int   // round numberd are sent in as rounds change
-	Mux         sync.Mutex // potentially coarse grained mutex
+	nRounds     int      // # of last round messages were received in, as perceived by client
+	curRoundSig []byte   // merkle tree root of last round
+	roundChan   chan int // round numberd are sent in as rounds change
 }
 
 func (cli *Client) handleRequest(tsm *TimeStampMessage) {
