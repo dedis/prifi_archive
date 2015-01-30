@@ -5,7 +5,7 @@ import (
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly"
 	"github.com/dedis/crypto/random"
-	)
+)
 
 /* This file provides an implementation of the Policy interface via
  * the struct LifePolicy. Check the other files in this package for more
@@ -15,23 +15,22 @@ import (
  * newPolicy, ok := new(LifePolicy).TakeOutPolicy(MyKeyPair,
  *    ListOfPotentialServers, functionForSelectingServers,
  *    MinimumNumberOfSharesToReconstructSecret, NumberOfInsurers)
- * 
+ *
  * For safety measures, the function returns nil if the policy fails to be
  * created along with an updated status in ok.
  */
 
 type LifePolicy struct {
 	// Private Key that is being insured.
-        privateKey  abstract.Secret
-        
-        // A list of the public keys of the insurers of this policy
+	privateKey abstract.Secret
+
+	// A list of the public keys of the insurers of this policy
 	insurersList []abstract.Point
-	
+
 	// Digitial Signatures that serve as "proof of insurance"
 	// TODO: Determine what type of proof I want to use.
-        proofList   int
+	proofList int
 }
-
 
 /* This function selects a set of servers to serve as insurers.
  * This is an extremely rudimentary version that selects the first
@@ -55,7 +54,6 @@ func selectInsurersBasic(serverList []abstract.Point, n int) ([]abstract.Point, 
 	return serverList[:n], true
 }
 
-
 // Returns the private key that is being insured.
 func (lp *LifePolicy) GetPrivateKey() abstract.Secret {
 	return lp.privateKey
@@ -70,7 +68,6 @@ func (lp *LifePolicy) GetInsurers() []abstract.Point {
 func (lp *LifePolicy) GetPolicyProof() int {
 	return lp.proofList
 }
-
 
 /* This method is responsible for "taking out" the insurance policy. The
  * function takes the server's private key, divides it up into
@@ -115,18 +112,16 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair config.KeyPair, serverList []abstrac
 	//lp.proofList = make([][]byte, len(lp.insurersList))
 
 	// Create a new polynomial from the private key where t
-        // shares are needed to reconstruct the secret. Then, split it
+	// shares are needed to reconstruct the secret. Then, split it
 	// into secret shares and create the public polynomial.
 	pripoly := new(poly.PriPoly).Pick(keyPair.Suite, t,
 		keyPair.Secret, random.Stream)
 	prishares := new(poly.PriShares).Split(pripoly, n)
-	pubPoly   := new(poly.PubPoly).Commit(pripoly, keyPair.Public)
-
+	pubPoly := new(poly.PubPoly).Commit(pripoly, keyPair.Public)
 
 	// TODO: Send the shares off to the insurers
 
 	// TODO: Receive digital signatures from the others.
-	
+
 	return lp, ok
 }
-
