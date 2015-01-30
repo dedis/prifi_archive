@@ -3,6 +3,7 @@ package timestamp
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/dedis/prifi/coconet"
@@ -80,6 +81,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) {
 	c.Mux.Unlock()
 
 	// send request to TSServer
+	log.Println(c.Name(), "SENDING: ", myReqno)
 	c.PutToServer(TSServerName,
 		&TimeStampMessage{
 			Type:  StampRequestType,
@@ -92,7 +94,9 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) {
 	c.Mux.Unlock()
 
 	// wait for response to request
+	log.Println("waiting for chan:", myReqno, myChan)
 	<-myChan
+	log.Println("done waiting for chan:", myReqno, myChan)
 
 	// delete channel as it is of no longer meaningful
 	c.Mux.Lock()
@@ -102,6 +106,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) {
 
 func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	// update client history
+	log.Println(c.Name(), " RECEIVED: ", tsm.ReqNo)
 	c.Mux.Lock()
 	c.history[tsm.ReqNo] = *tsm
 	done := c.doneChan[tsm.ReqNo]
@@ -109,6 +114,7 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	// can keep track of rounds by looking at changes in the signature
 	// sent back in a messages
 	if bytes.Compare(tsm.Srep.Sig, c.curRoundSig) != 0 {
+		log.Println("_______")
 		c.curRoundSig = tsm.Srep.Sig
 		c.nRounds++
 
@@ -117,8 +123,9 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	} else {
 		c.Mux.Unlock()
 	}
-
+	log.Println("sending done:", tsm.ReqNo, done)
 	done <- true
+	log.Println("sent done:", tsm.ReqNo, done)
 }
 
 func (c *Client) ShowHistory() {
