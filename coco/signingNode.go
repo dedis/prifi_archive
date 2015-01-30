@@ -24,7 +24,7 @@ type SigningNode struct {
 	c abstract.Secret // round lasting challenge
 	r abstract.Secret // round lasting response
 
-	Log SNLog
+	Log SNLog // round lasting log structure
 
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
@@ -60,6 +60,7 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 	return sn
 }
 
+// Create new signing node that incorporates a given private key
 func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, privKey abstract.Secret) *SigningNode {
 	sn := &SigningNode{Host: hn, suite: suite, privKey: privKey}
 	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
@@ -76,21 +77,6 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, privKey abstract
 func (sn *SigningNode) addPeer(conn string, pubKey abstract.Point) {
 	sn.Host.AddPeers(conn)
 	sn.peerKeys[conn] = pubKey
-}
-
-func (sn *SigningNode) Write(data interface{}) []byte {
-	buf := bytes.Buffer{}
-	abstract.Write(&buf, &data, sn.suite)
-	return buf.Bytes()
-}
-
-func (sn *SigningNode) Read(data []byte) (interface{}, error) {
-	buf := bytes.NewBuffer(data)
-	messg := TestMessage{}
-	if err := abstract.Read(buf, &messg, sn.suite); err != nil {
-		return nil, err
-	}
-	return messg, nil
 }
 
 func (sn *SigningNode) GetSuite() abstract.Suite {
@@ -156,11 +142,12 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 
 func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	sn.mux.Lock()
-	// get data from s once
+	// get data from sn once to avoid refetching from structure
 	Queue := sn.Queue
 	READING := sn.READING
 	PROCESSING := sn.PROCESSING
 
+	// messages read will now be processed
 	READING, PROCESSING = PROCESSING, READING
 	Queue[READING] = Queue[READING][:0]
 
@@ -193,7 +180,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 
 	sn.mux.Lock()
 	// sending replies back to clients
-	// fmt.Println("		Putting to clients")
+	// log.Println("		Putting to clients")
 	for i, msg := range Queue[PROCESSING] {
 		log.Printf("sending back: %v\n", msg.Tsm.ReqNo)
 		sn.PutToClient(msg.To,
@@ -202,12 +189,30 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 				ReqNo: msg.Tsm.ReqNo,
 				Srep:  &timestamp.StampReply{Sig: mtRoot, Prf: proofs[i]}})
 	}
-	// fmt.Println("		Done Putting to clients")
+	// log.Println("		Done Putting to clients")
 	sn.mux.Unlock()
 
 	return mtRoot, proofs
 }
 
+// Send message to client given by name
 func (sn *SigningNode) PutToClient(name string, data coconet.BinaryMarshaler) {
 	sn.clients[name].Put(data)
+}
+
+// used for testing purposes
+func (sn *SigningNode) Write(data interface{}) []byte {
+	buf := bytes.Buffer{}
+	abstract.Write(&buf, &data, sn.suite)
+	return buf.Bytes()
+}
+
+// used for testing purposes
+func (sn *SigningNode) Read(data []byte) (interface{}, error) {
+	buf := bytes.NewBuffer(data)
+	messg := TestMessage{}
+	if err := abstract.Read(buf, &messg, sn.suite); err != nil {
+		return nil, err
+	}
+	return messg, nil
 }
