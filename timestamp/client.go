@@ -84,7 +84,6 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) {
 	c.Mux.Unlock()
 
 	// send request to TSServer
-	log.Println(c.Name(), "SENDING: ", myReqno)
 	c.PutToServer(TSServerName,
 		&TimeStampMessage{
 			Type:  StampRequestType,
@@ -97,9 +96,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) {
 	c.Mux.Unlock()
 
 	// wait until ProcessStampReply signals that reply was received
-	log.Println("waiting for chan:", myReqno, myChan)
 	<-myChan
-	log.Println("done waiting for chan:", myReqno, myChan)
 
 	// delete channel as it is of no longer meaningful
 	c.Mux.Lock()
@@ -109,7 +106,6 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) {
 
 func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	// update client history
-	log.Println(c.Name(), " RECEIVED: ", tsm.ReqNo)
 	c.Mux.Lock()
 	c.history[tsm.ReqNo] = *tsm
 	done := c.doneChan[tsm.ReqNo]
@@ -125,9 +121,7 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	} else {
 		c.Mux.Unlock()
 	}
-	log.Println("sending to done:", c.Name(), tsm.ReqNo, done)
 	done <- true
-	log.Println("sent done:", c.Name(), tsm.ReqNo, done)
 }
 
 func (c *Client) ShowHistory() {

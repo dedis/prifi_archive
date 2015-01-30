@@ -3,7 +3,6 @@ package coco
 import (
 	"bytes"
 	"crypto/cipher"
-	"fmt"
 	"log"
 	"strconv"
 	"sync"
@@ -99,7 +98,6 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 			for {
 				tsm := timestamp.TimeStampMessage{}
 				c.Get(&tsm)
-				log.Printf("server got message round: %v: \n%#v\n%#v\n", tsm.ReqNo, tsm, tsm.Sreq)
 				switch tsm.Type {
 				default:
 					log.Println("Message of unknown type")
@@ -149,8 +147,6 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	Queue := sn.Queue
 	READING := sn.READING
 	PROCESSING := sn.PROCESSING
-	fmt.Println("READING PROCESSING:", READING, PROCESSING)
-	fmt.Println("AGGREGATING COMMITS: ", Queue[READING], Queue[PROCESSING])
 	// messages read will now be processed
 	READING, PROCESSING = PROCESSING, READING
 	sn.READING, sn.PROCESSING = sn.PROCESSING, sn.READING
@@ -187,7 +183,6 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	// sending replies back to clients
 	// log.Println("		Putting to clients")
 	for i, msg := range Queue[PROCESSING] {
-		log.Printf("sending back: %v\n", msg.Tsm.ReqNo)
 		sn.PutToClient(msg.To,
 			timestamp.TimeStampMessage{
 				Type:  timestamp.StampReplyType,
