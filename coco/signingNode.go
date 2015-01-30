@@ -3,7 +3,6 @@ package coco
 import (
 	"bytes"
 	"crypto/cipher"
-	"fmt"
 	"log"
 	"strconv"
 	"sync"
@@ -102,10 +101,10 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 			for {
 				tsm := timestamp.TimeStampMessage{}
 				c.Get(&tsm)
-
+				log.Println("server got message round: ", tsm.ReqNo)
 				switch tsm.Type {
 				default:
-					fmt.Println("Message of unknown type")
+					log.Println("Message of unknown type")
 				case timestamp.StampRequestType:
 					// fmt.Println(sn.Name(), " getting message")
 					sn.mux.Lock()
@@ -127,7 +126,7 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 				continue
 			}
 			// send an announcement message to all other TSServers
-			fmt.Println("I", sn.Name(), "Sending an annoucement")
+			log.Println("I", sn.Name(), "Sending an annoucement")
 			sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round")})
 
 		}
@@ -187,6 +186,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	// sending replies back to clients
 	// log.Println("		Putting to clients")
 	for i, msg := range Queue[PROCESSING] {
+		log.Printf("sending back: %v\n", msg.Tsm.ReqNo)
 		sn.PutToClient(msg.To,
 			timestamp.TimeStampMessage{
 				Type:  timestamp.StampReplyType,

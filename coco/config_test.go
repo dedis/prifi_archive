@@ -2,7 +2,6 @@ package coco
 
 import (
 	"io/ioutil"
-	"log"
 	"testing"
 )
 
@@ -41,16 +40,16 @@ func TestPubKeysOneNode(t *testing.T) {
 				done <- true
 				t.Fatal(err)
 			}
-			log.Println("Loaded Config For: ", host)
-			log.Printf("%#+v\n", hc)
-			log.Println(hc.String())
+			// log.Println("Loaded Config For: ", host)
+			// log.Printf("%#+v\n", hc)
+			// log.Println(hc.String())
 			err = hc.Run(host)
 			if err != nil {
 				done <- true
 				t.Fatal(err)
 			}
 			nodes[host] = hc.SNodes[0]
-			log.Println("announcing")
+			// log.Println("announcing")
 			if hc.SNodes[0].IsRoot() {
 				hc.SNodes[0].LogTest = []byte("Hello World")
 				err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})

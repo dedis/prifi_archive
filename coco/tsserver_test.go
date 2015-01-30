@@ -3,8 +3,8 @@ package coco
 import (
 	"log"
 	"strconv"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/dedis/prifi/coconet"
 	"github.com/dedis/prifi/timestamp"
@@ -49,26 +49,38 @@ func TestTSSIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	var wg sync.WaitGroup
 	// Connect all TSServers to their clients, except for root TSServer
 	ncps := 1 // # clients per TSServer
+	clientsLists := make([][]*timestamp.Client, len(hostConfig.SNodes[1:]))
+	for i, sn := range hostConfig.SNodes[1:] {
+		clientsLists[i] = createClientsForTSServer(ncps, sn,
+			sn.Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
+	}
 	for i, sn := range hostConfig.SNodes[1:] {
 		go sn.ListenToClients("regular", nRounds)
 
-		clients := createClientsForTSServer(ncps, sn,
-			sn.Host.(*coconet.GoHost).GetDirectory(), 0+i*ncps)
+		// clients := createClientsForTSServer(ncps, sn,
+		// 	sn.Host.(*coconet.GoHost).GetDirectory(), 0+i*ncps)
 
-		for _, client := range clients {
+		for _, client := range clientsLists[i] {
 			go client.Listen()
 			go client.ShowHistory()
 		}
 
-		// todo: add waiting group for clients
-		go clientsTalk(clients, nRounds, nMessages, sn)
+		wg.Add(1)
+		go func(clients []*timestamp.Client, nRounds int, nMessages int, sn *SigningNode) {
+			defer wg.Done()
+			// log.Println("clients Talk")
+			clientsTalk(clients, nRounds, nMessages, sn)
+			// log.Println("Clients done Talking")
+		}(clientsLists[i], nRounds, nMessages, sn)
 
 	}
 	log.Println("listening to clients")
-	hostConfig.SNodes[0].ListenToClients("root", nRounds)
+	go hostConfig.SNodes[0].ListenToClients("root", nRounds)
+	log.Println("waiting for clients to be done")
+	wg.Wait()
 }
 
 // Create nClients for the TSServer, with first client associated with number fClient
@@ -99,18 +111,25 @@ func clientsTalk(clients []*timestamp.Client, nRounds, nMessages int, sn *Signin
 	log.Println("clientsTalk to", sn.Name())
 	// have client send messages
 	for r := 0; r < nRounds; r++ {
+		var wg sync.WaitGroup
 		for _, client := range clients {
 			log.Println("Here", client.Sns, client.Name())
-
 			for i := 0; i < nMessages; i++ {
 				// TODO: messages should be sent hashed eventually
 				// TODO: add wait group around go time stamps
 				messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
-				go client.TimeStamp(messg, sn.Name())
-
+				wg.Add(1)
+				go func(messg []byte, sn *SigningNode, i int) {
+					defer wg.Done()
+					log.Println("TIME STAMP START: ", client.Name(), i)
+					client.TimeStamp(messg, sn.Name())
+					log.Println("TIME STAMP DONE: ", client.Name(), i)
+				}(messg, sn, r)
 			}
 		}
 		// wait between rounds
-		time.Sleep(2 * time.Second)
+		wg.Wait()
+		// time.Sleep(1 * time.Second)
+		log.Println("done with round: ", r)
 	}
 }

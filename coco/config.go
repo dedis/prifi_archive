@@ -214,7 +214,7 @@ func ConstructTree(
 
 	// if the JSON holds the fields field is set load from there
 	if len(n.PubKey) != 0 {
-		log.Println("decoding point")
+		// log.Println("decoding point")
 		encoded, err := hex.DecodeString(string(n.PubKey))
 		if err != nil {
 			log.Print("failed to decode hex from encoded")
@@ -226,7 +226,7 @@ func ConstructTree(
 			log.Print("failed to decode point from hex")
 			return nil, err
 		}
-		log.Println("decoding point")
+		// log.Println("decoding point")
 		encoded, err = hex.DecodeString(string(n.PriKey))
 		if err != nil {
 			log.Print("failed to decode hex from encoded")
@@ -459,7 +459,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 		startTime := time.Duration(200)
 		maxTime := time.Duration(2000)
 		for i := 0; i < 20; i++ {
-			log.Println("attempting to connect to parent")
+			// log.Println("attempting to connect to parent")
 			err = sn.Connect()
 			if err == nil {
 				break
@@ -471,7 +471,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 				startTime = maxTime
 			}
 		}
-		log.Println("Succssfully connected to parent")
+		// log.Println("Succssfully connected to parent")
 		if err != nil {
 			return errors.New("failed to connect")
 		}
