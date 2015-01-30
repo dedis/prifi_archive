@@ -146,6 +146,8 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 
 // TcpConn is a prototype TCP connection with gob encoding.
 type TCPConn struct {
+	sync.RWMutex
+
 	name string
 	conn net.Conn
 	enc  *gob.Encoder
@@ -192,10 +194,14 @@ func (tc TCPConn) Name() string {
 
 // blocks until the put is availible
 func (tc *TCPConn) Put(bm BinaryMarshaler) error {
+	tc.RLock()
 	for tc.enc == nil {
+		tc.RUnlock()
 		time.Sleep(time.Second)
+		tc.RLock()
 		//return errors.New(" connection not established")
 	}
+	tc.RUnlock()
 	return tc.enc.Encode(bm)
 }
 

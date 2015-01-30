@@ -55,11 +55,15 @@ func (h *TCPHost) Listen() error {
 		// accept children connections but no one else
 		found := false
 		for i, c := range h.children {
+			c.(*TCPConn).Lock()
 			if c.Name() == name {
 				tp := NewTCPConnFromNet(conn)
-				h.children[i] = tp
+				h.children[i].(*TCPConn).conn = tp.conn
+				h.children[i].(*TCPConn).enc = tp.enc
+				h.children[i].(*TCPConn).dec = tp.dec
 				found = true
 			}
+			c.(*TCPConn).Unlock()
 		}
 		if !found {
 			log.Println("connection request not from child:", name)

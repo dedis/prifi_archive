@@ -132,7 +132,7 @@ func TestMultipleRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	N := 1000
+	N := 5
 	err = hostConfig.Run()
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	N := 1000
+	N := 5
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
 		err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
@@ -192,27 +192,27 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	}
 }
 
-func TestTreeBigConfigTCP(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode.")
-	}
-	hc, err := LoadConfig("data/wax.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
-	if err != nil {
-		t.Error()
-	}
-	err = hc.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
-	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
-	if err != nil {
-		t.Error(err)
-	}
-	for _, n := range hc.SNodes {
-		n.Close()
-	}
-}
+// func TestTreeBigConfigTCP(t *testing.T) {
+// 	if testing.Short() {
+// 		t.Skip("skipping test in short mode.")
+// 	}
+// 	hc, err := LoadConfig("data/wax.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
+// 	if err != nil {
+// 		t.Error()
+// 	}
+// 	err = hc.Run()
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	hc.SNodes[0].LogTest = []byte("hello world")
+// 	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
+// 	if err != nil {
+// 		t.Error(err)
+// 	}
+// 	for _, n := range hc.SNodes {
+// 		n.Close()
+// 	}
+// }
 
 /*func BenchmarkTreeBigConfigTCP(b *testing.B) {
 	if testing.Short() {
