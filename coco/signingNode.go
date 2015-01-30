@@ -24,7 +24,8 @@ type SigningNode struct {
 	c abstract.Secret // round lasting challenge
 	r abstract.Secret // round lasting response
 
-	Log SNLog // round lasting log structure
+	Log       SNLog // round lasting log structure
+	HashedLog []byte
 
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
@@ -44,6 +45,9 @@ type SigningNode struct {
 	// merkle tree roots
 	LocalMTRoot timestamp.HashId // local mt root of client messages
 	MTRoot      timestamp.HashId // mt root for subtree, passed upwards
+
+	// merkle tree roots of children in strict order
+	CMTRoots []timestamp.HashId
 }
 
 func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {

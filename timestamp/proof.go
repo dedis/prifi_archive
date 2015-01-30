@@ -10,6 +10,17 @@ import (
 	"github.com/dedis/crypto/abstract"
 )
 
+// Proof-of-beforeness:
+// a list of offsets of peer-hash-pointers at each level below the root.
+
+// Proof is used for Local Merkle Trees (computed based on messages from clients)
+// One Proof sufficient for one leaf in a Local Merkle Tree
+type Proof []HashId
+
+// LevelProof is used for the Big Merkle Tree (computed from server commits)
+// A []LevelProof from root to server is sufficient proof
+type LevelProof []HashId
+
 type hashContext struct {
 	newHash func() hash.Hash
 	hash    hash.Hash
@@ -40,10 +51,6 @@ func (c *hashContext) hashNode(buf []byte, left, right []byte) []byte {
 	// printHashNode(left, right, s)
 	return s
 }
-
-// Proof-of-beforeness:
-// a list of offsets of peer-hash-pointers at each level below the root.
-type Proof []HashId
 
 // Given a Proof and the hash of the leaf, compute the hash of the root.
 // If the Proof is of length 0, simply returns leaf.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/timestamp"
 )
 
 // All message structures defined in this package are used in the
@@ -91,11 +92,14 @@ type CommitmentMessage struct {
 	V     abstract.Point // commitment Point
 	V_hat abstract.Point // product of children's commitment points
 
-	MTRoot []byte // root of Merkle Tree
+	MTRoot timestamp.HashId // root of Merkle (sub)Tree
 }
 
 type ChallengeMessage struct {
 	C abstract.Secret // challenge
+
+	MTRoot timestamp.HashId       // the very root of the big Merkle Tree
+	Proofs []timestamp.LevelProof // Merkle Path of Proofs for verification
 }
 
 type ResponseMessage struct {
