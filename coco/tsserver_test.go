@@ -54,8 +54,10 @@ func TestTSSIntegration(t *testing.T) {
 	ncps := 1 // # clients per TSServer
 	clientsLists := make([][]*timestamp.Client, len(hostConfig.SNodes[1:]))
 	for i, sn := range hostConfig.SNodes[1:] {
-		clientsLists[i] = createClientsForTSServer(ncps, sn,
-			sn.Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
+		if i == 4 {
+			clientsLists[i] = createClientsForTSServer(ncps, sn,
+				sn.Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
+		}
 	}
 	for i, sn := range hostConfig.SNodes[1:] {
 		go sn.ListenToClients("regular", nRounds)
@@ -67,14 +69,15 @@ func TestTSSIntegration(t *testing.T) {
 			go client.Listen()
 			go client.ShowHistory()
 		}
-
-		wg.Add(1)
-		go func(clients []*timestamp.Client, nRounds int, nMessages int, sn *SigningNode) {
-			defer wg.Done()
-			// log.Println("clients Talk")
-			clientsTalk(clients, nRounds, nMessages, sn)
-			// log.Println("Clients done Talking")
-		}(clientsLists[i], nRounds, nMessages, sn)
+		if i == 4 {
+			wg.Add(1)
+			go func(clients []*timestamp.Client, nRounds int, nMessages int, sn *SigningNode) {
+				defer wg.Done()
+				// log.Println("clients Talk")
+				clientsTalk(clients, nRounds, nMessages, sn)
+				// log.Println("Clients done Talking")
+			}(clientsLists[i], nRounds, nMessages, sn)
+		}
 
 	}
 	log.Println("listening to clients")
@@ -112,6 +115,7 @@ func clientsTalk(clients []*timestamp.Client, nRounds, nMessages int, sn *Signin
 	// have client send messages
 	for r := 0; r < nRounds; r++ {
 		var wg sync.WaitGroup
+		log.Println("ROUND:", r)
 		for _, client := range clients {
 			log.Println("Here", client.Sns, client.Name())
 			for i := 0; i < nMessages; i++ {
