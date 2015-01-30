@@ -1,14 +1,16 @@
 package timestamp
 
 import (
-	"bytes"
 	"crypto/subtle"
 	"errors"
 	"fmt"
 	"hash"
+	"sort"
 
 	"github.com/dedis/crypto/abstract"
 )
+
+type HashFunc func() hash.Hash
 
 // Proof-of-beforeness:
 // a list of offsets of peer-hash-pointers at each level below the root.
@@ -26,35 +28,33 @@ type hashContext struct {
 	hash    hash.Hash
 }
 
-func printHashNode(left, right, s []byte) {
-	fmt.Println("hash node:", len(left), len(right), len(s))
-	fmt.Println("---------------")
-	fmt.Println(left)
-	fmt.Println(right)
-	fmt.Println(s)
-	fmt.Println("---------------")
-}
-
-func (c *hashContext) hashNode(buf []byte, left, right []byte) []byte {
-	if bytes.Compare(left, right) > 0 { // sort so left < right
-		left, right = right, left
+func (c *hashContext) hashNode(buf []byte, vHashIds ...HashId) []byte {
+	// unpack hashIds
+	hashIds := make([]HashId, 0)
+	for _, vHashId := range vHashIds {
+		hashIds = append(hashIds, vHashId)
 	}
+	sort.Sort(ByHashId(hashIds))
+
 	if c.hash == nil {
 		c.hash = c.newHash()
 	} else {
 		c.hash.Reset()
 	}
 	h := c.hash
-	h.Write(left)
-	h.Write(right)
+
+	for _, hashId := range hashIds {
+		h.Write(hashId)
+
+	}
+
 	s := h.Sum(buf)
-	// printHashNode(left, right, s)
 	return s
 }
 
 // Given a Proof and the hash of the leaf, compute the hash of the root.
 // If the Proof is of length 0, simply returns leaf.
-func (p Proof) Calc(newHash func() hash.Hash, leaf []byte) []byte {
+func (p Proof) Calc(newHash HashFunc, leaf []byte) []byte {
 	c := hashContext{newHash: newHash}
 	var buf []byte
 	for i := len(p) - 1; i >= 1; i-- {
@@ -65,13 +65,31 @@ func (p Proof) Calc(newHash func() hash.Hash, leaf []byte) []byte {
 }
 
 // Check a purported Proof against given root and leaf hashes.
-func (p Proof) Check(newHash func() hash.Hash, root, leaf []byte) bool {
+func (p Proof) Check(newHash HashFunc, root, leaf []byte) bool {
 	chk := p.Calc(newHash, leaf)
 	// compare returns 1 if equal, so return is true when check is good
 	return subtle.ConstantTimeCompare(chk, root) != 0
 }
 
-func CheckProofs(newHash func() hash.Hash, root HashId, leaves []HashId, proofs []Proof) bool {
+func CheckProofs(newHash HashFunc, root HashId, leaf HashId,
+	proofs Proof, levelProof LevelProof) bool {
+
+	c := hashContext{newHash: newHash}
+	// level proof has many leaves
+	completeLevelProof := append(levelProof, leaf)
+	leaf = c.hashNode(nil, completeLevelProof...)
+
+	// checking with proof upwards, 2 hashids per hashnode
+	for _, proof := range proofs {
+		// level proof has the leaves for that level
+		leaf = c.hashNode(nil, leaf, proof)
+	}
+
+	// last computed leaf should equal the root
+	return subtle.ConstantTimeCompare(leaf, root) != 0
+}
+
+func CheckLocalProofs(newHash HashFunc, root HashId, leaves []HashId, proofs []Proof) bool {
 	// fmt.Println("Created mtRoot:", mtRoot)
 
 	for i := range proofs {

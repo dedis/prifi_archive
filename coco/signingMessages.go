@@ -3,6 +3,7 @@ package coco
 import (
 	"bytes"
 	"encoding/gob"
+	"log"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
@@ -13,6 +14,8 @@ import (
 // Collective Signing Protocol
 // Over the network they are sent as byte slices, so each message
 // has its own MarshlBinary and UnmarshalBinary method
+
+const HASH_SIZE int = 256 // TODO: change the way this is known
 
 type MessageType int
 
@@ -98,8 +101,10 @@ type CommitmentMessage struct {
 type ChallengeMessage struct {
 	C abstract.Secret // challenge
 
-	MTRoot timestamp.HashId       // the very root of the big Merkle Tree
-	Proofs []timestamp.LevelProof // Merkle Path of Proofs for verification
+	Depth      byte
+	MTRoot     timestamp.HashId     // the very root of the big Merkle Tree
+	Proof      timestamp.Proof      // Merkle Path of Proofs from root to us
+	LevelProof timestamp.LevelProof // parent's LevelProof
 }
 
 type ResponseMessage struct {
@@ -153,14 +158,63 @@ func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
 
 // CHALLENGE ENCODE
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
+	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
-	return b.Bytes(), nil
+
+	// gob is used to encode non-crypto types
+	enc := gob.NewEncoder(&b)
+
+	var err error
+	log.Println(cm.Depth)
+	err = enc.Encode(cm.Depth)
+	if err != nil {
+		return b.Bytes(), err
+	}
+
+	err = enc.Encode(cm.MTRoot)
+	if err != nil {
+		return b.Bytes(), err
+	}
+
+	err = enc.Encode(cm.Proof)
+	if err != nil {
+		return b.Bytes(), err
+	}
+
+	err = enc.Encode(cm.LevelProof)
+	return b.Bytes(), err
 }
 
 func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
+
+	// gob is used to decode non-crypto types
+	rem, _ := cm.MarshalBinary()
+	cm.Depth = rem[:1][0] // int Depth, XXX dirty
+
+	rem = rem[1:]
+	cm.MTRoot = data[len(rem) : len(rem)+HASH_SIZE]
+
+	if len(rem) < HASH_SIZE {
+		return nil
+	}
+	rem = rem[HASH_SIZE:]
+	var i int
+	for i = 0; i < int(cm.Depth)-1; i++ {
+		if len(rem) < (i+1)*HASH_SIZE {
+			return nil
+		}
+		cm.Proof = append(cm.Proof, rem[i*HASH_SIZE:(i+1)*HASH_SIZE])
+	}
+
+	rem = rem[i*HASH_SIZE:]
+	nHashIds := len(rem) / HASH_SIZE
+
+	for i := 0; i < nHashIds; i++ {
+		cm.LevelProof = append(cm.LevelProof, rem[i*HASH_SIZE:(i+1)*HASH_SIZE])
+	}
 	return err
 }
 

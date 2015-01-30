@@ -165,10 +165,21 @@ func (sn *SigningNode) Commit() error {
 	return sn.actOnCommits()
 }
 
+func (sn *SigningNode) VerifyChallenge(chm *ChallengeMessage) bool {
+	return timestamp.CheckProofs(sn.GetSuite().Hash, chm.MTRoot,
+		sn.LocalMTRoot, chm.Proof, chm.LevelProof)
+}
+
 // initiated by root, propagated by all others
 func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
+	// if sn.VerifyChallenge(chm) != true {
+	// log.Println("MKT did not verify for", sn.Name())
+	// panic("MKT did not verify for" + sn.Name())
+	// }
+
 	// register challenge value, which is the same for all children
 	sn.c = chm.C
+	nextDepth := chm.Depth + 1
 
 	// for each child, create levelProof for this(root) level
 	// embed it in SigningMessage, and send it
@@ -179,7 +190,9 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		levelProof = append(levelProof, sn.HashedLog, sn.LocalMTRoot)
 		levelProof = append(levelProof, timestamp.AllButI(sn.CMTRoots, i)...)
 
-		chm.Proofs = append(chm.Proofs, levelProof)
+		chm.Proof = append(chm.Proof, sn.MTRoot)
+		chm.LevelProof = levelProof
+		chm.Depth = nextDepth
 
 		var messg coconet.BinaryMarshaler
 		messg = SigningMessage{Type: Challenge, chm: chm}
@@ -249,7 +262,9 @@ func (sn *SigningNode) FinalizeCommits() error {
 
 	err := sn.Challenge(&ChallengeMessage{
 		C:      sn.c,
-		Proofs: make([]timestamp.LevelProof, 0)})
+		Depth:  0,
+		MTRoot: sn.MTRoot,
+		Proof:  make([]timestamp.HashId, 0)})
 	return err
 }
 

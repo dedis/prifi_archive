@@ -177,7 +177,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 
 	// create Merkle tree for this round
 	mtRoot, proofs := timestamp.ProofTree(sn.GetSuite().Hash, leaves)
-	if timestamp.CheckProofs(sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
+	if timestamp.CheckLocalProofs(sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
 		log.Println("Local Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
 		panic("Local Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
