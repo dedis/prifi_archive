@@ -3,6 +3,7 @@ package coco
 import (
 	"bytes"
 	"crypto/cipher"
+	"fmt"
 	"log"
 	"strconv"
 	"sync"
@@ -86,24 +87,26 @@ func (sn *SigningNode) GetSuite() abstract.Suite {
 // Listen on client connections. If role is root also send annoucement
 // for all of the nRounds
 func (sn *SigningNode) ListenToClients(role string, nRounds int) {
+	sn.mux.Lock()
 	Queue := sn.Queue
 	READING := sn.READING
 	PROCESSING := sn.PROCESSING
-
 	Queue[READING] = make([]timestamp.MustReplyMessage, 0)
 	Queue[PROCESSING] = make([]timestamp.MustReplyMessage, 0)
+	sn.mux.Unlock()
 	for _, c := range sn.clients {
 		go func(c *coconet.GoConn) {
 			for {
 				tsm := timestamp.TimeStampMessage{}
 				c.Get(&tsm)
-				log.Println("server got message round: ", tsm.ReqNo)
+				log.Printf("server got message round: %v: \n%#v\n%#v\n", tsm.ReqNo, tsm, tsm.Sreq)
 				switch tsm.Type {
 				default:
 					log.Println("Message of unknown type")
 				case timestamp.StampRequestType:
 					// fmt.Println(sn.Name(), " getting message")
 					sn.mux.Lock()
+					READING := sn.READING
 					Queue[READING] = append(Queue[READING],
 						timestamp.MustReplyMessage{Tsm: tsm, To: c.Name()})
 					sn.mux.Unlock()
@@ -134,7 +137,7 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 		}
 	case "regular":
 		for {
-			time.Sleep(1 * time.Second)
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
@@ -146,10 +149,12 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	Queue := sn.Queue
 	READING := sn.READING
 	PROCESSING := sn.PROCESSING
-
+	fmt.Println("READING PROCESSING:", READING, PROCESSING)
+	fmt.Println("AGGREGATING COMMITS: ", Queue[READING], Queue[PROCESSING])
 	// messages read will now be processed
 	READING, PROCESSING = PROCESSING, READING
-	Queue[READING] = Queue[READING][:0]
+	sn.READING, sn.PROCESSING = sn.PROCESSING, sn.READING
+	sn.Queue[READING] = sn.Queue[READING][:0]
 
 	// give up if nothing to process
 	if len(Queue[PROCESSING]) == 0 {
@@ -190,6 +195,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 				Srep:  &timestamp.StampReply{Sig: mtRoot, Prf: proofs[i]}})
 	}
 	// log.Println("		Done Putting to clients")
+	// sn.Queue[PROCESSING] = Queue[PROCESSING][:0]
 	sn.mux.Unlock()
 
 	return mtRoot, proofs
