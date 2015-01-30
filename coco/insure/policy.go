@@ -12,20 +12,21 @@ import (
  * policy protocol, please see doc.go
  */
 
-type policy interface {
+type Policy interface {
 
 	// Returns the private key being insured
 	GetPrivateKey() abstract.Secret
 
 	// This function produces a new policy. Given the pub/pri key of a
 	// server and a list of potential insurers, it selects a subset of these
-	// servers of size "n". It then distributes shares of the private key to
-	// each where only "t" are needed to reconstruct the secret. Once it has
-	// achieved at least "r" receipts from other servers verifying that it
-	// has taken out a policy with them (where t <= r <= n), the function
-	// returns the new policy.
+	// servers of size "n" using the selectInsurers function. It then
+	// distributes shares of the private key to each where only "t" are
+	// needed to reconstruct the secret. Once it has achieved at least "r"
+	// receipts from other servers verifying that it has taken out a policy
+	// with them (where t <= r <= n), the function returns the new policy.
 	TakeOutPolicy(keyPair config.KeyPair, serverList []abstract.Point,
-		t, n int) (p *policy, ok bool)
+		selectInsurers func([]abstract.Point, int) ([]abstract.Point, bool),
+		t, n int) (*Policy, bool)
 
 	// Returns the list of insurers for the policy
 	GetInsurers() []abstract.Point
