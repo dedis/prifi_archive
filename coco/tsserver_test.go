@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dedis/prifi/coconet"
 	"github.com/dedis/prifi/timestamp"
@@ -124,6 +125,7 @@ func clientsTalk(clients []*timestamp.Client, nRounds, nMessages int, sn *Signin
 		}
 		// wait between rounds
 		wg.Wait()
+		time.Sleep(1 * time.Second)
 		log.Println("done with round: ", r)
 	}
 }
