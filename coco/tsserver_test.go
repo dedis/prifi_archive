@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/dedis/prifi/coconet"
 	"github.com/dedis/prifi/timestamp"
@@ -53,13 +52,18 @@ func TestTSSIntegration(t *testing.T) {
 	var wg sync.WaitGroup
 	// Connect all TSServers to their clients, except for root TSServer
 	ncps := 1 // # clients per TSServer
+	clientsLists := make([][]*timestamp.Client, len(hostConfig.SNodes[1:]))
+	for i, sn := range hostConfig.SNodes[1:] {
+		clientsLists[i] = createClientsForTSServer(ncps, sn,
+			sn.Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
+	}
 	for i, sn := range hostConfig.SNodes[1:] {
 		go sn.ListenToClients("regular", nRounds)
 
-		clients := createClientsForTSServer(ncps, sn,
-			sn.Host.(*coconet.GoHost).GetDirectory(), 0+i*ncps)
+		// clients := createClientsForTSServer(ncps, sn,
+		// 	sn.Host.(*coconet.GoHost).GetDirectory(), 0+i*ncps)
 
-		for _, client := range clients {
+		for _, client := range clientsLists[i] {
 			go client.Listen()
 			go client.ShowHistory()
 		}
@@ -67,10 +71,10 @@ func TestTSSIntegration(t *testing.T) {
 		wg.Add(1)
 		go func(clients []*timestamp.Client, nRounds int, nMessages int, sn *SigningNode) {
 			defer wg.Done()
-			log.Println("clients Talk")
+			// log.Println("clients Talk")
 			clientsTalk(clients, nRounds, nMessages, sn)
-			log.Println("Clients done Talking")
-		}(clients, nRounds, nMessages, sn)
+			// log.Println("Clients done Talking")
+		}(clientsLists[i], nRounds, nMessages, sn)
 
 	}
 	log.Println("listening to clients")
@@ -117,15 +121,15 @@ func clientsTalk(clients []*timestamp.Client, nRounds, nMessages int, sn *Signin
 				wg.Add(1)
 				go func(messg []byte, sn *SigningNode, i int) {
 					defer wg.Done()
-					log.Println("time stamping round: ", i)
+					log.Println("TIME STAMP START: ", client.Name(), i)
 					client.TimeStamp(messg, sn.Name())
-					log.Println("returned from timestamp")
+					log.Println("TIME STAMP DONE: ", client.Name(), i)
 				}(messg, sn, r)
 			}
 		}
 		// wait between rounds
 		wg.Wait()
-		time.Sleep(1 * time.Second)
+		// time.Sleep(1 * time.Second)
 		log.Println("done with round: ", r)
 	}
 }

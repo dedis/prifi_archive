@@ -125,9 +125,9 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	} else {
 		c.Mux.Unlock()
 	}
-	log.Println("sending done:", tsm.ReqNo, done)
+	log.Println("sending to done:", c.Name(), tsm.ReqNo, done)
 	done <- true
-	log.Println("sent done:", tsm.ReqNo, done)
+	log.Println("sent done:", c.Name(), tsm.ReqNo, done)
 }
 
 func (c *Client) ShowHistory() {
