@@ -3,7 +3,6 @@ package coco
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"log"
 	"sort"
 	"strconv"
@@ -116,20 +115,10 @@ func (sn *SigningNode) initCommitCrypto() {
 }
 
 func (sn *SigningNode) SeparateProofs(proofs []timestamp.Proof, leaves []timestamp.HashId) {
-	sn.Proofs = make([]timestamp.Proof, len(sn.CMTRoots))
-	log.Println("len cmtroots vs leaves", len(sn.CMTRoots), len(leaves))
-
 	for i := 0; i < len(sn.CMTRoots); i++ {
 		for j := 0; j < len(leaves); j++ {
 			if bytes.Compare(sn.CMTRoots[i], leaves[j]) == 0 {
-				sn.Proofs[i] = proofs[j]
-				log.Println(sn.Name(), "Proof for child i", i, proofs[j])
-
-				// for _, p := range proofs[j] {
-				// 	if len(p) != HASH_SIZE {
-				// 		panic("bigger than hs")
-				// 	}
-				// }
+				sn.Proofs[i] = append(sn.Proofs[i], proofs[j]...)
 				continue
 			}
 		}
@@ -155,8 +144,6 @@ func (sn *SigningNode) Commit() error {
 			// In real system failing is required
 			panic("Reply to announcement is not a commit")
 		case Commitment:
-			// fmt.Println(sm.com)
-			// fmt.Println("I", sn.Name(), "commits ", sm.com.MTRoot)
 			leaves = append(leaves, sm.com.MTRoot)
 			sn.Log.V_hat.Add(sn.Log.V_hat, sm.com.V_hat)
 		}
@@ -174,54 +161,41 @@ func (sn *SigningNode) Commit() error {
 	leaves = append(leaves, sn.LocalMTRoot)
 
 	// add hash of whole log to leaves
-	h := sn.suite.Hash()
-	logBytes, err := sn.Log.MarshalBinary()
+	sn.HashedLog, err = sn.hashLog()
 	if err != nil {
 		return err
 	}
-	h.Write(logBytes)
-	sn.HashedLog = h.Sum(nil)
+	// log.Println("------HashedLog", sn.Name(), len(sn.HashedLog), sn.HashedLog)
 	leaves = append(leaves, sn.HashedLog)
-	log.Println("------HashedLog", sn.Name(), len(sn.HashedLog), sn.HashedLog)
 
-	// compute MT root based on Log as left child and
-	// MT of leaves as right child and send it up to parent
+	// compute MT root based on Log as right child and
+	// MT of leaves as left child and send it up to parent
 	sort.Sort(timestamp.ByHashId(leaves))
-	// left := sn.HashedLog
-	right, proofs := timestamp.ProofTree(sn.GetSuite().Hash, leaves)
+	left, proofs := timestamp.ProofTree(sn.GetSuite().Hash, leaves)
+	right := sn.HashedLog
 
-	// moreLeaves := make([]timestamp.HashId, 0)
-	// moreLeaves = append(moreLeaves, left, right)
-	// sort.Sort(timestamp.ByHashId(moreLeaves))
-	// sn.MTRoot, _ = timestamp.ProofTree(sn.GetSuite().Hash, moreLeaves)
-	sn.MTRoot = right
-	fmt.Println("-----MTROOT", sn.Name(), len(sn.MTRoot), sn.MTRoot)
+	moreLeaves := make([]timestamp.HashId, 0)
+	moreLeaves = append(moreLeaves, left, right)
+	sn.MTRoot, _ = timestamp.ProofTree(sn.GetSuite().Hash, moreLeaves)
+	// fmt.Println("-----MTROOT", sn.Name(), len(sn.MTRoot), sn.MTRoot)
 
-	// separate proofs by children (ignore hash of log and local proof)
-	// for i := 0; i < len(sn.Proofs); i++ {
-	// 	sn.Proofs[i] = make([]timestamp.HashId, 1)
-	// 	sn.Proofs[i][0] = make([]byte, 32)
-	// }
-
-	sn.SeparateProofs(proofs, leaves)
-	// Add last step of proof
-	// for i := 0; i < len(sn.Proofs); i++ {
-	// 	sn.Proofs[i] = append(sn.Proofs[i], sn.HashedLog)
-	// }
-
-	log.Println(sn.Name(), "about to check chidlren's proofs")
-	if timestamp.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, sn.CMTRoots, sn.Proofs) == true {
-		log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
-	} else {
-		panic("Children Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
+	// Hashed Log has to come first in the proof
+	sn.Proofs = make([]timestamp.Proof, len(sn.CMTRoots))
+	for i := 0; i < len(sn.Proofs); i++ {
+		sn.Proofs[i] = append(sn.Proofs[i], right)
 	}
+	// separate proofs by children (ignore proofs for HashedLog and LocalMT)
+	sn.SeparateProofs(proofs, leaves)
+
+	// check that will be able to rederive your mtroot from proofs
+	sn.checkChildrenProofs()
 	return sn.actOnCommits()
 }
 
 func (sn *SigningNode) VerifyChallenge(chm *ChallengeMessage) bool {
 	// check my submitted MTRoot against the root MTRoot via the proofs
 	log.Println(sn.Name(), "verifying big root own root", len(chm.MTRoot), len(sn.MTRoot))
-	fmt.Println(sn.Name(), "my recv proof", len(chm.Proof))
+	// fmt.Println(sn.Name(), "my recv proof", len(chm.Proof))
 
 	return timestamp.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 }
@@ -233,11 +207,8 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 	// 	// panic("MKT did not verify for" + sn.Name())
 	// }
 
-	// register challenge value, which is the same for all children
 	sn.c = chm.C
-	// nextDepth := chm.Depth + 1
 	baseProof := chm.Proof
-	fmt.Println(sn.Name(), "base proof len", len(baseProof))
 
 	// for each child, create levelProof for this(root) level
 	// embed it in SigningMessage, and send it
@@ -245,19 +216,15 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		newChm := *chm
 		// proof for this level involves all leaves used to create sn.MTRoot
 		// must exclude child's own committed MTRoot for each child
-		fmt.Println("len of p of i", i, len(sn.Proofs[i]))
 		newChm.Proof = append(baseProof, sn.Proofs[i]...)
 
 		var messg coconet.BinaryMarshaler
 		messg = SigningMessage{Type: Challenge, chm: &newChm}
 
-		fmt.Println(sn.Name(), "for child", i, "len of proof", len(newChm.Proof))
-
 		// send challenge message to child
 		if err := child.Put(messg); err != nil {
 			return err
 		}
-		fmt.Println(sn.Name(), "After putting to child", i)
 	}
 
 	// initiate response phase
@@ -318,12 +285,8 @@ func (sn *SigningNode) FinalizeCommits() error {
 	sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
 
 	proof := make([]timestamp.HashId, 0)
-	// proof[0] = make([]byte, 32) // XXX
-	log.Println("len mtr", len(sn.MTRoot))
-	log.Println("len proof", len(proof))
 	err := sn.Challenge(&ChallengeMessage{
-		C: sn.c,
-		// Depth:  0,
+		C:      sn.c,
 		MTRoot: sn.MTRoot,
 		Proof:  proof})
 	return err
@@ -354,9 +317,28 @@ func (sn *SigningNode) VerifyResponses() error {
 	return nil
 }
 
+func (sn *SigningNode) hashLog() ([]byte, error) {
+	h := sn.suite.Hash()
+	logBytes, err := sn.Log.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	h.Write(logBytes)
+	return h.Sum(nil), nil
+}
+
 // Returns a secret that depends on on a message and a point
 func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstract.Secret {
 	c := suite.Cipher(p.Encode(), abstract.More{})
 	c.Crypt(nil, message)
 	return suite.Secret().Pick(c)
+}
+
+func (sn *SigningNode) checkChildrenProofs() {
+	// log.Println(sn.Name(), "about to check chidlren's proofs")
+	if timestamp.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, sn.CMTRoots, sn.Proofs) == true {
+		// log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
+	} else {
+		panic("Children Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
+	}
 }

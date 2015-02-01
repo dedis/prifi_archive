@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"log"
 	"sort"
 
 	"github.com/dedis/crypto/abstract"
@@ -58,9 +57,7 @@ func (c *hashContext) hashNode(buf []byte, vHashIds ...HashId) []byte {
 func (p Proof) Calc(newHash HashFunc, leaf []byte) []byte {
 	c := hashContext{newHash: newHash}
 	var buf []byte
-	// log.Println("!!!!!!!!!!!!!Not doing")
-	for i := len(p) - 1; i >= 1; i-- {
-		// log.Println("***********Proof len ", len(p[i]))
+	for i := len(p) - 1; i >= 0; i-- {
 		leaf = c.hashNode(buf[:0], leaf, p[i])
 		buf = leaf
 	}
@@ -71,7 +68,7 @@ func (p Proof) Calc(newHash HashFunc, leaf []byte) []byte {
 func (p Proof) Check(newHash HashFunc, root, leaf []byte) bool {
 	chk := p.Calc(newHash, leaf)
 	// compare returns 1 if equal, so return is true when check is good
-	log.Println(chk, root)
+	// log.Println(chk, root)
 	return subtle.ConstantTimeCompare(chk, root) != 0
 }
 
@@ -94,10 +91,10 @@ func CheckProofs(newHash HashFunc, root HashId, leaf HashId,
 }
 
 func CheckProof(newHash HashFunc, root HashId, leaf HashId, proof Proof) bool {
-	log.Println("Root", len(root), root)
-	log.Println("Leaf", len(leaf), leaf)
-	log.Println("Proof", proof)
-	log.Println("\n")
+	// log.Println("Root", len(root), root)
+	// log.Println("Leaf", len(leaf), leaf)
+	// log.Println("Proof", proof)
+	// log.Println("\n")
 	if proof.Check(newHash, root, leaf) == false {
 		panic("check failed at leaf")
 	}
@@ -189,18 +186,11 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 	// Some towards the end may end up being shorter than depth.
 	proofs := make([]Proof, nleaves)
 	for i := 0; i < nleaves; i++ {
-		if len(leaves[i]) > 32 {
-			log.Println(leaves[i])
-			panic("leaf longer than 32")
-		}
 		p := make([]HashId, depth)[:0]
-		p = append(p, root)
+		// p = append(p, root)
 		for d := depth - 1; d >= 0; d-- {
 			h := tree[depth-d][sibling(i>>uint(d))]
 			if h != nil {
-				if len(h) > 32 {
-					panic("h > 32")
-				}
 				p = append(p, h)
 			}
 		}

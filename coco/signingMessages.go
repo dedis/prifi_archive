@@ -154,7 +154,6 @@ func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
 
 // CHALLENGE ENCODE
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
-	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm.C, nist.NewAES128SHA256P256())
 
@@ -163,12 +162,12 @@ func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
 	for _, proof := range cm.Proof {
 		b.Write(proof)
 	}
-	log.Println("Encodingchallenge with", len(b.Bytes()))
+	// log.Println("Encodingchallenge with", len(b.Bytes()))
 	return b.Bytes(), nil
 }
 
 func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
-	log.Println("Decoding challenge with", len(data))
+	// log.Println("Decoding challenge with", len(data))
 	b := bytes.NewBuffer(data[:32])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
 	rem := data[cm.C.Len():] // after secret
@@ -185,7 +184,7 @@ func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 		log.Println("BAD not div by Hash_size", len(rem)%HASH_SIZE)
 	}
 
-	log.Println("nhashIds", nHashIds)
+	// log.Println("nhashIds", nHashIds)
 	cm.Proof = cm.Proof[:0]
 	for i := 0; i < nHashIds; i++ {
 		if len(rem) < (i+1)*HASH_SIZE {
