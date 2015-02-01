@@ -15,7 +15,7 @@ import (
 // Over the network they are sent as byte slices, so each message
 // has its own MarshlBinary and UnmarshalBinary method
 
-const HASH_SIZE int = 256 // TODO: change the way this is known
+const HASH_SIZE int = 32 // TODO: change the way this is known
 
 type MessageType int
 
@@ -101,10 +101,10 @@ type CommitmentMessage struct {
 type ChallengeMessage struct {
 	C abstract.Secret // challenge
 
-	Depth      byte
-	MTRoot     timestamp.HashId     // the very root of the big Merkle Tree
-	Proof      timestamp.Proof      // Merkle Path of Proofs from root to us
-	LevelProof timestamp.LevelProof // parent's LevelProof
+	// Depth  byte
+	MTRoot timestamp.HashId // the very root of the big Merkle Tree
+	Proof  timestamp.Proof  // Merkle Path of Proofs from root to us
+	// LevelProof timestamp.LevelProof // parent's LevelProof
 }
 
 type ResponseMessage struct {
@@ -140,19 +140,15 @@ func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
 	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
-	// gob is used to encode non-crypto types
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(cm.MTRoot)
-	return b.Bytes(), err
+	b.Write(cm.MTRoot)
+	return b.Bytes(), nil
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
 	// abstract.Write used to decode/ unmarshal crypto types
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
-	// gob is used to decode non-crypto types
-	rem, _ := cm.MarshalBinary()
-	cm.MTRoot = data[len(rem):]
+	cm.MTRoot = data[len(data)-HASH_SIZE:]
 	return err
 }
 
@@ -160,61 +156,44 @@ func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
 	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
-	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
+	abstract.Write(&b, &cm.C, nist.NewAES128SHA256P256())
 
-	// gob is used to encode non-crypto types
-	enc := gob.NewEncoder(&b)
-
-	var err error
-	log.Println(cm.Depth)
-	err = enc.Encode(cm.Depth)
-	if err != nil {
-		return b.Bytes(), err
+	// var err error
+	b.Write(cm.MTRoot)
+	for _, proof := range cm.Proof {
+		b.Write(proof)
 	}
-
-	err = enc.Encode(cm.MTRoot)
-	if err != nil {
-		return b.Bytes(), err
-	}
-
-	err = enc.Encode(cm.Proof)
-	if err != nil {
-		return b.Bytes(), err
-	}
-
-	err = enc.Encode(cm.LevelProof)
-	return b.Bytes(), err
+	log.Println("Encodingchallenge with", len(b.Bytes()))
+	return b.Bytes(), nil
 }
 
 func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
-	b := bytes.NewBuffer(data)
+	log.Println("Decoding challenge with", len(data))
+	b := bytes.NewBuffer(data[:32])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
-
-	// gob is used to decode non-crypto types
-	rem, _ := cm.MarshalBinary()
-	cm.Depth = rem[:1][0] // int Depth, XXX dirty
-
-	rem = rem[1:]
-	cm.MTRoot = data[len(rem) : len(rem)+HASH_SIZE]
+	rem := data[cm.C.Len():] // after secret
 
 	if len(rem) < HASH_SIZE {
 		return nil
 	}
+	cm.MTRoot = rem[:HASH_SIZE] // after mt root
 	rem = rem[HASH_SIZE:]
-	var i int
-	for i = 0; i < int(cm.Depth)-1; i++ {
+
+	nHashIds := len(rem) / HASH_SIZE
+
+	if len(rem)%HASH_SIZE != 0 {
+		log.Println("BAD not div by Hash_size", len(rem)%HASH_SIZE)
+	}
+
+	log.Println("nhashIds", nHashIds)
+	cm.Proof = cm.Proof[:0]
+	for i := 0; i < nHashIds; i++ {
 		if len(rem) < (i+1)*HASH_SIZE {
 			return nil
 		}
 		cm.Proof = append(cm.Proof, rem[i*HASH_SIZE:(i+1)*HASH_SIZE])
 	}
 
-	rem = rem[i*HASH_SIZE:]
-	nHashIds := len(rem) / HASH_SIZE
-
-	for i := 0; i < nHashIds; i++ {
-		cm.LevelProof = append(cm.LevelProof, rem[i*HASH_SIZE:(i+1)*HASH_SIZE])
-	}
 	return err
 }
 
@@ -245,3 +224,13 @@ func (em *ErrorMessage) UnmarshalBinary(data []byte) error {
 	err := dec.Decode(&em.Err)
 	return err
 }
+
+// Try challenge code
+// log.Println("\n\n")
+// log.Println(cm)
+// log.Println()
+// var messg coconet.BinaryUnmarshaler
+// messg = &ChallengeMessage{}
+// messg.UnmarshalBinary(b.Bytes())
+// log.Println(messg)
+// log.Println("\n\n")
