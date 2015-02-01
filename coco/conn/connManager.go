@@ -16,11 +16,10 @@ type GoConnManager struct {
 
 	// This directory facilitates using go channels for testing purposes.
 	dir *GoDirectory
-	
+
 	// The public key of the server that owns this manager.
 	pubKey abstract.Point
 }
-
 
 /* Initializes a new GoConnManager
  *
@@ -28,6 +27,7 @@ type GoConnManager struct {
  *	goDir = the GoDirectory to use for creating new connections. Enter nil
  *              to create a new one.
  *	key   = the public key of the owner of this manager
+ *
  * Returns:
  *   An initialized GoConnManager
  */
@@ -42,7 +42,7 @@ func (gcm *GoConnManager) Init(key abstract.Point, goDir *GoDirectory) *GoConnMa
 	return gcm
 }
 
- /* Adds a new connection to the connection manager
+/* Adds a new connection to the connection manager
  *
  * Arguments:
  *      theirkey = the key of the peer that this server wishes to connect to
@@ -64,21 +64,6 @@ func (gcm *GoConnManager) GetDir() *GoDirectory {
 	return gcm.dir
 }
 
-
-/* Get a message from a given peer.
- *
- * Arguments:
- *	p    = the public key of the origin
- *      bum  = a buffer for receiving the message
- *
- * Returns:
- *   An error denoting whether the get to the buffer was successfull
- */
-func (gcm *GoConnManager) Get(p abstract.Point, bum BinaryUnmarshaler) error {
-	return gcm.peerMap[p].Get(bum)
-}
-
-
 /* Put a message to a given peer.
  *
  * Arguments:
@@ -92,3 +77,15 @@ func (gcm *GoConnManager) Put(p abstract.Point, data BinaryMarshaler) error {
 	return gcm.peerMap[p].Put(data)
 }
 
+/* Get a message from a given peer.
+ *
+ * Arguments:
+ *	p    = the public key of the origin
+ *      bum  = a buffer for receiving the message
+ *
+ * Returns:
+ *   An error denoting whether the get to the buffer was successfull
+ */
+func (gcm *GoConnManager) Get(p abstract.Point, bum BinaryUnmarshaler) error {
+	return gcm.peerMap[p].Get(bum)
+}

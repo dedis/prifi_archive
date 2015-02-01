@@ -103,4 +103,3 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	data := <-ch
 	return bum.UnmarshalBinary(data)
 }
-
