@@ -38,7 +38,7 @@ func TestStaticMultipleClients(t *testing.T) {
 //   2   3   5
 func TestTSSIntegration(t *testing.T) {
 	nMessages := 3 // per round
-	nRounds := 3
+	nRounds := 1
 
 	hostConfig, err := LoadConfig("data/exconf.json")
 	if err != nil {
