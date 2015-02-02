@@ -46,17 +46,17 @@ ex.json
 type ConfigFile struct {
 	Conn  string   `json:"conn,omitempty"`
 	Hosts []string `json:"hosts"`
-	Tree  Node     `json:"tree"`
+	Tree  *Node    `json:"tree"`
 }
 
 // why can't I just deal with nist.Point
 type JSONPoint json.RawMessage
 
 type Node struct {
-	Name     string `json:"name"`
-	PriKey   string `json:"prikey,omitempty"`
-	PubKey   string `json:"pubkey,omitempty"`
-	Children []Node `json:"children,omitempty"`
+	Name     string  `json:"name"`
+	PriKey   string  `json:"prikey,omitempty"`
+	PubKey   string  `json:"pubkey,omitempty"`
+	Children []*Node `json:"children,omitempty"`
 }
 
 // HostConfig stores all of the relevant information of the configuration file.
@@ -179,7 +179,7 @@ const (
 // config file. ConstructTree must be call AFTER populating the HostConfig with
 // ALL the possible hosts.
 func ConstructTree(
-	n Node,
+	n *Node,
 	hc *HostConfig,
 	parent string,
 	suite abstract.Suite,
