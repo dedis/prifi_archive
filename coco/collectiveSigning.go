@@ -201,10 +201,10 @@ func (sn *SigningNode) VerifyChallenge(chm *ChallengeMessage) bool {
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
-	if sn.VerifyChallenge(chm) != true {
-		log.Println("MKT did not verify for", sn.Name())
-		// panic("MKT did not verify for" + sn.Name())
-	}
+	// if sn.VerifyChallenge(chm) != true {
+	// 	log.Println("MKT did not verify for", sn.Name())
+	// 	// panic("MKT did not verify for" + sn.Name())
+	// }
 
 	// Challenge verified so I should reply back
 	// to my clients

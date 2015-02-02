@@ -140,14 +140,17 @@ func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
 	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
+	log.Println("v and v hat ", len(b.Bytes()))
 	b.Write(cm.MTRoot)
 	return b.Bytes(), nil
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
-	// abstract.Write used to decode/ unmarshal crypto types
-	b := bytes.NewBuffer(data)
+	log.Println("data", data)
+	log.Println("len(data)", len(data))
+	b := bytes.NewBuffer(data[:len(data)-HASH_SIZE])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
+
 	cm.MTRoot = data[len(data)-HASH_SIZE:]
 	return err
 }
@@ -157,18 +160,18 @@ func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm.C, nist.NewAES128SHA256P256())
 
-	// var err error
 	b.Write(cm.MTRoot)
 	for _, proof := range cm.Proof {
 		b.Write(proof)
 	}
+
 	// log.Println("Encodingchallenge with", len(b.Bytes()))
 	return b.Bytes(), nil
 }
 
 func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	// log.Println("Decoding challenge with", len(data))
-	b := bytes.NewBuffer(data[:32])
+	b := bytes.NewBuffer(data[:cm.C.Len()])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
 	rem := data[cm.C.Len():] // after secret
 
@@ -179,7 +182,6 @@ func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	rem = rem[HASH_SIZE:]
 
 	nHashIds := len(rem) / HASH_SIZE
-
 	if len(rem)%HASH_SIZE != 0 {
 		log.Println("BAD not div by Hash_size", len(rem)%HASH_SIZE)
 	}
@@ -223,13 +225,3 @@ func (em *ErrorMessage) UnmarshalBinary(data []byte) error {
 	err := dec.Decode(&em.Err)
 	return err
 }
-
-// Try challenge code
-// log.Println("\n\n")
-// log.Println(cm)
-// log.Println()
-// var messg coconet.BinaryUnmarshaler
-// messg = &ChallengeMessage{}
-// messg.UnmarshalBinary(b.Bytes())
-// log.Println(messg)
-// log.Println("\n\n")
