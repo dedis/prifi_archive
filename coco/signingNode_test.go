@@ -13,7 +13,8 @@ func TestReadWrite(t *testing.T) {
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
 
-	testBytes := []byte("Hello World")
+	testBytes := []byte("test")
+
 	s := suite.Secret().Pick(rand)
 	m := TestMessage{S: s, Bytes: testBytes}
 	h := coconet.NewGoHost("exampleHost", nil)
