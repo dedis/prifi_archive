@@ -84,7 +84,7 @@ func main() {
 			hc.SNodes[0].LogTest = []byte("Hello World")
 			err = hc.SNodes[0].Announce(&coco.AnnouncementMessage{hc.SNodes[0].LogTest})
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
 			}
 		}
 

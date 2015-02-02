@@ -3,6 +3,7 @@ package graphs
 import (
 	"bytes"
 	"container/list"
+	"fmt"
 	"log"
 	"strconv"
 )
@@ -16,9 +17,11 @@ type Graph struct {
 func NewGraph(names []string) *Graph {
 	n := len(names)
 	g := &Graph{}
+	g.Names = make([]string, len(names))
 	copy(g.Names, names[:])
 	g.mem = make([]float64, n*n)
 	mem := g.mem
+	g.Weights = make([][]float64, n)
 	for i := range g.Weights {
 		g.Weights[i], mem = mem[:n], mem[n:]
 	}
@@ -27,12 +30,15 @@ func NewGraph(names []string) *Graph {
 
 // takes in a byte array representing an edge list and loads the graph
 func (g *Graph) LoadEdgeList(edgelist []byte) {
+	log.Println(g.Names)
 	fields := bytes.Fields(edgelist)
 	// create name map from string to index
+	log.Println(g.Names)
 	names := make(map[string]int)
 	for i, n := range g.Names {
 		names[n] = i
 	}
+
 	// read fields in groups of three: from, to, edgeweight
 	for i := 0; i < len(fields)-2; i += 3 {
 		from := string(fields[i])
@@ -42,8 +48,18 @@ func (g *Graph) LoadEdgeList(edgelist []byte) {
 			log.Println(err)
 			continue
 		}
-		fi := names[from]
-		ti := names[to]
+		fi, ok := names[from]
+		if !ok {
+			log.Println("from not ok:", from)
+			continue
+		}
+
+		ti, ok := names[to]
+		if !ok {
+			log.Println("to not ok:", to)
+			continue
+		}
+
 		g.Weights[fi][ti] = weight
 	}
 }
@@ -58,11 +74,15 @@ func (g *Graph) MST() *Tree {
 // pi: parent index, bf: branching factor, visited: set of visited nodes, ti: tree index, tnodes: space for tree nodes
 // returns the last used index for tree nodes
 func (g *Graph) constructTree(ri int, bf int, visited []bool, tnodes []Tree) {
-	tni := 0 // index into the tree nodes
-
-	root := &tnodes[tni]
+	log.Println("constructing tree: ", ri, bf)
+	log.Println(g.Names)
+	root := &tnodes[ri]
 	root.Name = g.Names[ri]
-	tni++
+	log.Println(root)
+	visited[ri] = true
+	tni := 1
+	indmap := make([]int, len(visited))
+	indmap[ri] = 0
 
 	// queue for breadth first search
 	queue := list.New()
@@ -78,14 +98,14 @@ func (g *Graph) constructTree(ri int, bf int, visited []bool, tnodes []Tree) {
 			break
 		}
 		queue.Remove(e)
-
 		// parent index
 		pi := e.Value.(int)
-		parent := &tnodes[tni]
+		fmt.Println("next: ", pi)
+		parent := &tnodes[indmap[pi]]
 
 		fs := sortFloats(g.Weights[pi])
 		nc := bf
-
+		fmt.Println(fs)
 		// iterate through children and select the bf closest ones
 		for _, ci := range fs.I {
 			if nc == 0 {
@@ -95,12 +115,15 @@ func (g *Graph) constructTree(ri int, bf int, visited []bool, tnodes []Tree) {
 			// if this child hasn't been visited
 			// it is the closest unvisited child
 			if !visited[ci] {
+				fmt.Println("adding child:", ci, tni)
 				queue.PushFront(ci)
-				cn := tnodes[tni]
+				cn := &tnodes[tni]
+				indmap[ci] = tni
 				cn.Name = g.Names[ci]
 				tni++
 				parent.Children = append(parent.Children, cn)
 				visited[ci] = true
+				nc--
 			}
 		}
 	}
@@ -114,13 +137,16 @@ func (g *Graph) Tree(nlevels int) *Tree {
 	tnodes := make([]Tree, n)
 	root := &tnodes[0]
 	ri := g.BestConnector()
+	root.Name = g.Names[ri]
 	if nlevels == 0 {
 		return root
 	}
 
 	// find the branching factor needed
-	bf := n / nlevels
+	bf := n/nlevels + 1
+	fmt.Println("Tree:", n, nlevels, bf)
 	g.constructTree(ri, bf, make([]bool, n), tnodes)
+	log.Println("tnodes:", tnodes)
 	return root
 }
 

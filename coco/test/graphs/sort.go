@@ -20,6 +20,9 @@ func isNaN(f float64) bool {
 func MakeFloat64Slice(A []float64) Float64Slice {
 	ACopy := make([]float64, len(A))
 	I := make([]int, len(A))
+	for i := range ACopy {
+		I[i] = i
+	}
 	copy(ACopy, A)
 	var fs Float64Slice
 	fs.A = ACopy
