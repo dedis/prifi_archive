@@ -163,7 +163,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.MustReplyMessage)
 	if len(Queue[PROCESSING]) == 0 {
 		log.Println(sn.Name(), "no processing")
 		sn.mux.Unlock()
-		return make([]byte, 0), make([]timestamp.MustReplyMessage, 0)
+		return make([]byte, HASH_SIZE), make([]timestamp.MustReplyMessage, 0)
 	}
 
 	// pull out to be Merkle Tree leaves

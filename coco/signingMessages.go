@@ -140,14 +140,11 @@ func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
 	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
-	log.Println("v and v hat ", len(b.Bytes()))
 	b.Write(cm.MTRoot)
 	return b.Bytes(), nil
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
-	log.Println("data", data)
-	log.Println("len(data)", len(data))
 	b := bytes.NewBuffer(data[:len(data)-HASH_SIZE])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
 

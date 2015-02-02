@@ -1,0 +1,39 @@
+signingNode.go:133: I host0 Sending an annoucement
+signingNode.go:184: Local Proofs of host2 successful for round 1
+signingNode.go:184: Local Proofs of host3 successful for round 1
+signingNode.go:184: Local Proofs of host5 successful for round 1
+signingNode.go:184: Local Proofs of host1 successful for round 1
+signingNode.go:184: Local Proofs of host4 successful for round 1
+signingNode.go:164: host0 no processing
+collectiveSigning.go:323: host2 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host3 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host5 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host1 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host4 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host0 reports ElGamal Collective Signature succeeded
+signingNode.go:133: I host0 Sending an annoucement
+signingNode.go:184: Local Proofs of host2 successful for round 2
+signingNode.go:184: Local Proofs of host3 successful for round 2
+signingNode.go:184: Local Proofs of host5 successful for round 2
+signingNode.go:184: Local Proofs of host1 successful for round 2
+signingNode.go:184: Local Proofs of host4 successful for round 2
+signingNode.go:164: host0 no processing
+collectiveSigning.go:323: host2 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host3 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host5 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host1 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host4 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host0 reports ElGamal Collective Signature succeeded
+signingNode.go:133: I host0 Sending an annoucement
+signingNode.go:184: Local Proofs of host2 successful for round 3
+signingNode.go:184: Local Proofs of host3 successful for round 3
+signingNode.go:184: Local Proofs of host5 successful for round 3
+signingNode.go:184: Local Proofs of host1 successful for round 3
+signingNode.go:184: Local Proofs of host4 successful for round 3
+signingNode.go:164: host0 no processing
+collectiveSigning.go:323: host2 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host3 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host5 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host1 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host4 reports ElGamal Collective Signature succeeded
+collectiveSigning.go:323: host0 reports ElGamal Collective Signature succeeded

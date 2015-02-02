@@ -3,7 +3,6 @@ package coco
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"testing"
 
 	"github.com/dedis/crypto/nist"
@@ -99,15 +98,15 @@ func TestMUCommit(t *testing.T) {
 	cm2 := messg.(*CommitmentMessage)
 
 	// test for equality after marshal and unmarshal
-	// if !cm2.V.Equal(cm.V) ||
-	// 	!cm2.V_hat.Equal(cm.V_hat) ||
-	// 	bytes.Compare(cm2.MTRoot, cm.MTRoot) != 0 {
-	// 	t.Error("commit message MU failed")
-	// }
+	if !cm2.V.Equal(cm.V) ||
+		!cm2.V_hat.Equal(cm.V_hat) ||
+		bytes.Compare(cm2.MTRoot, cm.MTRoot) != 0 {
+		t.Error("commit message MU failed")
+	}
 
-	log.Println(cm)
-	log.Println()
-	log.Println(cm2)
+	// log.Println(cm)
+	// log.Println()
+	// log.Println(cm2)
 }
 
 func byteArrayEqual(a timestamp.Proof, b timestamp.Proof) bool {
