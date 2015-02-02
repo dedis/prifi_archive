@@ -1,16 +1,5 @@
 package conn
 
-import (
-	"github.com/dedis/crypto/abstract"
-)
-
-/* This package defines several important interfaces for creating connections
- * for use with the coco protocol and the life insurance policy. There are two
- * main interfaces defined here: the Conn interface and the ConnManager. The
- * Conn interface abstracts away the low level networking details whereas the
- * ConnManager makes it easier to manage multiple connections.
- */
-
 // Taken from: http://golang.org/pkg/encoding/#BinaryMarshaler
 // All messages passing through our conn must implement their own  BinaryMarshaler
 type BinaryMarshaler interface {
@@ -40,14 +29,3 @@ type Conn interface {
 	Get() ([]data, error) // -> extra allocation for every recieve
 }*/
 
-/* The ConnManager is responsible for managing multiple connection. It allows
- * servers to send/receive messages to other servers by specifying the public
- * key of the desired server.
- */
-type ConnManager interface {
-	// Sends a message to a specific peer.
-	Put(abstract.Point, BinaryMarshaler) error
-
-	// Receive a message from the desired peer.
-	Get(abstract.Point, BinaryUnmarshaler) error
-}
