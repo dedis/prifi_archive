@@ -28,4 +28,3 @@ type Conn interface {
 	Get([]data) error     // gets data from connection
 	Get() ([]data, error) // -> extra allocation for every recieve
 }*/
-
