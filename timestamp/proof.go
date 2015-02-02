@@ -109,6 +109,11 @@ func CheckLocalProofs(newHash HashFunc, root HashId, leaves []HashId, proofs []P
 		// log.Println("Leaf", leaves[i])
 		// log.Println("Proof", proofs[i])
 		// log.Println("\n")
+		// log.Println("root", root)
+		// log.Println("proofs[i]", proofs[i])
+		// if root == nil {
+		// 	continue
+		// }
 		if proofs[i].Check(newHash, root, leaves[i]) == false {
 			panic("check failed at leaf")
 		}

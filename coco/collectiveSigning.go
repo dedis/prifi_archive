@@ -195,9 +195,6 @@ func (sn *SigningNode) Commit() error {
 func (sn *SigningNode) VerifyChallenge(chm *ChallengeMessage) bool {
 	// check my submitted MTRoot against the root MTRoot via the proofs
 	log.Println(sn.Name(), "verifying big root own root", len(chm.MTRoot), len(sn.MTRoot))
-	// log.Println(sn.Name(), "THE root root", chm.MTRoot)
-	// log.Println(sn.Name(), "my  oot", sn.MTRoot)
-	// log.Println(sn.Name(), "my recv proof", chm.Proof)
 
 	return timestamp.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 }
@@ -207,6 +204,12 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 	if sn.VerifyChallenge(chm) != true {
 		log.Println("MKT did not verify for", sn.Name())
 		// panic("MKT did not verify for" + sn.Name())
+	}
+
+	// Challenge verified so I should reply back
+	// to my clients
+	for _, resp := range sn.RespMessgs {
+		sn.PutToClient(resp.To, resp.Tsm)
 	}
 
 	sn.c = chm.C
