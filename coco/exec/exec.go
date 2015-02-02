@@ -77,7 +77,7 @@ func main() {
 	if hc.SNodes[0].IsRoot() {
 		time.Sleep(3 * time.Second)
 		start := time.Now()
-		iters := 10
+		iters := 1
 
 		for i := 0; i < iters; i++ {
 			fmt.Println("ANNOUNCING")
