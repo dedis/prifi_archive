@@ -7,14 +7,14 @@ import (
 	"github.com/dedis/crypto/anon"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/crypto/random"
 	"github.com/dedis/crypto/poly"
+	"github.com/dedis/crypto/random"
 )
 
 /* Modelled off coco/signingMessage.go, this file is responsible for encoding/
- * decoding messages sent as a part of the insurance policy protocol. 
+ * decoding messages sent as a part of the insurance policy protocol.
  */
- 
+
 type MessageType int
 
 const (
@@ -65,7 +65,7 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 type RequestInsuranceMessage struct {
 	// The private share to give to the insurer
 	share abstract.Secret
-	
+
 	// The public polynomial used to verify the share
 	pubCommit poly.PubPoly
 }
@@ -80,8 +80,8 @@ type RequestInsuranceMessage struct {
  *	A new insurance request message.
  */
 func (msg *RequestInsuranceMessage) createMessage(s abstract.Secret,
-		pc poly.PubPoly) *RequestInsuranceMessage {
-	msg.share     = s
+	pc poly.PubPoly) *RequestInsuranceMessage {
+	msg.share = s
 	msg.pubCommit = pc
 	return msg
 }
@@ -98,8 +98,6 @@ func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
-
-
 type PolicyApprovedMessage struct {
 	// The message stating that the insurer has approved of being an insurer
 	message []byte
@@ -108,7 +106,6 @@ type PolicyApprovedMessage struct {
 	// the policy and signed with their own key.
 	signature []byte
 }
-
 
 /* Creates a new policy-approved message
  *
@@ -122,17 +119,17 @@ type PolicyApprovedMessage struct {
  * NOTE:
  *	The approved certificate is a string of the form:
  *     		"My_Public_Key insures Their_Public_Key"
- *     
+ *
  *	It will always be of this form for easy validation.
  */
 func (msg *PolicyApprovedMessage) createMessage(kp config.KeyPair,
 	theirKey abstract.Point) *PolicyApprovedMessage {
-	
+
 	set := anon.Set{kp.Public}
 	approveMsg := kp.Public.String() + " insures " + theirKey.String()
-	msg.message   = []byte(approveMsg)
+	msg.message = []byte(approveMsg)
 	msg.signature = anon.Sign(kp.Suite, random.Stream, msg.message,
-	                           set, nil, 0, kp.Secret)
+		set, nil, 0, kp.Secret)
 	return msg
 }
 
@@ -163,11 +160,9 @@ func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) error {
 
 func (msg *PolicyApprovedMessage) verifyCertificate(su abstract.Suite,
 	insuredKey, insurerKey abstract.Point) bool {
-	
+
 	set := anon.Set{insurerKey}
-	_, err := anon.Verify(su, msg.message, set, nil, msg.signature) 
+	_, err := anon.Verify(su, msg.message, set, nil, msg.signature)
 	correctMsg := insurerKey.String() + " insures " + insuredKey.String()
 	return err == nil && correctMsg == string(msg.message)
 }
-
-
