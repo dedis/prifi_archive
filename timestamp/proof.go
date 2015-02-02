@@ -57,7 +57,7 @@ func (c *hashContext) hashNode(buf []byte, vHashIds ...HashId) []byte {
 func (p Proof) Calc(newHash HashFunc, leaf []byte) []byte {
 	c := hashContext{newHash: newHash}
 	var buf []byte
-	for i := len(p) - 1; i >= 1; i-- {
+	for i := len(p) - 1; i >= 0; i-- {
 		leaf = c.hashNode(buf[:0], leaf, p[i])
 		buf = leaf
 	}
@@ -68,6 +68,7 @@ func (p Proof) Calc(newHash HashFunc, leaf []byte) []byte {
 func (p Proof) Check(newHash HashFunc, root, leaf []byte) bool {
 	chk := p.Calc(newHash, leaf)
 	// compare returns 1 if equal, so return is true when check is good
+	// log.Println(chk, root)
 	return subtle.ConstantTimeCompare(chk, root) != 0
 }
 
@@ -89,10 +90,30 @@ func CheckProofs(newHash HashFunc, root HashId, leaf HashId,
 	return subtle.ConstantTimeCompare(leaf, root) != 0
 }
 
+func CheckProof(newHash HashFunc, root HashId, leaf HashId, proof Proof) bool {
+	// log.Println("Root", len(root), root)
+	// log.Println("Leaf", len(leaf), leaf)
+	// log.Println("Proof", proof)
+	// log.Println("\n")
+	if proof.Check(newHash, root, leaf) == false {
+		panic("check failed at leaf")
+	}
+	return true
+}
+
 func CheckLocalProofs(newHash HashFunc, root HashId, leaves []HashId, proofs []Proof) bool {
 	// fmt.Println("Created mtRoot:", mtRoot)
 
 	for i := range proofs {
+		// log.Println("Root", root)
+		// log.Println("Leaf", leaves[i])
+		// log.Println("Proof", proofs[i])
+		// log.Println("\n")
+		// log.Println("root", root)
+		// log.Println("proofs[i]", proofs[i])
+		// if root == nil {
+		// 	continue
+		// }
 		if proofs[i].Check(newHash, root, leaves[i]) == false {
 			panic("check failed at leaf")
 		}
@@ -171,7 +192,7 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 	proofs := make([]Proof, nleaves)
 	for i := 0; i < nleaves; i++ {
 		p := make([]HashId, depth)[:0]
-		p = append(p, root)
+		// p = append(p, root)
 		for d := depth - 1; d >= 0; d-- {
 			h := tree[depth-d][sibling(i>>uint(d))]
 			if h != nil {

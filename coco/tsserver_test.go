@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/dedis/prifi/coconet"
 	"github.com/dedis/prifi/timestamp"
@@ -38,7 +39,7 @@ func TestStaticMultipleClients(t *testing.T) {
 //   2   3   5
 func TestTSSIntegration(t *testing.T) {
 	nMessages := 3 // per round
-	nRounds := 3
+	nRounds := 1
 
 	hostConfig, err := LoadConfig("data/exconf.json")
 	if err != nil {
@@ -77,6 +78,10 @@ func TestTSSIntegration(t *testing.T) {
 	}
 	go hostConfig.SNodes[0].ListenToClients("root", nRounds)
 	wg.Wait()
+
+	// After clients receive messages back we need a better way
+	// of waiting to make sure servers check ElGamal sigs
+	time.Sleep(1 * time.Second)
 }
 
 // Create nClients for the TSServer, with first client associated with number fClient
@@ -110,7 +115,6 @@ func clientsTalk(clients []*timestamp.Client, nRounds, nMessages int, sn *Signin
 		for _, client := range clients {
 			for i := 0; i < nMessages; i++ {
 				// TODO: messages should be sent hashed eventually
-				// TODO: add wait group around go time stamps
 				messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
 				wg.Add(1)
 				go func(client *timestamp.Client, messg []byte, sn *SigningNode, i int) {

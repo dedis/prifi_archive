@@ -42,6 +42,9 @@ type SigningNode struct {
 	READING    int
 	PROCESSING int
 
+	RespMessgs []timestamp.MustReplyMessage // responses to client stamp requests
+	Proofs     []timestamp.Proof            // Proofs tailored specifically to clients
+
 	// merkle tree roots
 	LocalMTRoot timestamp.HashId // local mt root of client messages
 	MTRoot      timestamp.HashId // mt root for subtree, passed upwards
@@ -145,7 +148,7 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 
 }
 
-func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
+func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.MustReplyMessage) {
 	sn.mux.Lock()
 	// get data from sn once to avoid refetching from structure
 	Queue := sn.Queue
@@ -160,7 +163,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	if len(Queue[PROCESSING]) == 0 {
 		log.Println(sn.Name(), "no processing")
 		sn.mux.Unlock()
-		return make([]byte, 0), make([]timestamp.Proof, 0)
+		return make([]byte, 0), make([]timestamp.MustReplyMessage, 0)
 	}
 
 	// pull out to be Merkle Tree leaves
@@ -184,20 +187,19 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.Proof) {
 	}
 
 	sn.mux.Lock()
-	// sending replies back to clients
-	// log.Println("		Putting to clients")
+	respMessgs := make([]timestamp.MustReplyMessage, 0)
 	for i, msg := range Queue[PROCESSING] {
-		sn.PutToClient(msg.To,
-			timestamp.TimeStampMessage{
-				Type:  timestamp.StampReplyType,
-				ReqNo: msg.Tsm.ReqNo,
-				Srep:  &timestamp.StampReply{Sig: mtRoot, Prf: proofs[i]}})
+		respMessgs = append(respMessgs,
+			timestamp.MustReplyMessage{
+				To: msg.To,
+				Tsm: timestamp.TimeStampMessage{
+					Type:  timestamp.StampReplyType,
+					ReqNo: msg.Tsm.ReqNo,
+					Srep:  &timestamp.StampReply{Sig: mtRoot, Prf: proofs[i]}}})
 	}
-	// log.Println("		Done Putting to clients")
-	// sn.Queue[PROCESSING] = Queue[PROCESSING][:0]
 	sn.mux.Unlock()
 
-	return mtRoot, proofs
+	return mtRoot, respMessgs
 }
 
 // Send message to client given by name
