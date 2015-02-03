@@ -1,4 +1,4 @@
-package coco
+package sign
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/timestamp"
+	"github.com/dedis/prifi/coco/stamp"
 )
 
 // test marshalling and unmarshalling for
@@ -44,7 +44,7 @@ func TestMUChallenge(t *testing.T) {
 	cm := ChallengeMessage{}
 	cm.C = suite.Secret().Pick(rand)
 	cm.MTRoot = make([]byte, HASH_SIZE)
-	cm.Proof = timestamp.Proof(make([]timestamp.HashId, nHashIds))
+	cm.Proof = stamp.Proof(make([]stamp.HashId, nHashIds))
 	for i := 0; i < nHashIds; i++ {
 		cm.Proof[i] = make([]byte, HASH_SIZE)
 	}
@@ -109,7 +109,7 @@ func TestMUCommit(t *testing.T) {
 	// log.Println(cm2)
 }
 
-func byteArrayEqual(a timestamp.Proof, b timestamp.Proof) bool {
+func byteArrayEqual(a stamp.Proof, b stamp.Proof) bool {
 	n := len(a)
 	if n != len(b) {
 		return false

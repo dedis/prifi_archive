@@ -1,4 +1,4 @@
-package timestamp
+package stamp
 
 import (
 	"encoding/binary"
