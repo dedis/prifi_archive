@@ -61,9 +61,9 @@ type Node struct {
 
 // HostConfig stores all of the relevant information of the configuration file.
 type HostConfig struct {
-	SNodes []*SigningNode          // an array of signing nodes
-	Hosts  map[string]*SigningNode // maps hostname to host
-	Dir    *coconet.GoDirectory    // the directory mapping hostnames to goPeers
+	SNodes []*sign.SigningNode          // an array of signing nodes
+	Hosts  map[string]*sign.SigningNode // maps hostname to host
+	Dir    *coconet.GoDirectory         // the directory mapping hostnames to goPeers
 }
 
 func (hc *HostConfig) Verify() error {

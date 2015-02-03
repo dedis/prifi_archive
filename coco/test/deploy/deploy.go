@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
 // deploy usage:
