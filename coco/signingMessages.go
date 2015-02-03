@@ -3,15 +3,19 @@ package coco
 import (
 	"bytes"
 	"encoding/gob"
+	"log"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/timestamp"
 )
 
 // All message structures defined in this package are used in the
 // Collective Signing Protocol
 // Over the network they are sent as byte slices, so each message
 // has its own MarshlBinary and UnmarshalBinary method
+
+const HASH_SIZE int = 32 // TODO: change the way this is known
 
 type MessageType int
 
@@ -23,19 +27,22 @@ const (
 	Response
 )
 
+// Signing Messages are used for all comunications between servers
+// It is imporant for encoding/ decoding for type to be kept as first field
 type SigningMessage struct {
 	Type MessageType
 	am   *AnnouncementMessage
 	com  *CommitmentMessage
 	chm  *ChallengeMessage
 	rm   *ResponseMessage
+	err  *ErrorMessage
 }
 
 func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	var sub []byte
 	var err error
-	b.WriteByte(byte(sm.Type))
+	b.WriteByte(byte(sm.Type)) // first field is 1-byte long type
 	// marshal sub message based on its Type
 	switch sm.Type {
 	case Announcement:
@@ -46,6 +53,8 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 		sub, err = sm.chm.MarshalBinary()
 	case Response:
 		sub, err = sm.rm.MarshalBinary()
+	case Error:
+		sub, err = sm.err.MarshalBinary()
 	}
 	if err == nil {
 		b.Write(sub)
@@ -54,7 +63,7 @@ func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 }
 
 func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
-	sm.Type = MessageType(data[0])
+	sm.Type = MessageType(data[0]) // first field is 1-byte long type
 	msgBytes := data[1:]
 	var err error
 	switch sm.Type {
@@ -70,6 +79,9 @@ func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
 	case Response:
 		sm.rm = &ResponseMessage{}
 		err = sm.rm.UnmarshalBinary(msgBytes)
+	case Error:
+		sm.err = &ErrorMessage{}
+		err = sm.err.UnmarshalBinary(msgBytes)
 	}
 	return err
 }
@@ -82,14 +94,25 @@ type AnnouncementMessage struct {
 type CommitmentMessage struct {
 	V     abstract.Point // commitment Point
 	V_hat abstract.Point // product of children's commitment points
+
+	MTRoot timestamp.HashId // root of Merkle (sub)Tree
 }
 
 type ChallengeMessage struct {
 	C abstract.Secret // challenge
+
+	// Depth  byte
+	MTRoot timestamp.HashId // the very root of the big Merkle Tree
+	Proof  timestamp.Proof  // Merkle Path of Proofs from root to us
+	// LevelProof timestamp.LevelProof // parent's LevelProof
 }
 
 type ResponseMessage struct {
 	R_hat abstract.Secret // response
+}
+
+type ErrorMessage struct {
+	Err error
 }
 
 type TestMessage struct {
@@ -97,6 +120,7 @@ type TestMessage struct {
 	Bytes []byte
 }
 
+// ANNOUCEMENT  ENCODE
 func (am AnnouncementMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
@@ -111,30 +135,67 @@ func (am *AnnouncementMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+// COMMIT ENCODE
 func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
+	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
 	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
+	b.Write(cm.MTRoot)
 	return b.Bytes(), nil
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
-	b := bytes.NewBuffer(data)
+	b := bytes.NewBuffer(data[:len(data)-HASH_SIZE])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
+
+	cm.MTRoot = data[len(data)-HASH_SIZE:]
 	return err
 }
 
+// CHALLENGE ENCODE
 func (cm ChallengeMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
-	abstract.Write(&b, &cm, nist.NewAES128SHA256P256())
+	abstract.Write(&b, &cm.C, nist.NewAES128SHA256P256())
+
+	b.Write(cm.MTRoot)
+	for _, proof := range cm.Proof {
+		b.Write(proof)
+	}
+
+	// log.Println("Encodingchallenge with", len(b.Bytes()))
 	return b.Bytes(), nil
 }
 
 func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
-	b := bytes.NewBuffer(data)
+	// log.Println("Decoding challenge with", len(data))
+	b := bytes.NewBuffer(data[:32])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
+	rem := data[cm.C.Len():] // after secret
+
+	if len(rem) < HASH_SIZE {
+		return nil
+	}
+	cm.MTRoot = rem[:HASH_SIZE] // after mt root
+	rem = rem[HASH_SIZE:]
+
+	nHashIds := len(rem) / HASH_SIZE
+	if len(rem)%HASH_SIZE != 0 {
+		log.Println("BAD not div by Hash_size", len(rem)%HASH_SIZE)
+	}
+
+	// log.Println("nhashIds", nHashIds)
+	cm.Proof = cm.Proof[:0]
+	for i := 0; i < nHashIds; i++ {
+		if len(rem) < (i+1)*HASH_SIZE {
+			return nil
+		}
+		cm.Proof = append(cm.Proof, rem[i*HASH_SIZE:(i+1)*HASH_SIZE])
+	}
+
 	return err
 }
 
+// RESPONE ENCODE
 func (rm ResponseMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
 	abstract.Write(&b, &rm, nist.NewAES128SHA256P256())
@@ -144,5 +205,20 @@ func (rm ResponseMessage) MarshalBinary() ([]byte, error) {
 func (rm *ResponseMessage) UnmarshalBinary(data []byte) error {
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, rm, nist.NewAES128SHA256P256())
+	return err
+}
+
+// ERROR ENCODE
+func (em ErrorMessage) MarshalBinary() ([]byte, error) {
+	var b bytes.Buffer
+	enc := gob.NewEncoder(&b)
+	err := enc.Encode(em.Err)
+	return b.Bytes(), err
+}
+
+func (em *ErrorMessage) UnmarshalBinary(data []byte) error {
+	b := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(b)
+	err := dec.Decode(&em.Err)
 	return err
 }

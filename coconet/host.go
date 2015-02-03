@@ -1,4 +1,4 @@
-package coco
+package coconet
 
 import (
 	"sync"
@@ -34,8 +34,11 @@ import (
 type Host interface {
 	Name() string
 
+	// Returns the internal data structure
+	// Invarient: children are always in the same order
 	Peers() map[string]Conn // returns the peers list: all connected nodes
-	Children() map[string]Conn
+	Children() []Conn
+
 	AddPeers(hostnames ...string)   // add a node but don't make it child or parent
 	AddParent(hostname string)      // ad a parent connection
 	AddChildren(hostname ...string) // add child connections
@@ -43,31 +46,40 @@ type Host interface {
 
 	IsRoot() bool // true if this host is the root of the tree
 
+	// blocking network calls over the tree
 	PutUp(BinaryMarshaler) error       // send data to parent in host tree
 	GetUp(BinaryUnmarshaler) error     // get data from parent in host tree (blocking)
 	PutDown([]BinaryMarshaler) error   // send data to children in host tree
 	GetDown([]BinaryUnmarshaler) error // get data from children in host tree (blocking)
 
+	// ??? Could be replaced by listeners (condition variables) that wait for a
+	// change to the root status to the node (i.e. through an add parent call)
 	WaitTick() // Sleeps for network implementation dependent amount of time
 
-	Connect() error
-	Listen() error
+	Connect() error // connects to parent
+	Listen() error  // listen for incoming connections
+
+	Close() // connections need to be cleaned up
 }
 
 // HostNode is a simple implementation of Host that does not specify the
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type GoHost struct {
-	name     string          // the hostname
-	parent   Conn            // the Peer representing parent, nil if root
-	children map[string]Conn // a list of unique peers for each hostname
+	name     string // the hostname
+	parent   Conn   // the Peer representing parent, nil if root
+	children []Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
 	dir      *GoDirectory
+}
+
+func (h *GoHost) GetDirectory() *GoDirectory {
+	return h.dir
 }
 
 // NewHostNode creates a new HostNode with a given hostname.
 func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
-		children: make(map[string]Conn),
+		children: make([]Conn, 0),
 		peers:    make(map[string]Conn),
 		dir:      dir}
 	return h
@@ -95,9 +107,11 @@ func (h *GoHost) AddChildren(cs ...string) {
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 		}
-		h.children[c] = h.peers[c]
+		h.children = append(h.children, h.peers[c])
 	}
 }
+
+func (h *GoHost) Close() {}
 
 func (h *GoHost) NChildren() int {
 	return len(h.children)
@@ -119,7 +133,7 @@ func (h GoHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h GoHost) Children() map[string]Conn {
+func (h GoHost) Children() []Conn {
 	return h.children
 }
 

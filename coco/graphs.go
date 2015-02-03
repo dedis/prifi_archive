@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/prifi/coconet"
 )
 
 // var testSuite = openssl.NewAES128SHA256P256()
@@ -53,7 +54,7 @@ func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Sui
 	if h, ok := m[hostname]; ok {
 		return h
 	}
-	host := NewGoHost(hostname, NewGoDirectory())
+	host := coconet.NewGoHost(hostname, coconet.NewGoDirectory())
 	h := NewSigningNode(host, testSuite, testRand)
 	hc.Hosts[hostname] = h
 	m[hostname] = h

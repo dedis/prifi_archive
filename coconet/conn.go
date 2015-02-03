@@ -1,4 +1,4 @@
-package coco
+package coconet
 
 import (
 	"encoding/gob"
@@ -6,13 +6,17 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 // Conn is an abstract bidirectonal connection. It abstracts away the network
 // layer as well as the data-format for communication.
 type Conn interface {
-	Name() string
-	Connect() error
+	Name() string // the "to" of the connection
+
+	Connect() error // connect with the "to"
+	Close()         // clean up the connection
+
 	Put(BinaryMarshaler) error   // sends data through the connection
 	Get(BinaryUnmarshaler) error // gets data from connection
 }
@@ -60,9 +64,11 @@ type GoConn struct {
 	// the directory maps each (from,to) pair to a channel for sending
 	// (from,to). When receiving one reads from the channel (from, to). Thus
 	// the sender "owns" the channel.
-	dir  *GoDirectory
-	from string
-	to   string
+	dir    *GoDirectory
+	from   string
+	to     string
+	fromto string
+	tofrom string
 }
 
 // PeerExists is an ignorable error that says that this peer has already been
@@ -73,7 +79,7 @@ var PeerExists error = errors.New("peer already exists in given directory")
 // hostname. It returns an ignorable PeerExists error if this peer already
 // exists.
 func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
-	gc := &GoConn{dir, from, to}
+	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from}
 	dir.Lock()
 	fromto := gc.FromTo()
 	defer dir.Unlock()
@@ -92,16 +98,18 @@ func (c GoConn) Name() string {
 }
 
 func (c GoConn) FromTo() string {
-	return c.from + "::::" + c.to
+	return c.fromto
 }
 
 func (c GoConn) ToFrom() string {
-	return c.to + "::::" + c.from
+	return c.tofrom
 }
 
 func (c GoConn) Connect() error {
 	return nil
 }
+
+func (c GoConn) Close() {}
 
 // Put sends data to the goConn through the channel.
 func (c *GoConn) Put(data BinaryMarshaler) error {
@@ -138,6 +146,8 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 
 // TcpConn is a prototype TCP connection with gob encoding.
 type TCPConn struct {
+	sync.RWMutex
+
 	name string
 	conn net.Conn
 	enc  *gob.Encoder
@@ -170,6 +180,9 @@ func (tc TCPConn) Connect() error {
 	tc.conn = conn
 	// gob encoders call MarshalBinary and UnmarshalBinary
 	// TODO replace gob with minimal Put, Get interface
+	// gob nicely handles reading from the connection
+	// otherwise we would have to deal with making the tcp
+	// read and write blocking rather than non-blocking.
 	tc.enc = gob.NewEncoder(conn)
 	tc.dec = gob.NewDecoder(conn)
 	return nil
@@ -179,16 +192,29 @@ func (tc TCPConn) Name() string {
 	return tc.name
 }
 
+// blocks until the put is availible
 func (tc *TCPConn) Put(bm BinaryMarshaler) error {
-	if tc.enc == nil {
-		return errors.New(" connection not established")
+	tc.RLock()
+	for tc.enc == nil {
+		tc.RUnlock()
+		time.Sleep(time.Second)
+		tc.RLock()
+		//return errors.New(" connection not established")
 	}
+	tc.RUnlock()
 	return tc.enc.Encode(bm)
 }
 
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
-	if tc.dec == nil {
-		return errors.New(" connection not established")
+	for tc.dec == nil {
+		time.Sleep(time.Second)
+		//return errors.New(" connection not established")
 	}
 	return tc.dec.Decode(bum)
+}
+
+func (tc *TCPConn) Close() {
+	if tc.conn != nil {
+		tc.conn.Close()
+	}
 }
