@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/coco/coconet"
 )
 
 type Client struct {

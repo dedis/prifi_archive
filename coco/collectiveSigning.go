@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/timestamp"
 	// "strconv"
 	// "os"

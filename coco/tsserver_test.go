@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/timestamp"
 )
 

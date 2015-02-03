@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/coco/coconet"
 )
 
 func ExampleReadWrite() {

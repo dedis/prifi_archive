@@ -5,7 +5,7 @@ import (
 	"testing"
 	// "fmt"
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/coco/coconet"
 )
 
 //       0
