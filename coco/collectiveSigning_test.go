@@ -1,11 +1,13 @@
-package sign
+package coco
 
 import (
 	"strconv"
 	"testing"
-	// "fmt"
+
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
+	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
 //       0
@@ -44,13 +46,13 @@ func TestStatic(t *testing.T) {
 	h[3].AddParent(h[1].Name())
 
 	// Create Signing Nodes out of the hosts
-	nodes := make([]*SigningNode, nNodes)
+	nodes := make([]*sign.SigningNode, nNodes)
 	for i := 0; i < nNodes; i++ {
-		nodes[i] = NewSigningNode(h[i], suite, rand)
+		nodes[i] = sign.NewSigningNode(h[i], suite, rand)
 
 		// To test the already keyed signing node, uncomment
-		// privKey := suite.Secret().Pick(rand)
-		// nodes[i] = NewKeyedSigningNode(h[i], suite, privKey)
+		// PrivKey := suite.Secret().Pick(rand)
+		// nodes[i] = NewKeyedSigningNode(h[i], suite, PrivKey)
 	}
 	for i := 0; i < nNodes; i++ {
 		go func(i int) {
@@ -61,16 +63,16 @@ func TestStatic(t *testing.T) {
 
 	// initialize all nodes with knowledge of
 	// combined public keys of all its descendents
-	nodes[2].X_hat = nodes[2].pubKey
-	nodes[3].X_hat = nodes[3].pubKey
-	nodes[1].X_hat.Add(nodes[1].pubKey, nodes[2].X_hat)
+	nodes[2].X_hat = nodes[2].PubKey
+	nodes[3].X_hat = nodes[3].PubKey
+	nodes[1].X_hat.Add(nodes[1].PubKey, nodes[2].X_hat)
 	nodes[1].X_hat.Add(nodes[1].X_hat, nodes[3].X_hat)
-	nodes[0].X_hat.Add(nodes[0].pubKey, nodes[1].X_hat)
+	nodes[0].X_hat.Add(nodes[0].PubKey, nodes[1].X_hat)
 
 	// test that X_Hats of non-leaves are != their pub keys
 	firstLeaf := 2
 	for i := 0; i < firstLeaf; i++ {
-		if nodes[i].X_hat.Equal(nodes[i].pubKey) {
+		if nodes[i].X_hat.Equal(nodes[i].PubKey) {
 			panic("pub key equal x hat")
 		}
 
@@ -79,7 +81,7 @@ func TestStatic(t *testing.T) {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].LogTest = []byte("Hello World")
-	err := nodes[0].Announce(&AnnouncementMessage{nodes[0].LogTest})
+	err := nodes[0].Announce(&sign.AnnouncementMessage{nodes[0].LogTest})
 	if err != nil {
 		t.Log(err)
 		t.Fail()
@@ -93,7 +95,7 @@ func TestStatic(t *testing.T) {
 //    / \   \
 //   2   3   5
 func TestTreeFromStaticConfig(t *testing.T) {
-	hostConfig, err := LoadConfig("data/exconf.json")
+	hostConfig, err := oldconfig.LoadConfig("test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,11 +106,11 @@ func TestTreeFromStaticConfig(t *testing.T) {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	hostConfig.SNodes[0].LogTest = []byte("Hello World")
-	hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].LogTest})
+	hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{hostConfig.SNodes[0].LogTest})
 }
 
 func TestTreeBigConfig(t *testing.T) {
-	hc, err := LoadConfig("data/exwax.json")
+	hc, err := oldconfig.LoadConfig("test/data/exwax.json")
 	if err != nil {
 		t.Fatal()
 	}
@@ -117,7 +119,7 @@ func TestTreeBigConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
+	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 	if err != nil {
 		t.Error(err)
 	}
@@ -128,7 +130,7 @@ func TestMultipleRounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hostConfig, err := LoadConfig("data/exconf.json")
+	hostConfig, err := oldconfig.LoadConfig("test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +143,7 @@ func TestMultipleRounds(t *testing.T) {
 	// via a simple annoucement
 	for i := 0; i < N; i++ {
 		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
-		err = hostConfig.SNodes[0].Announce(&AnnouncementMessage{hostConfig.SNodes[0].LogTest})
+		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{hostConfig.SNodes[0].LogTest})
 		if err != nil {
 			t.Error(err)
 		}
@@ -149,7 +151,7 @@ func TestMultipleRounds(t *testing.T) {
 }
 
 func TestTCPStaticConfig(t *testing.T) {
-	hc, err := LoadConfig("data/extcpconf.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
+	hc, err := oldconfig.LoadConfig("test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}
@@ -158,7 +160,7 @@ func TestTCPStaticConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
+	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 	if err != nil {
 		t.Error(err)
 	}
@@ -171,7 +173,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hc, err := LoadConfig("data/extcpconf.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
+	hc, err := oldconfig.LoadConfig("test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}
@@ -182,7 +184,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	N := 5
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
-		err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
+		err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 		if err != nil {
 			t.Error(err)
 		}

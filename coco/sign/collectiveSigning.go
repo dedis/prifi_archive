@@ -241,7 +241,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 func (sn *SigningNode) initResponseCrypto() {
 	// generate response   r = v - xc
 	sn.r = sn.suite.Secret()
-	sn.r.Mul(sn.privKey, sn.c).Sub(sn.Log.v, sn.r)
+	sn.r.Mul(sn.PrivKey, sn.c).Sub(sn.Log.v, sn.r)
 	// initialize sum of children's responses
 	sn.r_hat = sn.r
 }

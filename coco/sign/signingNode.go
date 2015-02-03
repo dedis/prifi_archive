@@ -18,8 +18,8 @@ var ROUND_TIME time.Duration = 1 * time.Second
 type SigningNode struct {
 	coconet.Host
 	suite   abstract.Suite
-	pubKey  abstract.Point  // long lasting public key
-	privKey abstract.Secret // long lasting private key
+	PubKey  abstract.Point  // long lasting public key
+	PrivKey abstract.Secret // long lasting private key
 
 	c abstract.Secret // round lasting challenge
 	r abstract.Secret // round lasting response
@@ -55,8 +55,8 @@ type SigningNode struct {
 
 func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
 	sn := &SigningNode{Host: hn, suite: suite}
-	sn.privKey = suite.Secret().Pick(random)
-	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
+	sn.PrivKey = suite.Secret().Pick(random)
+	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 	sn.X_hat = suite.Point().Null()
 	sn.peerKeys = make(map[string]abstract.Point)
 
@@ -68,9 +68,9 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 }
 
 // Create new signing node that incorporates a given private key
-func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, privKey abstract.Secret) *SigningNode {
-	sn := &SigningNode{Host: hn, suite: suite, privKey: privKey}
-	sn.pubKey = suite.Point().Mul(nil, sn.privKey)
+func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret) *SigningNode {
+	sn := &SigningNode{Host: hn, suite: suite, PrivKey: PrivKey}
+	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 	sn.X_hat = suite.Point().Null()
 	sn.peerKeys = make(map[string]abstract.Point)
 
@@ -81,9 +81,9 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, privKey abstract
 	return sn
 }
 
-func (sn *SigningNode) addPeer(conn string, pubKey abstract.Point) {
+func (sn *SigningNode) AddPeer(conn string, PubKey abstract.Point) {
 	sn.Host.AddPeers(conn)
-	sn.peerKeys[conn] = pubKey
+	sn.peerKeys[conn] = PubKey
 }
 
 func (sn *SigningNode) GetSuite() abstract.Suite {

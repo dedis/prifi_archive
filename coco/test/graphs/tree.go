@@ -27,10 +27,10 @@ func (t *Tree) TraverseTree(f func(*Tree)) {
 // generate keys for the tree
 func (t *Tree) GenKeys(suite abstract.Suite, rand abstract.Cipher) {
 	t.TraverseTree(func(t *Tree) {
-		privKey := suite.Secret().Pick(rand)
-		pubKey := suite.Point().Mul(nil, privKey)
+		PrivKey := suite.Secret().Pick(rand)
+		PubKey := suite.Point().Mul(nil, PrivKey)
 
-		t.PriKey = string(hex.EncodeToString(privKey.Encode()))
-		t.PubKey = string(hex.EncodeToString(pubKey.Encode()))
+		t.PriKey = string(hex.EncodeToString(PrivKey.Encode()))
+		t.PubKey = string(hex.EncodeToString(PubKey.Encode()))
 	})
 }

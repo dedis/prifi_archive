@@ -1,4 +1,4 @@
-package stamp
+package coco
 
 import (
 	"strconv"
@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
+	"github.com/dedis/prifi/coco/stamp"
+	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
 // Configuration file data/exconf.json
@@ -19,7 +22,7 @@ func TestTSSIntegration(t *testing.T) {
 	nMessages := 4 // per round
 	nRounds := 3
 
-	hostConfig, err := LoadConfig("data/exconf.json")
+	hostConfig, err := oldconfig.LoadConfig("data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +33,7 @@ func TestTSSIntegration(t *testing.T) {
 	var wg sync.WaitGroup
 	// Connect all TSServers to their clients, except for root TSServer
 	ncps := 3 // # clients per TSServer
-	clientsLists := make([][]*Client, len(hostConfig.SNodes[1:]))
+	clientsLists := make([][]*stamp.Client, len(hostConfig.SNodes[1:]))
 	for i, sn := range hostConfig.SNodes[1:] {
 		clientsLists[i] = createClientsForTSServer(ncps, sn,
 			sn.Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
@@ -46,7 +49,7 @@ func TestTSSIntegration(t *testing.T) {
 			go client.ShowHistory()
 		}
 		wg.Add(1)
-		go func(clients []*Client, nRounds int, nMessages int, sn *SigningNode) {
+		go func(clients []*stamp.Client, nRounds int, nMessages int, sn *sign.SigningNode) {
 			defer wg.Done()
 			// log.Println("clients Talk")
 			clientsTalk(clients, nRounds, nMessages, sn)
@@ -63,10 +66,10 @@ func TestTSSIntegration(t *testing.T) {
 }
 
 // Create nClients for the TSServer, with first client associated with number fClient
-func createClientsForTSServer(nClients int, sn *SigningNode, dir *coconet.GoDirectory, fClient int) []*Client {
-	clients := make([]*Client, 0, nClients)
+func createClientsForTSServer(nClients int, sn *sign.SigningNode, dir *coconet.GoDirectory, fClient int) []*stamp.Client {
+	clients := make([]*stamp.Client, 0, nClients)
 	for i := 0; i < nClients; i++ {
-		clients = append(clients, NewClient("client"+strconv.Itoa(fClient+i), dir))
+		clients = append(clients, stamp.NewClient("client"+strconv.Itoa(fClient+i), dir))
 
 		// intialize TSServer conn to client
 		ngc, err := coconet.NewGoConn(dir, sn.Name(), clients[i].Name())
@@ -86,7 +89,7 @@ func createClientsForTSServer(nClients int, sn *SigningNode, dir *coconet.GoDire
 	return clients
 }
 
-func clientsTalk(clients []*Client, nRounds, nMessages int, sn *SigningNode) {
+func clientsTalk(clients []*stamp.Client, nRounds, nMessages int, sn *sign.SigningNode) {
 	// have client send messages
 	for r := 0; r < nRounds; r++ {
 		var wg sync.WaitGroup
@@ -95,7 +98,7 @@ func clientsTalk(clients []*Client, nRounds, nMessages int, sn *SigningNode) {
 				// TODO: messages should be sent hashed eventually
 				messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
 				wg.Add(1)
-				go func(client *Client, messg []byte, sn *SigningNode, i int) {
+				go func(client *stamp.Client, messg []byte, sn *sign.SigningNode, i int) {
 					defer wg.Done()
 					client.TimeStamp(messg, sn.Name())
 				}(client, messg, sn, r)

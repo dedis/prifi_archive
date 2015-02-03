@@ -10,6 +10,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
 )
 
 // var testSuite = openssl.NewAES128SHA256P256()
@@ -17,14 +18,14 @@ import (
 
 // dijkstra is actually implemented as BFS right now because it is equivalent
 // when edge weights are all 1.
-func dijkstra(m map[string]*SigningNode, root *SigningNode) {
+func dijkstra(m map[string]*sign.SigningNode, root *sign.SigningNode) {
 	l := list.New()
 	visited := make(map[string]bool)
 	l.PushFront(root)
 	visited[root.Name()] = true
 	for e := l.Front(); e != nil; e = l.Front() {
 		l.Remove(e)
-		sn := e.Value.(*SigningNode)
+		sn := e.Value.(*sign.SigningNode)
 		// make all unvisited peers children
 		// and mark them as visited
 		for name, conn := range sn.Peers() {
@@ -50,12 +51,12 @@ func dijkstra(m map[string]*SigningNode, root *SigningNode) {
 	}
 }
 
-func loadHost(hostname string, m map[string]*SigningNode, testSuite abstract.Suite, testRand cipher.Stream, hc *HostConfig) *SigningNode {
+func loadHost(hostname string, m map[string]*sign.SigningNode, testSuite abstract.Suite, testRand cipher.Stream, hc *HostConfig) *sign.SigningNode {
 	if h, ok := m[hostname]; ok {
 		return h
 	}
 	host := coconet.NewGoHost(hostname, coconet.NewGoDirectory())
-	h := NewSigningNode(host, testSuite, testRand)
+	h := sign.NewSigningNode(host, testSuite, testRand)
 	hc.Hosts[hostname] = h
 	m[hostname] = h
 	return h
@@ -73,9 +74,9 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 	}
 	s := bufio.NewScanner(f)
 	// generate the list of hosts
-	hosts := make(map[string]*SigningNode)
+	hosts := make(map[string]*sign.SigningNode)
 	hc := NewHostConfig()
-	var root *SigningNode
+	var root *sign.SigningNode
 	for s.Scan() {
 		var host1, host2 string
 		n, err := fmt.Sscan(s.Text(), &host1, &host2)
@@ -87,8 +88,8 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 		}
 		h1 := loadHost(host1, hosts, testSuite, testRand, hc)
 		h2 := loadHost(host2, hosts, testSuite, testRand, hc)
-		h1.addPeer(h2.Name(), h2.pubKey)
-		h2.addPeer(h1.Name(), h1.pubKey)
+		h1.AddPeer(h2.Name(), h2.PubKey)
+		h2.AddPeer(h1.Name(), h1.PubKey)
 		if root == nil {
 			root = h1
 		}
@@ -96,7 +97,7 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 	}
 	dijkstra(hosts, root)
 	for _, sn := range hc.SNodes {
-		go func(sn *SigningNode) {
+		go func(sn *sign.SigningNode) {
 			// start listening for messages from within the tree
 			sn.Listen()
 		}(sn)

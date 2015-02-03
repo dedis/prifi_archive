@@ -19,6 +19,7 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
 )
 
 /*
@@ -73,21 +74,21 @@ func (hc *HostConfig) Verify() error {
 	return nil
 }
 
-func publicKeyCheck(n *SigningNode, hc *HostConfig) error {
-	x_hat := n.pubKey
+func publicKeyCheck(n *sign.SigningNode, hc *HostConfig) error {
+	x_hat := n.PubKey
 	for _, cn := range n.Children() {
 		c := hc.Hosts[cn.Name()]
 		x_hat.Add(x_hat, c.X_hat)
 	}
 	/*if x_hat != n.X_hat {
-		return errors.New("parent X_hat != Sum(child.X_hat)+pubKey")
+		return errors.New("parent X_hat != Sum(child.X_hat)+PubKey")
 	}*/
 	return nil
 }
 
-func traverseTree(p *SigningNode,
+func traverseTree(p *sign.SigningNode,
 	hc *HostConfig,
-	f func(*SigningNode, *HostConfig) error) error {
+	f func(*sign.SigningNode, *HostConfig) error) error {
 	if err := f(p, hc); err != nil {
 		return err
 	}
@@ -135,14 +136,14 @@ func (hc *HostConfig) String() string {
 	return string(bformatted.Bytes())
 }
 
-func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) error {
+func writeHC(b *bytes.Buffer, hc *HostConfig, p *sign.SigningNode) error {
 	// Node{name, pubkey, x_hat, children}
 	if p == nil {
 		return errors.New("node does not exist")
 	}
 	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\",")
-	fmt.Fprint(b, "\"prikey\":", "\""+string(hex.EncodeToString(p.privKey.Encode()))+"\",")
-	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(p.pubKey.Encode()))+"\",")
+	fmt.Fprint(b, "\"prikey\":", "\""+string(hex.EncodeToString(p.PrivKey.Encode()))+"\",")
+	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(p.PubKey.Encode()))+"\",")
 
 	// recursively format children
 	fmt.Fprint(b, "\"children\":[")
@@ -165,7 +166,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *SigningNode) error {
 // NewHostConfig creates a new host configuration that can be populated with
 // hosts.
 func NewHostConfig() *HostConfig {
-	return &HostConfig{SNodes: make([]*SigningNode, 0), Hosts: make(map[string]*SigningNode), Dir: coconet.NewGoDirectory()}
+	return &HostConfig{SNodes: make([]*sign.SigningNode, 0), Hosts: make(map[string]*sign.SigningNode), Dir: coconet.NewGoDirectory()}
 }
 
 type ConnType int
@@ -210,7 +211,7 @@ func ConstructTree(
 
 	var prikey abstract.Secret
 	var pubkey abstract.Point
-	var sn *SigningNode
+	var sn *sign.SigningNode
 
 	// if the JSON holds the fields field is set load from there
 	if len(n.PubKey) != 0 {
@@ -242,18 +243,18 @@ func ConstructTree(
 	if generate {
 		if prikey != nil {
 			// if we have been given a private key load that
-			hc.SNodes = append(hc.SNodes, NewKeyedSigningNode(h, suite, prikey))
+			hc.SNodes = append(hc.SNodes, sign.NewKeyedSigningNode(h, suite, prikey))
 		} else {
 			// otherwise generate a random new one
-			hc.SNodes = append(hc.SNodes, NewSigningNode(h, suite, rand))
+			hc.SNodes = append(hc.SNodes, sign.NewSigningNode(h, suite, rand))
 		}
 		sn = hc.SNodes[len(hc.SNodes)-1]
 		hc.Hosts[name] = sn
 		if prikey == nil {
-			prikey = sn.privKey
-			pubkey = sn.pubKey
+			prikey = sn.PrivKey
+			pubkey = sn.PubKey
 		}
-		// log.Println("pubkey:", sn.pubKey)
+		// log.Println("pubkey:", sn.PubKey)
 		// log.Println("given: ", pubkey)
 	}
 	// if the parent of this call is empty then this must be the root node
@@ -433,7 +434,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 
 // run the given hostnames
 func (hc *HostConfig) Run(hostnameSlice ...string) error {
-	hostnames := make(map[string]*SigningNode)
+	hostnames := make(map[string]*sign.SigningNode)
 	if hostnameSlice == nil {
 		hostnames = hc.Hosts
 	} else {
@@ -447,7 +448,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 		}
 	}
 	for _, sn := range hostnames {
-		go func(sn *SigningNode) {
+		go func(sn *sign.SigningNode) {
 			// start listening for messages from within the tree
 			sn.Host.Listen()
 		}(sn)
@@ -481,7 +482,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 	// wait for a little bit for connections to establish fully
 	time.Sleep(1000 * time.Millisecond)
 	for _, sn := range hostnames {
-		go func(sn *SigningNode) {
+		go func(sn *sign.SigningNode) {
 			// start listening for messages from within the tree
 			sn.Listen()
 		}(sn)

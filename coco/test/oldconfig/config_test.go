@@ -3,6 +3,8 @@ package oldconfig
 import (
 	"sync"
 	"testing"
+
+	"github.com/dedis/prifi/coco/sign"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -32,7 +34,7 @@ func TestPubKeysOneNode(t *testing.T) {
 		":6098",
 		":6099",
 		":6100"}
-	nodes := make(map[string]*SigningNode)
+	nodes := make(map[string]*sign.SigningNode)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, host := range hosts {
