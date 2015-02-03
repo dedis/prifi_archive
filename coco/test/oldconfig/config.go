@@ -1,4 +1,4 @@
-package coco
+package oldconfig
 
 import (
 	"bytes"
