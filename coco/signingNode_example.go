@@ -1,15 +1,13 @@
 package coco
 
 import (
-	"fmt"
-	"testing"
+	"log"
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coconet"
 )
 
-func TestReadWrite(t *testing.T) {
-	return
+func ExampleReadWrite() {
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
 
@@ -23,16 +21,14 @@ func TestReadWrite(t *testing.T) {
 	dataBytes := sn.Write(m)
 	dataInterface, err := sn.Read(dataBytes)
 	if err != nil {
-		t.Error("Decoding didn't work")
+		log.Fatal("Decoding didn't work")
 	}
-	fmt.Println(dataInterface)
 
 	switch mDecoded := dataInterface.(type) {
 	case TestMessage:
-		fmt.Println("Decoded annoucement message")
-		fmt.Println(mDecoded)
+		log.Println(mDecoded)
 	default:
-		t.Error("Decoding didn't work")
+		log.Fatal("Decoding didn't work")
 	}
 
 }

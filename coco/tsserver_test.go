@@ -10,27 +10,6 @@ import (
 	"github.com/dedis/prifi/timestamp"
 )
 
-func TestStaticMultipleClients(t *testing.T) {
-	// should not use this until fields of signing node
-	// are exported
-	// nClients := 2
-	// nMessages := 4 // per round
-	// nRounds := 2
-
-	// Crypto setup
-	// suite := nist.NewAES128SHA256P256()
-	// create new directory for communication between peers
-	// dir := coco.NewGoDirectory()
-
-	// TODO: add sn with TSServer functionality inside
-	// create TSServer, clients
-	// TSServer := NewTSServer("TSServer")
-	// clients := createClientsForTSServer(nClients, TSServer, dir, 0)
-
-	// go TSServer.Listen("test")
-	// clientsTalk(clients, nRounds, nMessages, TSServer)
-}
-
 // Configuration file data/exconf.json
 //       0
 //      / \

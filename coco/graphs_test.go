@@ -2,7 +2,6 @@ package coco
 
 import (
 	"fmt"
-	"io/ioutil"
 	"testing"
 
 	"github.com/dedis/crypto/nist"
@@ -16,9 +15,9 @@ func TestTreeFromRandomGraph(t *testing.T) {
 		fmt.Println("run data/gen.py to generate graphs")
 		return
 	}
-	if err := ioutil.WriteFile("data/wax.json", []byte(hc.String()), 0666); err != nil {
-		fmt.Println(err)
-	}
+	// if err := ioutil.WriteFile("data/wax.json", []byte(hc.String()), 0666); err != nil {
+	// 	fmt.Println(err)
+	// }
 	//fmt.Println(hc.String())
 
 	// Have root node initiate the signing protocol

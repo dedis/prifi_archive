@@ -161,7 +161,6 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.MustReplyMessage)
 
 	// give up if nothing to process
 	if len(Queue[PROCESSING]) == 0 {
-		log.Println(sn.Name(), "no processing")
 		sn.mux.Unlock()
 		return make([]byte, HASH_SIZE), make([]timestamp.MustReplyMessage, 0)
 	}
