@@ -18,7 +18,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/dedis/prifi/coco"
+	"github.com/dedis/prifi/test/oldconfig"
 )
 
 var hostname string
@@ -57,7 +57,7 @@ func main() {
 
 	// load the configuration
 	fmt.Println("loading configuration")
-	hc, err := coco.LoadConfig(configFile, coco.ConfigOptions{ConnType: "tcp", Host: hostname})
+	hc, err := oldconfig.LoadConfig(configFile, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname})
 	if err != nil {
 		fmt.Println(err)
 		log.Fatal(err)
@@ -82,7 +82,7 @@ func main() {
 		for i := 0; i < iters; i++ {
 			fmt.Println("ANNOUNCING")
 			hc.SNodes[0].LogTest = []byte("Hello World")
-			err = hc.SNodes[0].Announce(&coco.AnnouncementMessage{hc.SNodes[0].LogTest})
+			err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 			if err != nil {
 				log.Println(err)
 			}

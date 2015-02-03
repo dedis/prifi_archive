@@ -13,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/dedis/prifi/coco"
 )
 
 // deploy usage:
@@ -138,7 +136,7 @@ func main() {
 	// establish logging server to listen to remote connections
 	go StartLoggingServer(":9000")
 	log.Println("started logging server")
-	addr, err := coco.GetAddress()
+	addr, err := oldconfig.GetAddress()
 	if err != nil {
 		addr = ""
 	}
@@ -169,7 +167,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("REWRITING PORT:", portRewrite)
-	hc, err := coco.LoadJSON(b, coco.ConfigOptions{ConnType: "tcp", Hostnames: hostnames, Port: portRewrite})
+	hc, err := oldconfig.LoadJSON(b, oldconfig.ConfigOptions{ConnType: "tcp", Hostnames: hostnames, Port: portRewrite})
 	if err != nil {
 		log.Fatal("bad config file:", err)
 	}
