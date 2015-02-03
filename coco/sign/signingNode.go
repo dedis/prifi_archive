@@ -1,4 +1,4 @@
-package coco
+package sign
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/timestamp"
+	"github.com/dedis/prifi/coco/stamp"
 )
 
 var ROUND_TIME time.Duration = 1 * time.Second
@@ -38,19 +38,19 @@ type SigningNode struct {
 
 	// for aggregating messages from clients
 	mux        sync.Mutex
-	Queue      [][]timestamp.MustReplyMessage
+	Queue      [][]stamp.MustReplyMessage
 	READING    int
 	PROCESSING int
 
-	RespMessgs []timestamp.MustReplyMessage // responses to client stamp requests
-	Proofs     []timestamp.Proof            // Proofs tailored specifically to clients
+	RespMessgs []stamp.MustReplyMessage // responses to client stamp requests
+	Proofs     []stamp.Proof            // Proofs tailored specifically to clients
 
 	// merkle tree roots
-	LocalMTRoot timestamp.HashId // local mt root of client messages
-	MTRoot      timestamp.HashId // mt root for subtree, passed upwards
+	LocalMTRoot stamp.HashId // local mt root of client messages
+	MTRoot      stamp.HashId // mt root for subtree, passed upwards
 
 	// merkle tree roots of children in strict order
-	CMTRoots []timestamp.HashId
+	CMTRoots []stamp.HashId
 }
 
 func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
@@ -61,7 +61,7 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 	sn.peerKeys = make(map[string]abstract.Point)
 
 	sn.clients = make(map[string]*coconet.GoConn)
-	sn.Queue = make([][]timestamp.MustReplyMessage, 2)
+	sn.Queue = make([][]stamp.MustReplyMessage, 2)
 	sn.READING = 0
 	sn.PROCESSING = 1
 	return sn
@@ -75,7 +75,7 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, privKey abstract
 	sn.peerKeys = make(map[string]abstract.Point)
 
 	sn.clients = make(map[string]*coconet.GoConn)
-	sn.Queue = make([][]timestamp.MustReplyMessage, 2)
+	sn.Queue = make([][]stamp.MustReplyMessage, 2)
 	sn.READING = 0
 	sn.PROCESSING = 1
 	return sn
@@ -97,23 +97,23 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 	Queue := sn.Queue
 	READING := sn.READING
 	PROCESSING := sn.PROCESSING
-	Queue[READING] = make([]timestamp.MustReplyMessage, 0)
-	Queue[PROCESSING] = make([]timestamp.MustReplyMessage, 0)
+	Queue[READING] = make([]stamp.MustReplyMessage, 0)
+	Queue[PROCESSING] = make([]stamp.MustReplyMessage, 0)
 	sn.mux.Unlock()
 	for _, c := range sn.clients {
 		go func(c *coconet.GoConn) {
 			for {
-				tsm := timestamp.TimeStampMessage{}
+				tsm := stamp.TimeStampMessage{}
 				c.Get(&tsm)
 				switch tsm.Type {
 				default:
 					log.Println("Message of unknown type")
-				case timestamp.StampRequestType:
+				case stamp.StampRequestType:
 					// fmt.Println(sn.Name(), " getting message")
 					sn.mux.Lock()
 					READING := sn.READING
 					Queue[READING] = append(Queue[READING],
-						timestamp.MustReplyMessage{Tsm: tsm, To: c.Name()})
+						stamp.MustReplyMessage{Tsm: tsm, To: c.Name()})
 					sn.mux.Unlock()
 				}
 			}
@@ -148,7 +148,7 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 
 }
 
-func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.MustReplyMessage) {
+func (sn *SigningNode) AggregateCommits() ([]byte, []stamp.MustReplyMessage) {
 	sn.mux.Lock()
 	// get data from sn once to avoid refetching from structure
 	Queue := sn.Queue
@@ -162,13 +162,13 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.MustReplyMessage)
 	// give up if nothing to process
 	if len(Queue[PROCESSING]) == 0 {
 		sn.mux.Unlock()
-		return make([]byte, HASH_SIZE), make([]timestamp.MustReplyMessage, 0)
+		return make([]byte, HASH_SIZE), make([]stamp.MustReplyMessage, 0)
 	}
 
 	// pull out to be Merkle Tree leaves
-	leaves := make([]timestamp.HashId, 0)
+	leaves := make([]stamp.HashId, 0)
 	for _, msg := range Queue[PROCESSING] {
-		leaves = append(leaves, timestamp.HashId(msg.Tsm.Sreq.Val))
+		leaves = append(leaves, stamp.HashId(msg.Tsm.Sreq.Val))
 	}
 	sn.mux.Unlock()
 
@@ -178,23 +178,23 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []timestamp.MustReplyMessage)
 	}
 
 	// create Merkle tree for this round
-	mtRoot, proofs := timestamp.ProofTree(sn.GetSuite().Hash, leaves)
-	if timestamp.CheckLocalProofs(sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
+	mtRoot, proofs := stamp.ProofTree(sn.GetSuite().Hash, leaves)
+	if stamp.CheckLocalProofs(sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
 		log.Println("Local Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
 		panic("Local Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
 	}
 
 	sn.mux.Lock()
-	respMessgs := make([]timestamp.MustReplyMessage, 0)
+	respMessgs := make([]stamp.MustReplyMessage, 0)
 	for i, msg := range Queue[PROCESSING] {
 		respMessgs = append(respMessgs,
-			timestamp.MustReplyMessage{
+			stamp.MustReplyMessage{
 				To: msg.To,
-				Tsm: timestamp.TimeStampMessage{
-					Type:  timestamp.StampReplyType,
+				Tsm: stamp.TimeStampMessage{
+					Type:  stamp.StampReplyType,
 					ReqNo: msg.Tsm.ReqNo,
-					Srep:  &timestamp.StampReply{Sig: mtRoot, Prf: proofs[i]}}})
+					Srep:  &stamp.StampReply{Sig: mtRoot, Prf: proofs[i]}}})
 	}
 	sn.mux.Unlock()
 
