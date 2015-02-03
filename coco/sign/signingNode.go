@@ -33,7 +33,7 @@ type SigningNode struct {
 	LogTest  []byte                    // for testing purposes
 	peerKeys map[string]abstract.Point // map of all peer public keys
 
-	clients map[string]*coconet.GoConn
+	Clients map[string]*coconet.GoConn
 	nRounds int
 
 	// for aggregating messages from clients
@@ -60,7 +60,7 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 	sn.X_hat = suite.Point().Null()
 	sn.peerKeys = make(map[string]abstract.Point)
 
-	sn.clients = make(map[string]*coconet.GoConn)
+	sn.Clients = make(map[string]*coconet.GoConn)
 	sn.Queue = make([][]stamp.MustReplyMessage, 2)
 	sn.READING = 0
 	sn.PROCESSING = 1
@@ -74,7 +74,7 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract
 	sn.X_hat = suite.Point().Null()
 	sn.peerKeys = make(map[string]abstract.Point)
 
-	sn.clients = make(map[string]*coconet.GoConn)
+	sn.Clients = make(map[string]*coconet.GoConn)
 	sn.Queue = make([][]stamp.MustReplyMessage, 2)
 	sn.READING = 0
 	sn.PROCESSING = 1
@@ -100,7 +100,7 @@ func (sn *SigningNode) ListenToClients(role string, nRounds int) {
 	Queue[READING] = make([]stamp.MustReplyMessage, 0)
 	Queue[PROCESSING] = make([]stamp.MustReplyMessage, 0)
 	sn.mux.Unlock()
-	for _, c := range sn.clients {
+	for _, c := range sn.Clients {
 		go func(c *coconet.GoConn) {
 			for {
 				tsm := stamp.TimeStampMessage{}
@@ -203,7 +203,7 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []stamp.MustReplyMessage) {
 
 // Send message to client given by name
 func (sn *SigningNode) PutToClient(name string, data coconet.BinaryMarshaler) {
-	sn.clients[name].Put(data)
+	sn.Clients[name].Put(data)
 }
 
 // used for testing purposes

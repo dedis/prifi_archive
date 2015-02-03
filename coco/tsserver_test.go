@@ -22,7 +22,7 @@ func TestTSSIntegration(t *testing.T) {
 	nMessages := 4 // per round
 	nRounds := 3
 
-	hostConfig, err := oldconfig.LoadConfig("data/exconf.json")
+	hostConfig, err := oldconfig.LoadConfig("test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func createClientsForTSServer(nClients int, sn *sign.SigningNode, dir *coconet.G
 		if err != nil {
 			panic(err)
 		}
-		sn.clients[clients[i].Name()] = ngc
+		sn.Clients[clients[i].Name()] = ngc
 
 		// intialize client connection to sn
 		ngc, err = coconet.NewGoConn(dir, clients[i].Name(), sn.Name())

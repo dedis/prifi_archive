@@ -69,7 +69,7 @@ func main() {
 	if err := build("../latency_test", "386", "linux"); err != nil {
 		log.Fatal(err)
 	}
-	if err := build("../../exec", "386", "linux"); err != nil {
+	if err := build("../exec", "386", "linux"); err != nil {
 		log.Fatal(err)
 	}
 	var mu sync.Mutex
@@ -78,6 +78,7 @@ func main() {
 	var wg sync.WaitGroup
 	for _, host := range hostnames {
 		wg.Add(1)
+		log.Println("latency test:", host)
 		go func(host string) {
 			defer wg.Done()
 			if scp("yale_dissent", host, "latency_test", "latency_test") != nil {
@@ -95,7 +96,7 @@ func main() {
 				mu.Unlock()
 				return
 			}
-
+			log.Println("running latency_test:", host)
 			output, err := sshRun("yale_dissent", host, "./latency_test -hostfile hosts.txt -hostname "+host)
 			if err != nil {
 				log.Println("Failed:", host, err)
@@ -111,6 +112,7 @@ func main() {
 		}(host)
 	}
 	wg.Wait()
+	log.Println("latency test done")
 	goodhosts := make([]string, 0, len(hostnames)-len(failed))
 	for _, h := range hostnames {
 		if !failed[h] {
@@ -149,6 +151,7 @@ func main() {
 	}
 
 	for _, host := range hostnames {
+		log.Println("sending over cfg")
 		wg.Add(1)
 		go func(host string) {
 			defer wg.Done()
@@ -158,6 +161,7 @@ func main() {
 			if err = scp("yale_dissent", host, "exec", "cocoexec"); err != nil {
 				log.Fatal(err)
 			}
+			log.Println("running signing node")
 			if err = sshRunStdout("yale_dissent", host, "./cocoexec -hostname "+host+":"+port+" -config cfg.json"); err != nil {
 				log.Fatal(err)
 			}

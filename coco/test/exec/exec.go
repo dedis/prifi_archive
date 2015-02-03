@@ -18,7 +18,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/dedis/prifi/test/oldconfig"
+	"github.com/dedis/prifi/coco/sign"
+	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
 var hostname string

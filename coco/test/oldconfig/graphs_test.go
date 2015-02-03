@@ -6,11 +6,12 @@ import (
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/crypto/random"
+	"github.com/dedis/prifi/coco/sign"
 )
 
 func TestTreeFromRandomGraph(t *testing.T) {
 	//defer profile.Start(profile.CPUProfile, profile.ProfilePath(".")).Stop()
-	hc, err := loadGraph("data/wax.dat", nist.NewAES128SHA256P256(), random.Stream)
+	hc, err := loadGraph("../data/wax.dat", nist.NewAES128SHA256P256(), random.Stream)
 	if err != nil || hc == nil {
 		fmt.Println("run data/gen.py to generate graphs")
 		return
@@ -25,14 +26,14 @@ func TestTreeFromRandomGraph(t *testing.T) {
 	hc.SNodes[0].LogTest = []byte("Hello World")
 	//fmt.Println(hc.SNodes[0].NChildren())
 	//fmt.Println(hc.SNodes[0].Peers())
-	hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
+	hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 }
 
 func Benchmark1000Nodes(b *testing.B) {
-	hc, _ := LoadConfig("data/wax.json")
+	hc, _ := LoadConfig("../data/wax.json")
 	hc.SNodes[0].LogTest = []byte("Hello World")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
+		hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 	}
 }

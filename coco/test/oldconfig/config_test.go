@@ -8,14 +8,14 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-	_, err := LoadConfig("data/exconf.json")
+	_, err := LoadConfig("../data/exconf.json")
 	if err != nil {
 		t.Error("error parsing json file:", err)
 	}
 }
 
 func TestPubKeysConfig(t *testing.T) {
-	_, err := LoadConfig("data/exconf.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
+	_, err := LoadConfig("../data/exconf.json", ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Fatal("error parsing json file:", err)
 	}
@@ -40,7 +40,7 @@ func TestPubKeysOneNode(t *testing.T) {
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {
-			hc, err := LoadConfig("data/exconf_wkeys.json", ConfigOptions{ConnType: "tcp", Host: host, Hostnames: hosts})
+			hc, err := LoadConfig("../data/exconf_wkeys.json", ConfigOptions{ConnType: "tcp", Host: host, Hostnames: hosts})
 			if err != nil {
 				done <- true
 				t.Fatal(err)
@@ -58,7 +58,7 @@ func TestPubKeysOneNode(t *testing.T) {
 
 			if hc.SNodes[0].IsRoot() {
 				hc.SNodes[0].LogTest = []byte("Hello World")
-				err = hc.SNodes[0].Announce(&AnnouncementMessage{hc.SNodes[0].LogTest})
+				err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 				if err != nil {
 					t.Fatal(err)
 				}
