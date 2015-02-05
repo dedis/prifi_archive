@@ -158,7 +158,7 @@ func (sn *SigningNode) Commit() error {
 	}
 
 	// add own local mtroot to leaves
-	sn.LocalMTRoot, sn.RespMessgs = sn.AggregateCommits()
+	sn.LocalMTRoot = sn.CommitFunc()
 	leaves = append(leaves, sn.LocalMTRoot)
 
 	// add hash of whole log to leaves
@@ -186,6 +186,8 @@ func (sn *SigningNode) Commit() error {
 		sn.Proofs[i] = append(sn.Proofs[i], right)
 	}
 	// separate proofs by children (ignore proofs for HashedLog and LocalMT)
+	// change: separate local proof to because need to send it to timestamp server
+	//       save it to be able to send it in challenge
 	sn.SeparateProofs(proofs, leaves)
 
 	// check that will be able to rederive your mtroot from proofs
@@ -209,11 +211,11 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		// panic("MKT did not verify for" + sn.Name())
 	}
 
-	// Challenge verified so I should reply back
-	// to my clients
-	for _, resp := range sn.RespMessgs {
-		sn.PutToClient(resp.To, resp.Tsm)
-	}
+	// Reply to client (timestamp server)
+	// To the proof we must add the separated proof
+	// from the localMKT to out sn.MTRoot
+	sn.OnDone(chm.MTRoot, sn.MTRoot, chm.Proof)
+	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 
 	sn.c = chm.C
 	baseProof := chm.Proof
