@@ -7,7 +7,8 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/prifi/coco/stamp"
+	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/proof"
 )
 
 // All message structures defined in this package are used in the
@@ -95,15 +96,15 @@ type CommitmentMessage struct {
 	V     abstract.Point // commitment Point
 	V_hat abstract.Point // product of children's commitment points
 
-	MTRoot stamp.HashId // root of Merkle (sub)Tree
+	MTRoot hashid.HashId // root of Merkle (sub)Tree
 }
 
 type ChallengeMessage struct {
 	C abstract.Secret // challenge
 
 	// Depth  byte
-	MTRoot stamp.HashId // the very root of the big Merkle Tree
-	Proof  stamp.Proof  // Merkle Path of Proofs from root to us
+	MTRoot hashid.HashId // the very root of the big Merkle Tree
+	Proof  proof.Proof   // Merkle Path of Proofs from root to us
 	// LevelProof stamp.LevelProof // parent's LevelProof
 }
 

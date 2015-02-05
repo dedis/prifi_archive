@@ -1,4 +1,4 @@
-package stamp
+package proof
 
 import (
 	"crypto/subtle"
@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/prifi/coco/hashid"
 )
 
 type HashFunc func() hash.Hash
@@ -17,24 +18,24 @@ type HashFunc func() hash.Hash
 
 // Proof is used for Local Merkle Trees (computed based on messages from clients)
 // One Proof sufficient for one leaf in a Local Merkle Tree
-type Proof []HashId
+type Proof []hashid.HashId
 
 // LevelProof is used for the Big Merkle Tree (computed from server commits)
 // A []LevelProof from root to server is sufficient proof
-type LevelProof []HashId
+type LevelProof []hashid.HashId
 
 type hashContext struct {
 	newHash func() hash.Hash
 	hash    hash.Hash
 }
 
-func (c *hashContext) hashNode(buf []byte, vHashIds ...HashId) []byte {
+func (c *hashContext) hashNode(buf []byte, vHashIds ...hashid.HashId) []byte {
 	// unpack hashIds
-	hashIds := make([]HashId, 0)
+	hashIds := make([]hashid.HashId, 0)
 	for _, vHashId := range vHashIds {
 		hashIds = append(hashIds, vHashId)
 	}
-	sort.Sort(ByHashId(hashIds))
+	sort.Sort(hashid.ByHashId(hashIds))
 
 	if c.hash == nil {
 		c.hash = c.newHash()
@@ -72,7 +73,7 @@ func (p Proof) Check(newHash HashFunc, root, leaf []byte) bool {
 	return subtle.ConstantTimeCompare(chk, root) != 0
 }
 
-func CheckProofs(newHash HashFunc, root HashId, leaf HashId,
+func CheckProofs(newHash HashFunc, root hashid.HashId, leaf hashid.HashId,
 	proofs Proof, levelProof LevelProof) bool {
 
 	c := hashContext{newHash: newHash}
@@ -90,7 +91,7 @@ func CheckProofs(newHash HashFunc, root HashId, leaf HashId,
 	return subtle.ConstantTimeCompare(leaf, root) != 0
 }
 
-func CheckProof(newHash HashFunc, root HashId, leaf HashId, proof Proof) bool {
+func CheckProof(newHash HashFunc, root hashid.HashId, leaf hashid.HashId, proof Proof) bool {
 	// log.Println("Root", len(root), root)
 	// log.Println("Leaf", len(leaf), leaf)
 	// log.Println("Proof", proof)
@@ -101,7 +102,7 @@ func CheckProof(newHash HashFunc, root HashId, leaf HashId, proof Proof) bool {
 	return true
 }
 
-func CheckLocalProofs(newHash HashFunc, root HashId, leaves []HashId, proofs []Proof) bool {
+func CheckLocalProofs(newHash HashFunc, root hashid.HashId, leaves []hashid.HashId, proofs []Proof) bool {
 	// fmt.Println("Created mtRoot:", mtRoot)
 
 	for i := range proofs {
@@ -144,9 +145,9 @@ func sibling(i int) int {
 
 // Generate a Merkle proof tree for the given list of leaves,
 // yielding one output proof per leaf.
-func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
+func ProofTree(newHash func() hash.Hash, leaves []hashid.HashId) (hashid.HashId, []Proof) {
 	if len(leaves) == 0 {
-		return HashId(""), nil
+		return hashid.HashId(""), nil
 	}
 	// Determine the required tree depth
 	nleavesArg, nleaves := len(leaves), len(leaves)
@@ -164,7 +165,7 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 
 	// Build the Merkle tree
 	c := hashContext{newHash: newHash}
-	tree := make([][]HashId, depth+1)
+	tree := make([][]hashid.HashId, depth+1)
 	tree[depth] = leaves
 	nprev := nleaves
 	tprev := tree[depth]
@@ -173,7 +174,7 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 		nnode := nprev >> 1       // # new nodes at level i
 		// println("nprev", nprev, "nnext", nnext, "nnode", nnode)
 		// fmt.Println("nprev", nprev, "nnext", nnext, "nnode", nnode)
-		tree[d] = make([]HashId, nnext)
+		tree[d] = make([]hashid.HashId, nnext)
 		tnext := tree[d]
 		for i := 0; i < nnode; i++ {
 			tnext[i] = c.hashNode(nil, tprev[i*2], tprev[i*2+1])
@@ -191,7 +192,7 @@ func ProofTree(newHash func() hash.Hash, leaves []HashId) (HashId, []Proof) {
 	// Some towards the end may end up being shorter than depth.
 	proofs := make([]Proof, nleaves)
 	for i := 0; i < nleaves; i++ {
-		p := make([]HashId, depth)[:0]
+		p := make([]hashid.HashId, depth)[:0]
 		// p = append(p, root)
 		for d := depth - 1; d >= 0; d-- {
 			h := tree[depth-d][sibling(i>>uint(d))]
@@ -220,7 +221,7 @@ type MerklePath struct {
 // Returns a slice of a buffer obtained from HashGet.Get(),
 // which might be shared and should be considered read-only.
 func MerkleGet(suite abstract.Suite, root []byte, path MerklePath,
-	ctx HashGet) ([]byte, error) {
+	ctx hashid.HashGet) ([]byte, error) {
 
 	// Follow pointers through intermediate levels
 	blob := root
@@ -231,7 +232,7 @@ func MerkleGet(suite abstract.Suite, root []byte, path MerklePath,
 		if end > len(blob) {
 			return nil, errors.New("bad Merkle tree pointer offset")
 		}
-		id := HashId(blob[beg:end])
+		id := hashid.HashId(blob[beg:end])
 		b, e := ctx.Get(id) // Lookup the next-level blob
 		if e != nil {
 			return nil, e

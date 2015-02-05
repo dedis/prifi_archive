@@ -3,6 +3,9 @@ package stamp
 import (
 	"bytes"
 	"encoding/gob"
+
+	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/proof"
 )
 
 //"time"
@@ -17,9 +20,9 @@ type MustReplyMessage struct {
 }
 
 type LogEntry struct {
-	Seq  SeqNo  // Consecutively-incrementing log entry sequence number
-	Root HashId // Merkle root of values committed this time-step
-	Time *int64 // Optional wall-clock time this entry was created
+	Seq  SeqNo         // Consecutively-incrementing log entry sequence number
+	Root hashid.HashId // Merkle root of values committed this time-step
+	Time *int64        // Optional wall-clock time this entry was created
 }
 
 type SignedEntry struct {
@@ -31,8 +34,8 @@ type StampRequest struct {
 	Val []byte // Hash-size value to timestamp
 }
 type StampReply struct {
-	Sig []byte // Signature on the root
-	Prf Proof  // Merkle proof of value
+	Sig []byte      // Signature on the root
+	Prf proof.Proof // Merkle proof of value
 }
 
 // Request to obtain an old log-entry and, optionally,
@@ -53,12 +56,12 @@ type ProofRequest struct {
 	Old, New SeqNo // Sequence number of old and new log records
 }
 type ProofReply struct {
-	Prf Proof // Requested Merkle proof
+	Prf proof.Proof // Requested Merkle proof
 }
 
 // XXX not sure we need block requests?
 type BlockRequest struct {
-	Ids []HashId // Hash of block(s) requested
+	Ids []hashid.HashId // Hash of block(s) requested
 }
 
 type BlockReply struct {

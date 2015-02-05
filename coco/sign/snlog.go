@@ -6,7 +6,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/prifi/coco/stamp"
+	"github.com/dedis/prifi/coco/hashid"
 )
 
 // Signing Node Log for a round
@@ -18,7 +18,7 @@ type SNLog struct {
 	V_hat abstract.Point  // aggregate of commit points
 
 	// merkle tree roots of children in strict order
-	CMTRoots stamp.HashId // concatenated hash ids of children
+	CMTRoots hashid.HashId // concatenated hash ids of children
 }
 
 func (snLog SNLog) MarshalBinary() ([]byte, error) {

@@ -1,8 +1,10 @@
-package stamp
+package proof
 
 import (
 	"crypto/sha256"
 	"testing"
+
+	"github.com/dedis/prifi/coco/hashid"
 )
 
 func TestPath(t *testing.T) {
@@ -11,7 +13,7 @@ func TestPath(t *testing.T) {
 	hash := newHash()
 	n := 13
 
-	leaves := make([]HashId, n)
+	leaves := make([]hashid.HashId, n)
 	for i := range leaves {
 		leaves[i] = make([]byte, hash.Size())
 		for j := range leaves[i] {
@@ -38,7 +40,7 @@ func TestPathLong(t *testing.T) {
 	hash := newHash()
 	n := 1000 // takes 6 secons
 	for k := 0; k < n; k++ {
-		leaves := make([]HashId, k)
+		leaves := make([]hashid.HashId, k)
 		for i := range leaves {
 			leaves[i] = make([]byte, hash.Size())
 			for j := range leaves[i] {

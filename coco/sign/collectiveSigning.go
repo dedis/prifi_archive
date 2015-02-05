@@ -9,7 +9,8 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/coco/stamp"
+	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/proof"
 	// "strconv"
 	// "os"
 )
@@ -114,7 +115,7 @@ func (sn *SigningNode) initCommitCrypto() {
 	sn.Log.V_hat = sn.Log.V
 }
 
-func (sn *SigningNode) SeparateProofs(proofs []stamp.Proof, leaves []stamp.HashId) {
+func (sn *SigningNode) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId) {
 	for i := 0; i < len(sn.CMTRoots); i++ {
 		for j := 0; j < len(leaves); j++ {
 			if bytes.Compare(sn.CMTRoots[i], leaves[j]) == 0 {
@@ -135,7 +136,7 @@ func (sn *SigningNode) Commit() error {
 	}
 
 	// Commits from children are the first Merkle Tree leaves for the round
-	leaves := make([]stamp.HashId, 0)
+	leaves := make([]hashid.HashId, 0)
 	for _, messg := range messgs {
 		sm := messg.(*SigningMessage)
 		switch sm.Type {
@@ -170,17 +171,17 @@ func (sn *SigningNode) Commit() error {
 
 	// compute MT root based on Log as right child and
 	// MT of leaves as left child and send it up to parent
-	sort.Sort(stamp.ByHashId(leaves))
-	left, proofs := stamp.ProofTree(sn.GetSuite().Hash, leaves)
+	sort.Sort(hashid.ByHashId(leaves))
+	left, proofs := proof.ProofTree(sn.GetSuite().Hash, leaves)
 	right := sn.HashedLog
 
-	moreLeaves := make([]stamp.HashId, 0)
+	moreLeaves := make([]hashid.HashId, 0)
 	moreLeaves = append(moreLeaves, left, right)
-	sn.MTRoot, _ = stamp.ProofTree(sn.GetSuite().Hash, moreLeaves)
+	sn.MTRoot, _ = proof.ProofTree(sn.GetSuite().Hash, moreLeaves)
 	// fmt.Println("-----MTROOT", sn.Name(), len(sn.MTRoot), sn.MTRoot)
 
 	// Hashed Log has to come first in the proof
-	sn.Proofs = make([]stamp.Proof, len(sn.CMTRoots))
+	sn.Proofs = make([]proof.Proof, len(sn.CMTRoots))
 	for i := 0; i < len(sn.Proofs); i++ {
 		sn.Proofs[i] = append(sn.Proofs[i], right)
 	}
@@ -198,7 +199,7 @@ func (sn *SigningNode) VerifyChallenge(chm *ChallengeMessage) bool {
 	// log.Println("root root", chm.MTRoot)
 	// log.Println("my root", sn.MTRoot)
 	// log.Println("chm proof len", len(chm.Proof))
-	return stamp.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
+	return proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 }
 
 // initiated by root, propagated by all others
@@ -291,7 +292,7 @@ func (sn *SigningNode) FinalizeCommits() error {
 	// challenge = Hash(Merkle Tree Root, sn.Log.V_hat)
 	sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
 
-	proof := make([]stamp.HashId, 0)
+	proof := make([]hashid.HashId, 0)
 	err := sn.Challenge(&ChallengeMessage{
 		C:      sn.c,
 		MTRoot: sn.MTRoot,
@@ -343,7 +344,7 @@ func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstrac
 
 func (sn *SigningNode) checkChildrenProofs() {
 	// log.Println(sn.Name(), "about to check chidlren's proofs")
-	if stamp.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, sn.CMTRoots, sn.Proofs) == true {
+	if proof.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, sn.CMTRoots, sn.Proofs) == true {
 		// log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
 		panic("Children Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))

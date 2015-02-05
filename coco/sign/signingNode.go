@@ -10,6 +10,8 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/proof"
 	"github.com/dedis/prifi/coco/stamp"
 )
 
@@ -43,14 +45,14 @@ type SigningNode struct {
 	PROCESSING int
 
 	RespMessgs []stamp.MustReplyMessage // responses to client stamp requests
-	Proofs     []stamp.Proof            // Proofs tailored specifically to clients
+	Proofs     []proof.Proof            // Proofs tailored specifically to clients
 
 	// merkle tree roots
-	LocalMTRoot stamp.HashId // local mt root of client messages
-	MTRoot      stamp.HashId // mt root for subtree, passed upwards
+	LocalMTRoot hashid.HashId // local mt root of client messages
+	MTRoot      hashid.HashId // mt root for subtree, passed upwards
 
 	// merkle tree roots of children in strict order
-	CMTRoots []stamp.HashId
+	CMTRoots []hashid.HashId
 }
 
 func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
@@ -166,9 +168,9 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []stamp.MustReplyMessage) {
 	}
 
 	// pull out to be Merkle Tree leaves
-	leaves := make([]stamp.HashId, 0)
+	leaves := make([]hashid.HashId, 0)
 	for _, msg := range Queue[PROCESSING] {
-		leaves = append(leaves, stamp.HashId(msg.Tsm.Sreq.Val))
+		leaves = append(leaves, hashid.HashId(msg.Tsm.Sreq.Val))
 	}
 	sn.mux.Unlock()
 
@@ -178,8 +180,8 @@ func (sn *SigningNode) AggregateCommits() ([]byte, []stamp.MustReplyMessage) {
 	}
 
 	// create Merkle tree for this round
-	mtRoot, proofs := stamp.ProofTree(sn.GetSuite().Hash, leaves)
-	if stamp.CheckLocalProofs(sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
+	mtRoot, proofs := proof.ProofTree(sn.GetSuite().Hash, leaves)
+	if proof.CheckLocalProofs(sn.GetSuite().Hash, mtRoot, leaves, proofs) == true {
 		log.Println("Local Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
 		panic("Local Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
