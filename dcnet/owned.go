@@ -2,8 +2,7 @@ package dcnet
 
 import (
 	"bytes"
-	//"encoding/hex"
-	"crypto/cipher"
+	"crypto/rand"
 	"github.com/dedis/crypto/abstract"
 )
 
@@ -19,14 +18,17 @@ type ownedCoder struct {
 	// The sum of all our verifiable DC-nets secrets.
 	vkey abstract.Secret
 
-	// Pseudorandom DC-nets streams shared with each peer.
-	// On clients, there is one DC-nets stream per trustee.
-	// On trustees, there ois one DC-nets stream per client.
-	dcstreams []cipher.Stream
+	// Pseudorandom DC-nets ciphers shared with each peer.
+	// On clients, there is one DC-nets cipher per trustee.
+	// On trustees, there ois one DC-nets cipher per client.
+	dcciphers []abstract.Cipher
+
+	// Pseudorandom stream
+	random abstract.Cipher
 
 	// Decoding state, used only by the relay
-	point abstract.Point
-	pnull abstract.Point	// neutral/identity element
+	point  abstract.Point
+	pnull  abstract.Point // neutral/identity element
 	xorbuf []byte
 }
 
@@ -43,13 +45,12 @@ func OwnedCoderFactory() CellCoder {
 	return new(ownedCoder)
 }
 
-
 // For now just hard-code a single choice of trap-encoding word size
 // for maximum simplicity and efficiency.
 // We'll evaluate later whether we need to make it dynamic.
 const wordbits = 32
-type word uint32
 
+type word uint32
 
 ///// Common methods /////
 
@@ -69,22 +70,20 @@ func (c *ownedCoder) symmCellSize(payloadlen int) int {
 	// XXX trap encoding
 	return payloadlen
 
-/*
 	// Compute number of payload words we will need for trap-encoding.
-	words := (payloadlen*8 + wordbits-1) / wordbits
+	// words := (payloadlen*8 + wordbits-1) / wordbits
 
 	// Number of bytes worth of trap-encoded payload words,
 	// after padding the payload up to the next word boundary.
-	wordbytes := (words*wordbits+7)/8
+	// wordbytes := (words*wordbits+7)/8
 
 	// We'll need to follow the payload with an inversion bitmask,
 	// one bit per trap-encoded word.
-	invbytes := (words+7)/8
+	// invbytes := (words+7)/8
 
 	// Total cell is the verifiable DC-nets point, plus payload,
 	// plus inversion bitmask.  (XXX plus ZKP/signature.)
-	return c.suite.PointLen() + wordbytes + invbytes
-*/
+	// return c.suite.PointLen() + wordbytes + invbytes
 }
 
 func (c *ownedCoder) commonSetup(suite abstract.Suite) {
@@ -92,13 +91,16 @@ func (c *ownedCoder) commonSetup(suite abstract.Suite) {
 
 	// Divide the embeddable data in the verifiable point
 	// between an encryption key and a MAC check
-	c.keylen = suite.KeyLen()
+	c.keylen = suite.Cipher(nil).KeySize()
 	c.maclen = suite.Point().PickLen() - c.keylen
 	if c.maclen < c.keylen*3/4 {
 		panic("misconfigured ciphersuite: MAC too small!")
 	}
-}
 
+	randkey := make([]byte, suite.Cipher(nil).KeySize())
+	rand.Read(randkey)
+	c.random = suite.Cipher(randkey)
+}
 
 ///// Client methods /////
 
@@ -109,25 +111,28 @@ func (c *ownedCoder) ClientCellSize(payloadlen int) int {
 }
 
 func (c *ownedCoder) ClientSetup(suite abstract.Suite,
-				peerstreams []cipher.Stream) {
+	sharedsecrets []abstract.Cipher) {
 	c.commonSetup(suite)
+	keysize := suite.Cipher(nil).KeySize()
 
-	// Use the provided master streams to seed
+	// Use the provided shared secrets to seed
 	// a pseudorandom public-key encryption secret, and
-	// a pseudorandom DC-nets substream shared with each peer.
-	npeers := len(peerstreams)
+	// a pseudorandom DC-nets cipher shared with each peer.
+	npeers := len(sharedsecrets)
 	c.vkeys = make([]abstract.Secret, npeers)
 	c.vkey = suite.Secret()
-	c.dcstreams = make([]cipher.Stream, npeers)
-	for j := range(peerstreams) {
-		c.vkeys[j] = suite.Secret().Pick(peerstreams[j])
-		c.vkey.Add(c.vkey, c.vkeys[j])
-		c.dcstreams[j] = abstract.SubStream(suite, peerstreams[j])
+	c.dcciphers = make([]abstract.Cipher, npeers)
+	for i := range sharedsecrets {
+		c.vkeys[i] = suite.Secret().Pick(sharedsecrets[i])
+		c.vkey.Add(c.vkey, c.vkeys[i])
+		key := make([]byte, keysize)
+		sharedsecrets[i].Partial(key, key, nil)
+		c.dcciphers[i] = suite.Cipher(key)
 	}
 }
 
 func (c *ownedCoder) ClientEncode(payload []byte, payloadlen int,
-				histoream cipher.Stream) []byte {
+	history abstract.Cipher) []byte {
 
 	// Compute the verifiable blinding point for this cell.
 	// To protect clients from equivocation by relays,
@@ -140,7 +145,7 @@ func (c *ownedCoder) ClientEncode(payload []byte, payloadlen int,
 	// so that any data the client might be sending based on
 	// having seen a divergent history gets suppressed.
 	p := c.suite.Point()
-	p.Pick(nil, histoream)
+	p.Pick(nil, history)
 	p.Mul(p, c.vkey)
 
 	// Encode the payload data, if any.
@@ -155,8 +160,8 @@ func (c *ownedCoder) ClientEncode(payload []byte, payloadlen int,
 	}
 
 	// XOR the symmetric DC-net streams into the payload part
-	for i := range(c.dcstreams) {
-		c.dcstreams[i].XORKeyStream(payout, payout)
+	for i := range c.dcciphers {
+		c.dcciphers[i].XORKeyStream(payout, payout)
 	}
 
 	// Build the full cell ciphertext
@@ -174,7 +179,7 @@ func (c *ownedCoder) inlineEncode(payload []byte, p abstract.Point) {
 
 	// Embed the payload and MAC into a Point representing the message
 	hdr := append(payload, mac...)
-	mp,_ := c.suite.Point().Pick(hdr, abstract.RandomStream)
+	mp, _ := c.suite.Point().Pick(hdr, c.random)
 
 	// Add this to the blinding point we already computed to transmit.
 	p.Add(p, mp)
@@ -186,33 +191,26 @@ func (c *ownedCoder) ownerEncode(payload, payout []byte, p abstract.Point) {
 
 	// Pick a fresh random key with which to encrypt the payload
 	key := make([]byte, c.keylen)
-	abstract.RandomStream.XORKeyStream(key,key)
-	//println("key",hex.EncodeToString(key))
+	c.random.XORKeyStream(key, key)
 
 	// Encrypt the payload with it
-	c.suite.Stream(key).XORKeyStream(payout, payload)
+	c.suite.Cipher(key).XORKeyStream(payout, payload)
 
 	// Compute a MAC over the encrypted payload
 	h := c.suite.Hash()
 	h.Write(payout)
 	mac := h.Sum(nil)[:c.maclen]
-	//println("mac",hex.EncodeToString(mac))
 
 	// Combine the key and the MAC into the Point for this cell header
 	hdr := append(key, mac...)
 	if len(hdr) != p.PickLen() {
 		panic("oops, length of key+mac turned out wrong")
 	}
-	mp,_ := c.suite.Point().Pick(hdr, abstract.RandomStream)
-	//println("encoded data:",hex.EncodeToString(hdr))
-	//println("encoded point:",mp.String())
+	mp, _ := c.suite.Point().Pick(hdr, c.random)
 
 	// Add this to the blinding point we already computed to transmit.
 	p.Add(p, mp)
-	//println("blinded point:",p.String())
-	//println("dat",hex.EncodeToString(payout))
 }
-
 
 ///// Trustee methods /////
 
@@ -226,7 +224,7 @@ func (c *ownedCoder) TrusteeCellSize(payloadlen int) int {
 // May produce coder configuration info to be passed to the relay,
 // which will become available to the RelaySetup() method below.
 func (c *ownedCoder) TrusteeSetup(suite abstract.Suite,
-				clientstreams []cipher.Stream) []byte {
+	clientstreams []abstract.Cipher) []byte {
 
 	// Compute shared secrets
 	c.ClientSetup(suite, clientstreams)
@@ -241,13 +239,12 @@ func (c *ownedCoder) TrusteeEncode(payloadlen int) []byte {
 
 	// Trustees produce only symmetric DC-nets streams
 	// for the payload portion of each cell.
-	payout := make([]byte, payloadlen)	// XXX trap expansion
-	for i := range(c.dcstreams) {
-		c.dcstreams[i].XORKeyStream(payout, payout)
+	payout := make([]byte, payloadlen) // XXX trap expansion
+	for i := range c.dcciphers {
+		c.dcciphers[i].XORKeyStream(payout, payout)
 	}
 	return payout
 }
-
 
 ///// Relay methods /////
 
@@ -259,7 +256,7 @@ func (c *ownedCoder) RelaySetup(suite abstract.Suite, trusteeinfo [][]byte) {
 	ntrustees := len(trusteeinfo)
 	c.vkeys = make([]abstract.Secret, ntrustees)
 	c.vkey = suite.Secret()
-	for i := range(c.vkeys) {
+	for i := range c.vkeys {
 		c.vkeys[i] = c.suite.Secret()
 		c.vkeys[i].Decode(trusteeinfo[i])
 		c.vkey.Add(c.vkey, c.vkeys[i])
@@ -268,28 +265,14 @@ func (c *ownedCoder) RelaySetup(suite abstract.Suite, trusteeinfo [][]byte) {
 	c.pnull = c.suite.Point().Null()
 }
 
-func (c *ownedCoder) DecodeStart(payloadlen int, histoream cipher.Stream) {
+func (c *ownedCoder) DecodeStart(payloadlen int, history abstract.Cipher) {
 
 	// Compute the composite trustees-side verifiable DC-net unblinder
 	// based on the appropriate message history.
 	p := c.suite.Point()
-	p.Pick(nil, histoream)
+	p.Pick(nil, history)
 	p.Mul(p, c.vkey)
 	c.point = p
-
-/*
-	base := c.suite.Point()
-	base.Pick(nil, histoream)
-	println("base "+base.String())
-	println("vkey "+c.vkey.String())
-	println("-vkey "+c.suite.Secret().Neg(c.vkey).String())
-	p := c.suite.Point().Encrypt(base, c.vkey)
-	println("encr "+p.String())
-	c.point = p
-	p2 := c.suite.Point().Encrypt(base, c.suite.Secret().Neg(c.vkey))
-	println("-encr "+p2.String())
-	println("sum "+p2.Add(p2,p).String())
-*/
 
 	// Initialize the symmetric ciphertext XOR buffer
 	if payloadlen > c.keylen {
@@ -298,11 +281,10 @@ func (c *ownedCoder) DecodeStart(payloadlen int, histoream cipher.Stream) {
 }
 
 func (c *ownedCoder) DecodeClient(slice []byte) {
-
 	// Decode and add in the point in the slice header
 	plen := c.suite.PointLen()
 	p := c.suite.Point()
-	if err := c.suite.Point().Decode(slice[:plen]); err != nil {
+	if err := p.Decode(slice[:plen]); err != nil {
 		println("warning: error decoding point")
 	}
 	c.point.Add(c.point, p)
@@ -334,17 +316,15 @@ func (c *ownedCoder) DecodeCell() []byte {
 	}
 
 	// Decode the header from the decrypted point.
-	hdr,err := c.point.Data()
+	hdr, err := c.point.Data()
 	if err != nil || len(hdr) < c.maclen {
 		println("warning: undecipherable cell header")
-		return nil	// XXX differentiate from no transmission?
+		return nil // XXX differentiate from no transmission?
 	}
-	//println("decoded point:",c.point.String())
-	//println("decoded data:",hex.EncodeToString(hdr))
 
-	if c.xorbuf == nil {	// short inline cell
+	if c.xorbuf == nil { // short inline cell
 		return c.inlineDecode(hdr)
-	} else {		// long payload cell
+	} else { // long payload cell
 		return c.ownerDecode(hdr)
 	}
 }
@@ -378,10 +358,7 @@ func (c *ownedCoder) ownerDecode(hdr []byte) []byte {
 	}
 	key := hdr[:keylen]
 	mac := hdr[keylen:]
-	//println("key",hex.EncodeToString(key))
-	//println("mac",hex.EncodeToString(mac))
 	dat := c.xorbuf
-	//println("dat",hex.EncodeToString(dat))
 
 	// Check the MAC on the still-encrypted data
 	h := c.suite.Hash()
@@ -393,7 +370,6 @@ func (c *ownedCoder) ownerDecode(hdr []byte) []byte {
 	}
 
 	// Decrypt and return the payload data
-	c.suite.Stream(key).XORKeyStream(dat, dat)
+	c.suite.Cipher(key).XORKeyStream(dat, dat)
 	return dat
 }
-
