@@ -11,7 +11,7 @@ from cells.null import NullDecoder, NullEncoder
 from certify.null import NullAccumulator, NullCertifier
 
 from net.multicast import MulticastReader
-from utils import verbosity
+from net.utils import verbosity
 import net.message as m
 
 ### Upstream traffic

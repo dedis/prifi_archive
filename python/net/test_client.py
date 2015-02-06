@@ -1,9 +1,8 @@
 import argparse
 import asyncio
 import random
-import net.socks5 as socks5
+import socks5
 import time
-import config
 import os
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 

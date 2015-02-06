@@ -5,7 +5,7 @@ import random
 from elgamal import ElGamal
 from Crypto.Util.number import bytes_to_long, GCD, inverse, long_to_bytes
 
-from utils import string_to_long
+from net.utils import string_to_long
 
 def verdict_1024():
     p = string_to_long("fd8a16fc2afdaeb2ea62b66b355f73e6c2fc4349bf4551793"
@@ -87,7 +87,7 @@ class SchnorrGroup(ElGamal):
         if isinstance(data, int):
             data = long_to_bytes(data)
         tmp_data = bytearray(b'\xff' + data + b'0\xff')
-        
+
         pad = 0
         while pad < 256:
             element = bytes_to_long(tmp_data)

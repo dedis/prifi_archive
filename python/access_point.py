@@ -9,7 +9,7 @@ from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 from net.multicast import MulticastWriter
 import net.message as m
-from utils import verbosity
+from net.utils import verbosity
 import config
 
 logger = logging.getLogger(__file__.rpartition('/')[2])

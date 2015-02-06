@@ -14,7 +14,7 @@ import dcnet
 
 from cells.null import NullDecoder, NullEncoder
 from certify.null import NullAccumulator, NullCertifier
-from utils import verbosity
+from net.utils import verbosity
 import net.message as m
 
 from elgamal import PublicKey, PrivateKey
@@ -232,7 +232,7 @@ def main():
     relay.sync(None)
 
     # server socket
-    print("Starting relay on {}".format(opts.port))
+    logger.info("Starting relay on {}".format(opts.port))
     ssock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     ssock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     ssock.bind(("0.0.0.0", opts.port))
@@ -279,6 +279,8 @@ def main():
                                         m.overhead[m.RELAY_DOWNSTREAM]
         else:
             sys.exit("Illegal node number or connection type")
+        logging.info("{} clients, {} trustees, {} access points connected"
+                     .format(ccli, ctru, caps))
     print("All clients, trustees, and access points connected")
 
     upstreams = {}

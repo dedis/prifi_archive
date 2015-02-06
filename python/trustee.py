@@ -7,7 +7,7 @@ import logging
 import config
 import dcnet
 import net.message as m
-from utils import verbosity
+from net.utils import verbosity
 logger = logging.getLogger(__file__.rpartition('/')[2])
 logger.addHandler(logging.NullHandler())
 
@@ -43,7 +43,8 @@ def main():
         conn.connect((system_config.relay.host, system_config.relay.port))
         conn.send(node)
     except OSError as e:
-        sys.exit("Could not connect to relay: {}".format(e))
+        logger.critical("Could not connect to relay: {}".format(e))
+        sys.exit()
 
     # stream the ciphertext to the relay
     nsize = m.sizes[m.RELAY_TNEXT]

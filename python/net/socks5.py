@@ -7,7 +7,7 @@ from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 from utils import verbosity
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__file__.rpartition('/')[2])
 logger.addHandler(logging.NullHandler())
 
 VERSION = b'\x05'

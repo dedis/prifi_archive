@@ -4,7 +4,7 @@ import logging
 import socket
 import threading
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__file__.rpartition('/')[2])
 logger.addHandler(logging.NullHandler())
 
 class DummyServer:
