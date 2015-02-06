@@ -74,24 +74,6 @@ func (p Proof) Check(newHash HashFunc, root, leaf []byte) bool {
 	return subtle.ConstantTimeCompare(chk, root) != 0
 }
 
-func CheckProofs(newHash HashFunc, root hashid.HashId, leaf hashid.HashId,
-	proofs Proof, levelProof LevelProof) bool {
-
-	c := hashContext{newHash: newHash}
-	// level proof has many leaves
-	completeLevelProof := append(levelProof, leaf)
-	leaf = c.hashNode(nil, completeLevelProof...)
-
-	// checking with proof upwards, 2 hashids per hashnode
-	for _, proof := range proofs {
-		// level proof has the leaves for that level
-		leaf = c.hashNode(nil, leaf, proof)
-	}
-
-	// last computed leaf should equal the root
-	return subtle.ConstantTimeCompare(leaf, root) != 0
-}
-
 func CheckProof(newHash HashFunc, root hashid.HashId, leaf hashid.HashId, proof Proof) bool {
 	// log.Println("Root", len(root), root)
 	// log.Println("Leaf", len(leaf), leaf)

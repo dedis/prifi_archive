@@ -110,18 +110,16 @@ func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
 
 		s.mux.Lock()
-		for _, msg := range s.Queue[s.PROCESSING] {
-			// combProof := make(proof.Proof, len(s.Proofs[i]))
-			// copy(combProof, s.Proofs[i])
-
-			// my proof to get to s.Root
+		for i, msg := range s.Queue[s.PROCESSING] {
+			// proof to get from s.Root to big root
 			combProof := make(proof.Proof, len(p))
 			copy(combProof, p)
 
-			// combProof = append(combProof, p...) // gives us  SNRoot
+			// add my proof to get from a leaf message to my root s.Root
+			combProof = append(combProof, s.Proofs[i]...)
 
-			// proof.CheckProof(s.Signer.(*sign.SigningNode).GetSuite().Hash, SNRoot, s.Leaves[i], combProof)
-			proof.CheckProof(s.Signer.(*sign.SigningNode).GetSuite().Hash, SNRoot, s.Root, combProof)
+			// proof that i can get from a leaf message to the big root
+			proof.CheckProof(s.Signer.(*sign.SigningNode).GetSuite().Hash, SNRoot, s.Leaves[i], combProof)
 
 			respMessg := TimeStampMessage{
 				Type:  StampReplyType,
@@ -149,7 +147,9 @@ func (s *Server) AggregateCommits() []byte {
 	// give up if nothing to process
 	if len(Queue[PROCESSING]) == 0 {
 		s.mux.Unlock()
-		return make([]byte, hashid.Size)
+		s.Root = make([]byte, hashid.Size)
+		s.Proofs = make([]proof.Proof, 1)
+		return s.Root
 	}
 
 	// pull out to be Merkle Tree leaves

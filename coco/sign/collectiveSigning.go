@@ -206,33 +206,30 @@ func (sn *SigningNode) Commit() error {
 	return sn.actOnCommits()
 }
 
-func (sn *SigningNode) VerifyChallenge(chm *ChallengeMessage) bool {
-	// check my submitted MTRoot against the root MTRoot via the proofs
-	// log.Println(sn.Name(), "verifying big root own root", len(chm.MTRoot), len(sn.MTRoot))
-	// log.Println("root root", chm.MTRoot)
-	// log.Println("my root", sn.MTRoot)
-	// log.Println("chm proof len", len(chm.Proof))
-	return proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
+func (sn *SigningNode) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
+	// proof from client to my root
+	proof.CheckProof(sn.GetSuite().Hash, sn.MTRoot, sn.LocalMTRoot, sn.Proofs[sn.LocalMTRootIndex])
+	// proof from my root to big root
+	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
+	// proof from client to big root
+	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.LocalMTRoot, proofForClient)
 }
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
-	if sn.VerifyChallenge(chm) != true {
-		log.Println("MKT did not verify for", sn.Name())
-		// panic("MKT did not verify for" + sn.Name())
-	}
-
-	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 	// Reply to client (timestamp server)
-	// To the proof we must add the separated proof
-	// from the localMKT to out sn.MTRoot
 	if sn.DoneFunc != nil {
-		// on last position in sn.Proofs we have
-		// proof for localMKT leaf to sn.MTRoot
-		proofForClient := make(proof.Proof, len(sn.Proofs[sn.LocalMTRootIndex]))
-		copy(proofForClient, sn.Proofs[sn.LocalMTRootIndex])
-		// add rest of proof up to root
-		proofForClient = append(proofForClient, chm.Proof...)
+		proofForClient := make(proof.Proof, len(chm.Proof))
+		copy(proofForClient, chm.Proof)
+
+		// To the proof from our root to big root we must add the separated proof
+		// from the localMKT of the lcient to our root
+		proofForClient = append(proofForClient, sn.Proofs[sn.LocalMTRootIndex]...)
+
+		// if want to verify paritial and full proofs
+		sn.VerifyAllProofs(chm, proofForClient)
+
+		// 'reply' to client
 		sn.DoneFunc(chm.MTRoot, sn.MTRoot, proofForClient)
 	}
 
@@ -368,6 +365,11 @@ func (sn *SigningNode) checkChildrenProofs() {
 	cmtAndLocal := make([]hashid.HashId, len(sn.CMTRoots))
 	copy(cmtAndLocal, sn.CMTRoots)
 	cmtAndLocal = append(cmtAndLocal, sn.LocalMTRoot)
+
+	if sn.Name() == "host1" {
+		log.Println(sn.Name(), "LMT", sn.LocalMTRoot, "Proofs", sn.Proofs[len(sn.Proofs)-1])
+		log.Println("sn.MTRoot", sn.MTRoot)
+	}
 
 	// log.Println(sn.Name(), "about to check chidlren's proofs")
 	if proof.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, cmtAndLocal, sn.Proofs) == true {
