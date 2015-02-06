@@ -110,15 +110,18 @@ func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
 
 		s.mux.Lock()
-		for i, msg := range s.Queue[s.PROCESSING] {
-			combProof := make(proof.Proof, len(s.Proofs[i]))
-			copy(combProof, s.Proofs[i])
+		for _, msg := range s.Queue[s.PROCESSING] {
+			// combProof := make(proof.Proof, len(s.Proofs[i]))
+			// copy(combProof, s.Proofs[i])
 
-			combProof = append(combProof, p...)    // gives us LocalMTRoot of SN
-			combProof = append(combProof, LogHash) // gives us  MTRoot of SN
-			combProof = append(combProof, p...)    // gives us  SNRoot
+			// my proof to get to s.Root
+			combProof := make(proof.Proof, len(p))
+			copy(combProof, p)
 
-			proof.CheckProof(s.Signer.(*sign.SigningNode).GetSuite().Hash, SNRoot, s.Leaves[i], combProof)
+			// combProof = append(combProof, p...) // gives us  SNRoot
+
+			// proof.CheckProof(s.Signer.(*sign.SigningNode).GetSuite().Hash, SNRoot, s.Leaves[i], combProof)
+			proof.CheckProof(s.Signer.(*sign.SigningNode).GetSuite().Hash, SNRoot, s.Root, combProof)
 
 			respMessg := TimeStampMessage{
 				Type:  StampReplyType,

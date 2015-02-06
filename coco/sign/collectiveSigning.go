@@ -124,6 +124,12 @@ func (sn *SigningNode) SeparateProofs(proofs []proof.Proof, leaves []hashid.Hash
 			}
 		}
 	}
+
+	for j := 0; j < len(leaves); j++ {
+		if bytes.Compare(sn.LocalMTRoot, leaves[j]) == 0 {
+			sn.Proofs[sn.LocalMTRootIndex] = append(sn.Proofs[sn.LocalMTRootIndex], proofs[j]...)
+		}
+	}
 }
 
 func (sn *SigningNode) Commit() error {
@@ -150,7 +156,8 @@ func (sn *SigningNode) Commit() error {
 		}
 	}
 	// keep children commits twice (in sn and in sn.Log for the moment)
-	sn.CMTRoots = leaves
+	sn.CMTRoots = make([]hashid.HashId, len(leaves))
+	copy(sn.CMTRoots, leaves)
 	// concatenate children mtroots in one binary blob for easy marshalling
 	sn.Log.CMTRoots = make([]byte, 0)
 	for _, leaf := range leaves {
@@ -158,8 +165,13 @@ func (sn *SigningNode) Commit() error {
 	}
 
 	// add own local mtroot to leaves
-	sn.LocalMTRoot = sn.CommitFunc()
+	if sn.CommitFunc != nil {
+		sn.LocalMTRoot = sn.CommitFunc()
+	} else {
+		sn.LocalMTRoot = make([]byte, hashid.Size)
+	}
 	leaves = append(leaves, sn.LocalMTRoot)
+	sn.LocalMTRootIndex = len(leaves) - 1
 
 	// add hash of whole log to leaves
 	sn.HashedLog, err = sn.hashLog()
@@ -181,13 +193,12 @@ func (sn *SigningNode) Commit() error {
 	// fmt.Println("-----MTROOT", sn.Name(), len(sn.MTRoot), sn.MTRoot)
 
 	// Hashed Log has to come first in the proof
-	sn.Proofs = make([]proof.Proof, len(sn.CMTRoots))
+	sn.Proofs = make([]proof.Proof, len(sn.CMTRoots)+1) // +1 for local proof
 	for i := 0; i < len(sn.Proofs); i++ {
 		sn.Proofs[i] = append(sn.Proofs[i], right)
 	}
 	// separate proofs by children (ignore proofs for HashedLog and LocalMT)
-	// change: separate local proof to because need to send it to timestamp server
-	//       save it to be able to send it in challenge
+	// also separate local proof need to send it to timestamp server
 	sn.SeparateProofs(proofs, leaves)
 
 	// check that will be able to rederive your mtroot from proofs
@@ -211,14 +222,23 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		// panic("MKT did not verify for" + sn.Name())
 	}
 
+	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 	// Reply to client (timestamp server)
 	// To the proof we must add the separated proof
 	// from the localMKT to out sn.MTRoot
-	sn.DoneFunc(chm.MTRoot, sn.MTRoot, chm.Proof)
-	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
+	if sn.DoneFunc != nil {
+		// on last position in sn.Proofs we have
+		// proof for localMKT leaf to sn.MTRoot
+		proofForClient := make(proof.Proof, len(sn.Proofs[sn.LocalMTRootIndex]))
+		copy(proofForClient, sn.Proofs[sn.LocalMTRootIndex])
+		// add rest of proof up to root
+		proofForClient = append(proofForClient, chm.Proof...)
+		sn.DoneFunc(chm.MTRoot, sn.MTRoot, proofForClient)
+	}
 
 	sn.c = chm.C
-	baseProof := chm.Proof
+	baseProof := make(proof.Proof, len(chm.Proof))
+	copy(baseProof, chm.Proof)
 
 	// for each child, create levelProof for this(root) level
 	// embed it in SigningMessage, and send it
@@ -345,9 +365,13 @@ func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstrac
 }
 
 func (sn *SigningNode) checkChildrenProofs() {
+	cmtAndLocal := make([]hashid.HashId, len(sn.CMTRoots))
+	copy(cmtAndLocal, sn.CMTRoots)
+	cmtAndLocal = append(cmtAndLocal, sn.LocalMTRoot)
+
 	// log.Println(sn.Name(), "about to check chidlren's proofs")
-	if proof.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, sn.CMTRoots, sn.Proofs) == true {
-		// log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
+	if proof.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, cmtAndLocal, sn.Proofs) == true {
+		log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
 		panic("Children Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
 	}

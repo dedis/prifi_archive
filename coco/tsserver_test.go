@@ -1,4 +1,4 @@
-package coco
+package coco_test
 
 import (
 	"strconv"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/stamp"
@@ -33,13 +34,18 @@ func TestTSSIntegration(t *testing.T) {
 	var wg sync.WaitGroup
 	// Connect all TSServers to their clients, except for root TSServer
 	ncps := 3 // # clients per TSServer
-	clientsLists := make([][]*stamp.Client, len(hostConfig.SNodes[1:]))
-	for i, sn := range hostConfig.SNodes[1:] {
-		clientsLists[i] = createClientsForTSServer(ncps, sn,
-			sn.Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
+	stampers := make([]*stamp.Server, len(hostConfig.SNodes))
+	for i := range stampers {
+		stampers[i] = stamp.NewServer(hostConfig.SNodes[i])
 	}
-	for i, sn := range hostConfig.SNodes[1:] {
-		go sn.ListenToClients("regular", nRounds)
+	clientsLists := make([][]*stamp.Client, len(hostConfig.SNodes[1:]))
+	for i, s := range stampers[1:] {
+		clientsLists[i] = createClientsForTSServer(ncps, s,
+			// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+			s.Signer.(*sign.SigningNode).Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
+	}
+	for i, s := range stampers[1:] {
+		go s.ListenToClients("regular", nRounds)
 
 		// clients := createClientsForTSServer(ncps, sn,
 		// 	sn.Host.(*coconet.GoHost).GetDirectory(), 0+i*ncps)
@@ -49,15 +55,15 @@ func TestTSSIntegration(t *testing.T) {
 			go client.ShowHistory()
 		}
 		wg.Add(1)
-		go func(clients []*stamp.Client, nRounds int, nMessages int, sn *sign.SigningNode) {
+		go func(clients []*stamp.Client, nRounds int, nMessages int, s *stamp.Server) {
 			defer wg.Done()
 			// log.Println("clients Talk")
-			clientsTalk(clients, nRounds, nMessages, sn)
+			clientsTalk(clients, nRounds, nMessages, s)
 			// log.Println("Clients done Talking")
-		}(clientsLists[i], nRounds, nMessages, sn)
+		}(clientsLists[i], nRounds, nMessages, s)
 
 	}
-	go hostConfig.SNodes[0].ListenToClients("root", nRounds)
+	go stampers[0].ListenToClients("root", nRounds)
 	wg.Wait()
 
 	// After clients receive messages back we need a better way
@@ -66,30 +72,30 @@ func TestTSSIntegration(t *testing.T) {
 }
 
 // Create nClients for the TSServer, with first client associated with number fClient
-func createClientsForTSServer(nClients int, sn *sign.SigningNode, dir *coconet.GoDirectory, fClient int) []*stamp.Client {
+func createClientsForTSServer(nClients int, s *stamp.Server, dir *coconet.GoDirectory, fClient int) []*stamp.Client {
 	clients := make([]*stamp.Client, 0, nClients)
 	for i := 0; i < nClients; i++ {
 		clients = append(clients, stamp.NewClient("client"+strconv.Itoa(fClient+i), dir))
 
 		// intialize TSServer conn to client
-		ngc, err := coconet.NewGoConn(dir, sn.Name(), clients[i].Name())
+		ngc, err := coconet.NewGoConn(dir, s.Name(), clients[i].Name())
 		if err != nil {
 			panic(err)
 		}
-		sn.Clients[clients[i].Name()] = ngc
+		s.Clients[clients[i].Name()] = ngc
 
 		// intialize client connection to sn
-		ngc, err = coconet.NewGoConn(dir, clients[i].Name(), sn.Name())
+		ngc, err = coconet.NewGoConn(dir, clients[i].Name(), s.Name())
 		if err != nil {
 			panic(err)
 		}
-		clients[i].Sns[sn.Name()] = ngc
+		clients[i].Sns[s.Name()] = ngc
 	}
 
 	return clients
 }
 
-func clientsTalk(clients []*stamp.Client, nRounds, nMessages int, sn *sign.SigningNode) {
+func clientsTalk(clients []*stamp.Client, nRounds, nMessages int, s *stamp.Server) {
 	// have client send messages
 	for r := 0; r < nRounds; r++ {
 		var wg sync.WaitGroup
@@ -98,10 +104,10 @@ func clientsTalk(clients []*stamp.Client, nRounds, nMessages int, sn *sign.Signi
 				// TODO: messages should be sent hashed eventually
 				messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
 				wg.Add(1)
-				go func(client *stamp.Client, messg []byte, sn *sign.SigningNode, i int) {
+				go func(client *stamp.Client, messg []byte, s *stamp.Server, i int) {
 					defer wg.Done()
-					client.TimeStamp(messg, sn.Name())
-				}(client, messg, sn, r)
+					client.TimeStamp(messg, s.Name())
+				}(client, messg, s, r)
 			}
 		}
 		// wait between rounds

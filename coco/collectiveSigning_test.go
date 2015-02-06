@@ -1,10 +1,11 @@
-package coco
+package coco_test
 
 import (
 	"strconv"
 	"testing"
 
 	"github.com/dedis/crypto/nist"
+	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/test/oldconfig"

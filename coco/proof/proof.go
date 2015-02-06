@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash"
 	"sort"
+	"strconv"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/hashid"
@@ -116,7 +117,7 @@ func CheckLocalProofs(newHash HashFunc, root hashid.HashId, leaves []hashid.Hash
 		// 	continue
 		// }
 		if proofs[i].Check(newHash, root, leaves[i]) == false {
-			panic("check failed at leaf")
+			panic("check failed at leaf" + strconv.Itoa(i))
 		}
 	}
 	return true

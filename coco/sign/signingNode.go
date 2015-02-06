@@ -39,7 +39,8 @@ type SigningNode struct {
 	MTRoot hashid.HashId // mt root for subtree, passed upwards
 
 	// mtRoot before adding HashedLog
-	LocalMTRoot hashid.HashId
+	LocalMTRoot      hashid.HashId
+	LocalMTRootIndex int
 
 	// merkle tree roots of children in strict order
 	CMTRoots []hashid.HashId
