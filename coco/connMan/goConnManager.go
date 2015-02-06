@@ -2,7 +2,7 @@ package connMan
 
 import (
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coco"
+	"github.com/dedis/prifi/coconet"
 )
 
 /* This class serves as the connection manager for the GoConn connection
@@ -12,9 +12,9 @@ import (
  */
 type GoConnManager struct {
 	// Tracks the connections to various peers
-	peerMap map[abstract.Point]*coco.GoConn
+	peerMap map[abstract.Point]*coconet.GoConn
 	// This directory facilitates using go channels for testing purposes.
-	dir *coco.GoDirectory
+	dir *coconet.GoDirectory
 	// The public key of the server that owns this manager.
 	pubKey abstract.Point
 }
@@ -29,11 +29,11 @@ type GoConnManager struct {
  * Returns:
  * 	An initialized GoConnManager
  */
-func (gcm *GoConnManager) Init(key abstract.Point, goDir *coco.GoDirectory) *GoConnManager {
+func (gcm *GoConnManager) Init(key abstract.Point, goDir *coconet.GoDirectory) *GoConnManager {
 	gcm.pubKey = key
-	gcm.peerMap = make(map[abstract.Point]*coco.GoConn)
+	gcm.peerMap = make(map[abstract.Point]*coconet.GoConn)
 	if goDir == nil {
-		gcm.dir = coco.NewGoDirectory()
+		gcm.dir = coconet.NewGoDirectory()
 	} else {
 		gcm.dir = goDir
 	}
@@ -49,7 +49,7 @@ func (gcm *GoConnManager) Init(key abstract.Point, goDir *coco.GoDirectory) *GoC
  * 	An error denoting whether creating the new connection was successful.
  */
 func (gcm *GoConnManager) AddConn(theirKey abstract.Point) error {
-	newConn, err := coco.NewGoConn(gcm.dir, gcm.pubKey.String(), theirKey.String())
+	newConn, err := coconet.NewGoConn(gcm.dir, gcm.pubKey.String(), theirKey.String())
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (gcm *GoConnManager) AddConn(theirKey abstract.Point) error {
 }
 
 // Returns the GoDirectory of the manager.
-func (gcm *GoConnManager) GetDir() *coco.GoDirectory {
+func (gcm *GoConnManager) GetDir() *coconet.GoDirectory {
 	return gcm.dir
 }
 
@@ -71,7 +71,7 @@ func (gcm *GoConnManager) GetDir() *coco.GoDirectory {
  * Returns:
  * 	An error denoting whether the put was successfull
  */
-func (gcm *GoConnManager) Put(p abstract.Point, data coco.BinaryMarshaler) error {
+func (gcm *GoConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
 	return gcm.peerMap[p].Put(data)
 }
 
@@ -84,6 +84,6 @@ func (gcm *GoConnManager) Put(p abstract.Point, data coco.BinaryMarshaler) error
  * Returns:
  *	An error denoting whether the get to the buffer was successfull
  */
-func (gcm *GoConnManager) Get(p abstract.Point, bum coco.BinaryUnmarshaler) error {
+func (gcm *GoConnManager) Get(p abstract.Point, bum coconet.BinaryUnmarshaler) error {
 	return gcm.peerMap[p].Get(bum)
 }

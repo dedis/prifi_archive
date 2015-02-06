@@ -2,7 +2,7 @@ package connMan
 
 import (
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coco"
+	"github.com/dedis/prifi/coconet"
 )
 
 /* The ConnManager is responsible for managing multiple connections. It allows
@@ -11,8 +11,8 @@ import (
  */
 type ConnManager interface {
 	// Sends a message to a specific peer.
-	Put(abstract.Point, coco.BinaryMarshaler) error
+	Put(abstract.Point, coconet.BinaryMarshaler) error
 
 	// Receive a message from the desired peer.
-	Get(abstract.Point, coco.BinaryUnmarshaler) error
+	Get(abstract.Point, coconet.BinaryUnmarshaler) error
 }
