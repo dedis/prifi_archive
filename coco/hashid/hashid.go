@@ -5,6 +5,8 @@ import (
 	"errors"
 )
 
+const Size int = 32 // TODO: change the way this is known
+
 type HashId []byte // Cryptographic hash content-IDs
 
 // for sorting arrays of HashIds

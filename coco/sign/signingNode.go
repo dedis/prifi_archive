@@ -3,11 +3,14 @@ package sign
 import (
 	"bytes"
 	"crypto/cipher"
+	"log"
 	"time"
 
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/proof"
 )
 
 var ROUND_TIME time.Duration = 1 * time.Second
@@ -35,8 +38,30 @@ type SigningNode struct {
 	// own big merkle subtree root
 	MTRoot hashid.HashId // mt root for subtree, passed upwards
 
+	// mtRoot before adding HashedLog
+	LocalMTRoot hashid.HashId
+
 	// merkle tree roots of children in strict order
 	CMTRoots []hashid.HashId
+	Proofs   []proof.Proof
+
+	CommitFunc coco.CommitFunc
+	DoneFunc   coco.DoneFunc
+}
+
+func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {
+	sn.CommitFunc = cf
+}
+
+func (sn *SigningNode) RegisterDoneFunc(df coco.DoneFunc) {
+	sn.DoneFunc = df
+}
+
+func (sn *SigningNode) StartSigningRound() {
+	sn.nRounds++
+	// send an announcement message to all other TSServers
+	log.Println("I", sn.Name(), "Sending an annoucement")
+	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round")})
 }
 
 func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {

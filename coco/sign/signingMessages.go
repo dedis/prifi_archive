@@ -16,8 +16,6 @@ import (
 // Over the network they are sent as byte slices, so each message
 // has its own MarshlBinary and UnmarshalBinary method
 
-const HASH_SIZE int = 32 // TODO: change the way this is known
-
 type MessageType int
 
 const (
@@ -146,10 +144,10 @@ func (cm CommitmentMessage) MarshalBinary() ([]byte, error) {
 }
 
 func (cm *CommitmentMessage) UnmarshalBinary(data []byte) error {
-	b := bytes.NewBuffer(data[:len(data)-HASH_SIZE])
+	b := bytes.NewBuffer(data[:len(data)-hashid.Size])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
 
-	cm.MTRoot = data[len(data)-HASH_SIZE:]
+	cm.MTRoot = data[len(data)-hashid.Size:]
 	return err
 }
 
@@ -173,24 +171,24 @@ func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
 	rem := data[cm.C.Len():] // after secret
 
-	if len(rem) < HASH_SIZE {
+	if len(rem) < hashid.Size {
 		return nil
 	}
-	cm.MTRoot = rem[:HASH_SIZE] // after mt root
-	rem = rem[HASH_SIZE:]
+	cm.MTRoot = rem[:hashid.Size] // after mt root
+	rem = rem[hashid.Size:]
 
-	nHashIds := len(rem) / HASH_SIZE
-	if len(rem)%HASH_SIZE != 0 {
-		log.Println("BAD not div by Hash_size", len(rem)%HASH_SIZE)
+	nHashIds := len(rem) / hashid.Size
+	if len(rem)%hashid.Size != 0 {
+		log.Println("BAD not div by hashid.Size", len(rem)%hashid.Size)
 	}
 
 	// log.Println("nhashIds", nHashIds)
 	cm.Proof = cm.Proof[:0]
 	for i := 0; i < nHashIds; i++ {
-		if len(rem) < (i+1)*HASH_SIZE {
+		if len(rem) < (i+1)*hashid.Size {
 			return nil
 		}
-		cm.Proof = append(cm.Proof, rem[i*HASH_SIZE:(i+1)*HASH_SIZE])
+		cm.Proof = append(cm.Proof, rem[i*hashid.Size:(i+1)*hashid.Size])
 	}
 
 	return err

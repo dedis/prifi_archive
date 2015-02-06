@@ -214,7 +214,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 	// Reply to client (timestamp server)
 	// To the proof we must add the separated proof
 	// from the localMKT to out sn.MTRoot
-	sn.OnDone(chm.MTRoot, sn.MTRoot, chm.Proof)
+	sn.DoneFunc(chm.MTRoot, sn.MTRoot, chm.Proof)
 	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 
 	sn.c = chm.C
