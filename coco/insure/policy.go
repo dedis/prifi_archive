@@ -3,7 +3,26 @@ package insure
 import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
+	"github.com/dedis/crypto/edwards"
+	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/coco/connMan"
 )
+
+const (
+	// The minimum number of private shares needed in order to reconstruct the
+	// private secret. This parameter must be known in order to properly decode
+	// public polynomial commits. This also ensures a uniform policy across nodes.
+	TSHARES int = 10
+)
+
+// This is the group that will be used for all shares. This should be treated as
+// a constant.
+var INSURE_GROUP abstract.Group = new(edwards.ExtendedCurve).Init(
+	edwards.Param25519(), false)
+
+// This will be the group that all public keys are derived from. This will be
+// needed when marshalling/unmarshalling messages.
+var KEY_SUITE abstract.Suite = nist.NewAES128SHA256P256()
 
 /* This is an abstract interface for an insurance policy. Coco servers
  * will each carry their own policies and will be required to take one out
@@ -26,7 +45,7 @@ type Policy interface {
 	// with them (where t <= r <= n), the function returns the new policy.
 	TakeOutPolicy(keyPair config.KeyPair, serverList []abstract.Point,
 		selectInsurers func([]abstract.Point, int) ([]abstract.Point, bool),
-		t, n int) (*Policy, bool)
+		cman connMan.ConnManager, t, n int) (*Policy, bool)
 
 	// Returns the list of insurers for the policy
 	GetInsurers() []abstract.Point
@@ -34,7 +53,7 @@ type Policy interface {
 	// Returns a list of receipts from each of its insurers verifying that
 	// it has taken out a policy with them.
 	// TODO determine what type of receipt I want to use.
-	GetPolicyProof() int
+	GetPolicyProof() []PolicyApprovedMessage
 
 	/*   The arrays returned by GetInsurers and GetPolicyProof should
 	 *   satisfy:

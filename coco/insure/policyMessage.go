@@ -2,11 +2,11 @@ package insure
 
 import (
 	"bytes"
+	"encoding/gob"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/anon"
 	"github.com/dedis/crypto/config"
-	"github.com/dedis/crypto/nist"
 	"github.com/dedis/crypto/poly"
 	"github.com/dedis/crypto/random"
 )
@@ -53,21 +53,19 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 	var err error
 	switch pm.Type {
 	case RequestInsurance:
-		pm.rim = &RequestInsuranceMessage{}
-		err = pm.rim.UnmarshalBinary(msgBytes)
+		pm.rim, err = pm.rim.UnmarshalBinary(msgBytes)
 	case PolicyApproved:
-		pm.pam = &PolicyApprovedMessage{}
-		err = pm.pam.UnmarshalBinary(msgBytes)
+		pm.pam, err = pm.pam.UnmarshalBinary(msgBytes)
 	}
 	return err
 }
 
 type RequestInsuranceMessage struct {
 	// The private share to give to the insurer
-	share abstract.Secret
+	Share abstract.Secret
 
 	// The public polynomial used to verify the share
-	pubCommit poly.PubPoly
+	PubCommit *poly.PubPoly
 }
 
 /* Creates a new insurance request message
@@ -80,31 +78,37 @@ type RequestInsuranceMessage struct {
  *	A new insurance request message.
  */
 func (msg *RequestInsuranceMessage) createMessage(s abstract.Secret,
-	pc poly.PubPoly) *RequestInsuranceMessage {
-	msg.share = s
-	msg.pubCommit = pc
+	pc *poly.PubPoly) *RequestInsuranceMessage {
+	msg.Share = s
+	msg.PubCommit = pc
 	return msg
 }
 
-func (msg *RequestInsuranceMessage) MarshalBinary() ([]byte, error) {
+func (msg RequestInsuranceMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
-	abstract.Write(&b, msg, nist.NewAES128SHA256P256())
+	abstract.Write(&b, &msg, INSURE_GROUP)
 	return b.Bytes(), nil
 }
 
-func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) error {
+
+func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsuranceMessage, error) {
+	msg.PubCommit = new(poly.PubPoly)
+	msg.PubCommit.Init(INSURE_GROUP, TSHARES, nil)
 	b := bytes.NewBuffer(data)
-	err := abstract.Read(b, msg, nist.NewAES128SHA256P256())
-	return err
+	err := abstract.Read(b, msg, INSURE_GROUP)
+	return msg, err
 }
 
 type PolicyApprovedMessage struct {
+	// The public key of the insurer.
+	PubKey abstract.Point
+
 	// The message stating that the insurer has approved of being an insurer
-	message []byte
+	Message []byte
 
 	// A certificate certifying that an insurer has indeed approved of
 	// the policy and signed with their own key.
-	signature []byte
+	Signature []byte
 }
 
 /* Creates a new policy-approved message
@@ -122,29 +126,64 @@ type PolicyApprovedMessage struct {
  *
  *	It will always be of this form for easy validation.
  */
-func (msg *PolicyApprovedMessage) createMessage(kp config.KeyPair,
+func (msg *PolicyApprovedMessage) createMessage(kp *config.KeyPair,
 	theirKey abstract.Point) *PolicyApprovedMessage {
 
 	set := anon.Set{kp.Public}
 	approveMsg := kp.Public.String() + " insures " + theirKey.String()
-	msg.message = []byte(approveMsg)
-	msg.signature = anon.Sign(kp.Suite, random.Stream, msg.message,
+	msg.PubKey  = kp.Public
+	msg.Message = []byte(approveMsg)
+	msg.Signature = anon.Sign(kp.Suite, random.Stream, msg.Message,
 		set, nil, 0, kp.Secret)
 	return msg
 }
 
 // Encodes a policy message for sending over the Internet
 func (msg *PolicyApprovedMessage) MarshalBinary() ([]byte, error) {
-	b := bytes.Buffer{}
-	abstract.Write(&b, msg, nist.NewAES128SHA256P256())
-	return b.Bytes(), nil
+	var b bytes.Buffer
+	enc := gob.NewEncoder(&b)
+	err := enc.Encode(msg.PubKey.Encode())
+	if err != nil {
+		return b.Bytes(), err
+	}
+	err = enc.Encode(msg.Message)
+	if err != nil {
+		return b.Bytes(), err
+	}
+	err = enc.Encode(msg.Signature)
+	if err != nil {
+		return b.Bytes(), err
+	}
+	return b.Bytes(), err
+
+//	Encoding with the crypto library (waiting on issue to be fixed)
+//	b := bytes.Buffer{}
+//	abstract.Write(&b, msg, KEY_SUITE)
+//	return b.Bytes(), nil
 }
 
 // Decodes a policy message for sending over the Internet
-func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) error {
+func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) (*PolicyApprovedMessage, error) {
 	b := bytes.NewBuffer(data)
-	err := abstract.Read(b, msg, nist.NewAES128SHA256P256())
-	return err
+	temp := []byte{}
+	dec := gob.NewDecoder(b)
+	err := dec.Decode(&temp)
+	if err != nil {
+		return msg, err
+	}
+	msg.PubKey = KEY_SUITE.Point()
+	msg.PubKey.Decode(temp)
+	err = dec.Decode(&msg.Message)
+	if err != nil {
+		return msg, err
+	}
+	err = dec.Decode(&msg.Signature)
+	return msg, err
+
+//	Decoding with the crypto library (waiting on issue to be fixed)
+//	b := bytes.NewBuffer(data)
+//	err := abstract.Read(b, msg, KEY_SUITE)
+//	return msg, err
 }
 
 /* Verifies that a PolicyApproveMessage has been properly constructed.
@@ -159,10 +198,10 @@ func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) error {
  */
 
 func (msg *PolicyApprovedMessage) verifyCertificate(su abstract.Suite,
-	insuredKey, insurerKey abstract.Point) bool {
+	insuredKey abstract.Point) bool {
 
-	set := anon.Set{insurerKey}
-	_, err := anon.Verify(su, msg.message, set, nil, msg.signature)
-	correctMsg := insurerKey.String() + " insures " + insuredKey.String()
-	return err == nil && correctMsg == string(msg.message)
+	set := anon.Set{msg.PubKey}
+	_, err := anon.Verify(su, msg.Message, set, nil, msg.Signature)
+	correctMsg := msg.PubKey.String() + " insures " + insuredKey.String()
+	return err == nil && correctMsg == string(msg.Message)
 }
