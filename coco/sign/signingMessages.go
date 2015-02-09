@@ -169,7 +169,7 @@ func (cm *ChallengeMessage) UnmarshalBinary(data []byte) error {
 	// log.Println("Decoding challenge with", len(data))
 	b := bytes.NewBuffer(data[:32])
 	err := abstract.Read(b, cm, nist.NewAES128SHA256P256())
-	rem := data[cm.C.Len():] // after secret
+	rem := data[cm.C.MarshalSize():] // after secret
 
 	if len(rem) < hashid.Size {
 		return nil

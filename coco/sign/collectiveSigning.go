@@ -356,8 +356,9 @@ func (sn *SigningNode) hashLog() ([]byte, error) {
 
 // Returns a secret that depends on on a message and a point
 func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstract.Secret {
-	c := suite.Cipher(p.Encode(), abstract.More{})
-	c.Crypt(nil, message)
+	pb, _ := p.MarshalBinary()
+	c := suite.Cipher(pb)
+	c.Message(nil, nil, message)
 	return suite.Secret().Pick(c)
 }
 

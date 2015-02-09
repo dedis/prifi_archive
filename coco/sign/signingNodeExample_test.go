@@ -1,10 +1,11 @@
-package sign
+package sign_test
 
 import (
 	"log"
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
 )
 
 func ExampleReadWrite() {
@@ -14,9 +15,9 @@ func ExampleReadWrite() {
 	testBytes := []byte("test")
 
 	s := suite.Secret().Pick(rand)
-	m := TestMessage{S: s, Bytes: testBytes}
+	m := sign.TestMessage{S: s, Bytes: testBytes}
 	h := coconet.NewGoHost("exampleHost", nil)
-	sn := NewSigningNode(h, suite, rand)
+	sn := sign.NewSigningNode(h, suite, rand)
 
 	dataBytes := sn.Write(m)
 	dataInterface, err := sn.Read(dataBytes)
@@ -25,7 +26,7 @@ func ExampleReadWrite() {
 	}
 
 	switch mDecoded := dataInterface.(type) {
-	case TestMessage:
+	case sign.TestMessage:
 		log.Println(mDecoded)
 	default:
 		log.Fatal("Decoding didn't work")

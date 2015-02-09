@@ -141,9 +141,11 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *sign.SigningNode) error {
 	if p == nil {
 		return errors.New("node does not exist")
 	}
+	prk, _ := p.PrivKey.MarshalBinary()
+	pbk, _ := p.PubKey.MarshalBinary()
 	fmt.Fprint(b, "{\"name\":", "\""+p.Name()+"\",")
-	fmt.Fprint(b, "\"prikey\":", "\""+string(hex.EncodeToString(p.PrivKey.Encode()))+"\",")
-	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(p.PubKey.Encode()))+"\",")
+	fmt.Fprint(b, "\"prikey\":", "\""+string(hex.EncodeToString(prk))+"\",")
+	fmt.Fprint(b, "\"pubkey\":", "\""+string(hex.EncodeToString(pbk))+"\",")
 
 	// recursively format children
 	fmt.Fprint(b, "\"children\":[")
@@ -222,7 +224,7 @@ func ConstructTree(
 			return nil, err
 		}
 		pubkey = suite.Point()
-		err = pubkey.Decode(encoded)
+		err = pubkey.UnmarshalBinary(encoded)
 		if err != nil {
 			log.Print("failed to decode point from hex")
 			return nil, err
@@ -234,7 +236,7 @@ func ConstructTree(
 			return nil, err
 		}
 		prikey = suite.Secret()
-		err = prikey.Decode(encoded)
+		err = prikey.UnmarshalBinary(encoded)
 		if err != nil {
 			log.Print("failed to decode point from hex")
 			return nil, err

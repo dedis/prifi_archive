@@ -29,8 +29,9 @@ func (t *Tree) GenKeys(suite abstract.Suite, rand abstract.Cipher) {
 	t.TraverseTree(func(t *Tree) {
 		PrivKey := suite.Secret().Pick(rand)
 		PubKey := suite.Point().Mul(nil, PrivKey)
-
-		t.PriKey = string(hex.EncodeToString(PrivKey.Encode()))
-		t.PubKey = string(hex.EncodeToString(PubKey.Encode()))
+		prk, _ := PrivKey.MarshalBinary()
+		pbk, _ := PubKey.MarshalBinary()
+		t.PriKey = string(hex.EncodeToString(prk))
+		t.PubKey = string(hex.EncodeToString(pbk))
 	})
 }
