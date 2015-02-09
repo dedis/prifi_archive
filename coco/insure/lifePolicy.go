@@ -92,9 +92,15 @@ func (lp *LifePolicy) GetPolicyProof() *list.List {
  * selection function.
  */
 
-func (lp *LifePolicy) TakeOutPolicy(keyPair config.KeyPair, serverList []abstract.Point,
+func (lp *LifePolicy) TakeOutPolicy(keyPair *config.KeyPair, serverList []abstract.Point,
 	selectInsurers func([]abstract.Point, int) ([]abstract.Point, bool),
-	cman connMan.ConnManager, t int, n int) (*LifePolicy, bool) {
+	cman connMan.ConnManager, n int) (*LifePolicy, bool) {
+
+	// If n is less than the expected number of shares to reconstruct the
+	// secret, fail
+	if n < TSHARES {
+		return lp, false
+	}
 
 	// Initialize the policy.
 	ok := true
@@ -103,13 +109,13 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair config.KeyPair, serverList []abstrac
 	// If we have no selectInsurers function, use the basic algorithm.
 	if selectInsurers == nil {
 		lp.insurersList, ok = selectInsurersBasic(serverList, n)
-		if !ok {
+		if !ok || len(lp.insurersList) < n {
 			return nil, ok
 		}
 	} else {
 		// Otherwise use the function provided.
 		lp.insurersList, ok = selectInsurers(serverList, n)
-		if !ok {
+		if !ok || len(lp.insurersList) < n {
 			return nil, ok
 		}
 	}
@@ -119,7 +125,7 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair config.KeyPair, serverList []abstrac
 	// Create a new polynomial from the private key where t
 	// shares are needed to reconstruct the secret. Then, split it
 	// into secret shares and create the public polynomial.
-	pripoly := new(poly.PriPoly).Pick(keyPair.Suite, t,
+	pripoly := new(poly.PriPoly).Pick(keyPair.Suite, TSHARES,
 		keyPair.Secret, random.Stream)
 	prishares := new(poly.PriShares).Split(pripoly, n)
 	pubPoly := new(poly.PubPoly).Commit(pripoly, keyPair.Public)
@@ -127,12 +133,11 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair config.KeyPair, serverList []abstrac
 
 	// Send each share off to the appropriate server.
 	for i := 0; i < n; i++ {
-		requestMsg := new(RequestInsuranceMessage).createMessage(prishares.Share(i), pubPoly)
+		requestMsg := new(RequestInsuranceMessage).createMessage(keyPair.Public, prishares.Share(i), pubPoly)
 		cman.Put(lp.insurersList[i], new(PolicyMessage).createRIMessage(requestMsg))	
 	}
 
-	insurersListTemp := make([]abstract.Point, len(lp.insurersList))
-	copy(insurersListTemp, lp.insurersList)
+	receivedList := make([]bool, len(lp.insurersList))
 
 	// TODO: Add a timeout such that this process will end after a certain
 	// time and a new batch of insurers can be picked.
@@ -143,7 +148,7 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair config.KeyPair, serverList []abstrac
 		for i := 0; i < n; i++ {
 			// If we have already received a certificate for this
 			// node, move on.
-			if insurersListTemp[i] == nil {
+			if receivedList[i] == true {
 				continue
 			}
 		
@@ -155,7 +160,7 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair config.KeyPair, serverList []abstrac
 			// temporary insurer list.
 			if msg.Type == PolicyApproved &&
 			   msg.getPAM().verifyCertificate(keyPair.Suite, keyPair.Public){
-				insurersListTemp[i] = nil
+				receivedList[i] = true
 				lp.proofList.PushBack(msg.getPAM())
 			}
 		}
