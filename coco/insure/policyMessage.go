@@ -107,6 +107,9 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 // insurance policy will send these to other nodes to ask them to become
 // insurers.
 type RequestInsuranceMessage struct {
+	// The public key of the insured.
+	PubKey abstract.Point
+
 	// The private share to give to the insurer
 	Share abstract.Secret
 
@@ -123,8 +126,9 @@ type RequestInsuranceMessage struct {
  * Returns:
  *	A new insurance request message.
  */
-func (msg *RequestInsuranceMessage) createMessage(s abstract.Secret,
+func (msg *RequestInsuranceMessage) createMessage(p abstract.Point, s abstract.Secret,
 	pc *poly.PubPoly) *RequestInsuranceMessage {
+	msg.PubKey = p
 	msg.Share = s
 	msg.PubCommit = pc
 	return msg
@@ -144,6 +148,7 @@ func (msg *RequestInsuranceMessage) MarshalBinary() ([]byte, error) {
 func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsuranceMessage, error) {
 	msg.PubCommit = new(poly.PubPoly)
 	msg.PubCommit.Init(INSURE_GROUP, TSHARES, nil)
+	msg.PubKey = KEY_SUITE.Point()
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, msg, INSURE_GROUP)
 	return msg, err
