@@ -9,7 +9,7 @@ var configFile config.File
 
 // Dissent config file format
 type ConfigData struct {
-	Keys config.Keys		// Info on configured key-pairs
+	Keys config.Keys // Info on configured key-pairs
 }
 
 var configData ConfigData
@@ -21,14 +21,13 @@ func readConfig() error {
 	configFile.Load("dissent", &configData)
 
 	// Read or create our public/private keypairs
-	pairs,err := configFile.Keys(&configData.Keys, suites.All(),
-					defaultSuite)
+	pairs, err := configFile.Keys(&configData.Keys, suites.All(),
+		defaultSuite)
 	if err != nil {
 		return err
 	}
 	keyPairs = pairs
-	println("Loaded",len(pairs),"key-pairs")
+	println("Loaded", len(pairs), "key-pairs")
 
 	return nil
 }
-

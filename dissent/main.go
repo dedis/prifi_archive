@@ -1,66 +1,50 @@
 package main
 
 import (
-	"io"
-	"os"
-	"net"
-	"fmt"
-	"log"
-	"flag"
 	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"os"
 	//"net/http"
 	"os/signal"
 	//"encoding/hex"
 	"encoding/binary"
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/crypto/test"
-	"github.com/dedis/crypto/openssl"
-	"dissent/dcnet"
+	//"github.com/dedis/crypto/openssl"
+	"github.com/dedis/prifi/dcnet"
 	//"github.com/elazarl/goproxy"
 )
 
-
-var suite = nist.NewAES128SHA256P256()	// XXX should only have defaultSuite
+var suite = nist.NewAES128SHA256P256() // XXX should only have defaultSuite
 //var suite = openssl.NewAES128SHA256P256()
 //var suite = ed25519.NewAES128SHA256Ed25519()
 var factory = dcnet.OwnedCoderFactory
 
 var defaultSuite = suite
 
-const nclients = 5
+const nclients = 1
 const ntrustees = 3
 
-const relayhost = "localhost:9876"	// XXX
+const relayhost = "localhost:9876" // XXX
 const bindport = ":9876"
 
 //const payloadlen = 1200			// upstream cell size
-const payloadlen = 256			// upstream cell size
+const payloadlen = 256 // upstream cell size
 
-const downcellmax = 16*1024		// downstream cell max size
+const downcellmax = 16 * 1024 // downstream cell max size
 
 // Number of bytes of cell payload to reserve for connection header, length
 const proxyhdrlen = 6
 
 type connbuf struct {
-	cno int			// connection number
-	buf []byte		// data buffer
+	cno int    // connection number
+	buf []byte // data buffer
 }
 
-
-
-func testSuites() {
-	test.TestSuite(nist.NewAES128SHA256QR512())
-	test.TestSuite(nist.NewAES128SHA256P256())
-	test.TestSuite(openssl.NewAES128SHA256P256())
-}
-
-func testDCNet() {
-	//dcnet.TestCellCoder(suite, factory)
-	dcnet.TestCellCoder(suite, factory)
-}
-
-
-func min(x,y int) int {
+func min(x, y int) int {
 	if x < y {
 		return x
 	}
@@ -68,8 +52,8 @@ func min(x,y int) int {
 }
 
 type chanreader struct {
-	b []byte
-	c <-chan []byte
+	b   []byte
+	c   <-chan []byte
 	eof bool
 }
 
@@ -79,9 +63,9 @@ func (cr *chanreader) Read(p []byte) (n int, err error) {
 	}
 	blen := len(cr.b)
 	if blen == 0 {
-		cr.b = <-cr.c		// read next block from channel
+		cr.b = <-cr.c // read next block from channel
 		blen = len(cr.b)
-		if blen == 0 {		// channel sender signaled EOF
+		if blen == 0 { // channel sender signaled EOF
 			cr.eof = true
 			return 0, io.EOF
 		}
@@ -107,15 +91,15 @@ const (
 
 // Address types
 const (
-	addrIPv4 = 0x01
+	addrIPv4   = 0x01
 	addrDomain = 0x03
-	addrIPv6 = 0x04
+	addrIPv6   = 0x04
 )
 
 // Commands
 const (
-	cmdConnect = 0x01
-	cmdBind = 0x02
+	cmdConnect   = 0x01
+	cmdBind      = 0x02
 	cmdAssociate = 0x03
 )
 
@@ -137,7 +121,7 @@ var errAddressTypeNotSupported = errors.New("SOCKS5 address type not supported")
 // Read an IPv4 or IPv6 address from an io.Reader and return it as a string
 func readIP(r io.Reader, len int) (string, error) {
 	addr := make([]byte, len)
-	_,err := io.ReadFull(r, addr)
+	_, err := io.ReadFull(r, addr)
 	if err != nil {
 		return "", err
 	}
@@ -156,14 +140,14 @@ func readSocksAddr(cr io.Reader, addrtype int) (string, error) {
 
 		// First read the 1-byte domain name length
 		dlen := [1]byte{}
-		_,err := io.ReadFull(cr, dlen[:])
+		_, err := io.ReadFull(cr, dlen[:])
 		if err != nil {
 			return "", err
 		}
 
 		// Now the domain name itself
 		domain := make([]byte, int(dlen[0]))
-		_,err = io.ReadFull(cr, domain)
+		_, err = io.ReadFull(cr, domain)
 		if err != nil {
 			return "", err
 		}
@@ -181,7 +165,7 @@ func socksRelayDown(cno int, conn net.Conn, downstream chan<- connbuf) {
 	//log.Printf("socksRelayDown: cno %d\n", cno)
 	for {
 		buf := make([]byte, downcellmax)
-		n,err := conn.Read(buf)
+		n, err := conn.Read(buf)
 		buf = buf[:n]
 		//fmt.Printf("socksRelayDown: %d bytes on cno %d\n", n, cno)
 		//fmt.Print(hex.Dump(buf[:n]))
@@ -191,7 +175,7 @@ func socksRelayDown(cno int, conn net.Conn, downstream chan<- connbuf) {
 
 		// Connection error or EOF?
 		if n == 0 {
-			log.Println("socksRelayDown: "+err.Error())
+			log.Println("socksRelayDown: " + err.Error())
 			conn.Close()
 			return
 		}
@@ -207,15 +191,15 @@ func socksRelayUp(cno int, conn net.Conn, upstream <-chan []byte) {
 		//fmt.Printf("socksRelayUp: %d bytes on cno %d\n", len(buf), cno)
 		//fmt.Print(hex.Dump(buf))
 
-		if dlen == 0 {		// connection close indicator
+		if dlen == 0 { // connection close indicator
 			log.Printf("socksRelayUp: closing stream %d\n", cno)
 			conn.Close()
 			return
 		}
 		//println(hex.Dump(buf))
-		n,err := conn.Write(buf)
+		n, err := conn.Write(buf)
 		if n != dlen {
-			log.Printf("socksRelayUp: "+err.Error())
+			log.Printf("socksRelayUp: " + err.Error())
 			conn.Close()
 			return
 		}
@@ -225,11 +209,11 @@ func socksRelayUp(cno int, conn net.Conn, upstream <-chan []byte) {
 func socks5Reply(cno int, err error, addr net.Addr) connbuf {
 
 	buf := make([]byte, 4)
-	buf[0] = byte(5)	// version
+	buf[0] = byte(5) // version
 
 	// buf[1]: Reply field
 	switch err {
-	case nil:	// succeeded
+	case nil: // succeeded
 		buf[1] = repSucceeded
 	// XXX recognize some specific errors
 	default:
@@ -243,21 +227,21 @@ func socks5Reply(cno int, err error, addr net.Addr) connbuf {
 		host6 := tcpaddr.IP.To16()
 		port := [2]byte{}
 		binary.BigEndian.PutUint16(port[:], uint16(tcpaddr.Port))
-		if host4 != nil {		// it's an IPv4 address
+		if host4 != nil { // it's an IPv4 address
 			buf[3] = addrIPv4
 			buf = append(buf, host4...)
 			buf = append(buf, port[:]...)
-		} else if host6 != nil {	// it's an IPv6 address
+		} else if host6 != nil { // it's an IPv6 address
 			buf[3] = addrIPv6
 			buf = append(buf, host6...)
 			buf = append(buf, port[:]...)
-		} else {			// huh???
+		} else { // huh???
 			log.Printf("SOCKS: neither IPv4 nor IPv6 addr?")
 			addr = nil
 			err = errAddressTypeNotSupported
 		}
 	}
-	if addr == nil {	// attach a null IPv4 address
+	if addr == nil { // attach a null IPv4 address
 		buf[3] = addrIPv4
 		buf = append(buf, make([]byte, 4+2)...)
 	}
@@ -280,7 +264,7 @@ func socks5Reply(cno int, err error, addr net.Addr) connbuf {
 
 // Main loop of our socks relay-side SOCKS proxy.
 func relaySocksProxy(cno int, upstream <-chan []byte,
-				downstream chan<- connbuf) {
+	downstream chan<- connbuf) {
 
 	// Send downstream close indication when we bail for whatever reason
 	defer func() {
@@ -292,9 +276,9 @@ func relaySocksProxy(cno int, upstream <-chan []byte,
 
 	// Read the SOCKS client's version/methods header
 	vernmeth := [2]byte{}
-	_,err := io.ReadFull(cr, vernmeth[:])
+	_, err := io.ReadFull(cr, vernmeth[:])
 	if err != nil {
-		log.Printf("SOCKS: no version/method header: "+err.Error())
+		log.Printf("SOCKS: no version/method header: " + err.Error())
 		return
 	}
 	//log.Printf("SOCKS proxy: version %d nmethods %d \n",
@@ -306,9 +290,9 @@ func relaySocksProxy(cno int, upstream <-chan []byte,
 	}
 	nmeth := int(vernmeth[1])
 	methods := make([]byte, nmeth)
-	_,err = io.ReadFull(cr, methods)
+	_, err = io.ReadFull(cr, methods)
 	if err != nil {
-		log.Printf("SOCKS: short version/method header: "+err.Error())
+		log.Printf("SOCKS: short version/method header: " + err.Error())
 		return
 	}
 
@@ -331,9 +315,9 @@ func relaySocksProxy(cno int, upstream <-chan []byte,
 
 	// Receive client request
 	req := make([]byte, 4)
-	_,err = io.ReadFull(cr, req)
+	_, err = io.ReadFull(cr, req)
 	if err != nil {
-		log.Printf("SOCKS: missing client request: "+err.Error())
+		log.Printf("SOCKS: missing client request: " + err.Error())
 		return
 	}
 	if req[0] != byte(ver) {
@@ -342,13 +326,13 @@ func relaySocksProxy(cno int, upstream <-chan []byte,
 	}
 	host, err := readSocksAddr(cr, int(req[3]))
 	if err != nil {
-		log.Printf("SOCKS: invalid destination address: "+err.Error())
+		log.Printf("SOCKS: invalid destination address: " + err.Error())
 		return
 	}
 	portb := [2]byte{}
-	_,err = io.ReadFull(cr, portb[:])
+	_, err = io.ReadFull(cr, portb[:])
 	if err != nil {
-		log.Printf("SOCKS: invalid destination port: "+err.Error())
+		log.Printf("SOCKS: invalid destination port: " + err.Error())
 		return
 	}
 	port := binary.BigEndian.Uint16(portb[:])
@@ -359,10 +343,10 @@ func relaySocksProxy(cno int, upstream <-chan []byte,
 	//log.Printf("SOCKS proxy: request %d for %s\n", cmd, hostport)
 	switch cmd {
 	case cmdConnect:
-		conn,err := net.Dial("tcp", hostport)
+		conn, err := net.Dial("tcp", hostport)
 		if err != nil {
-			log.Printf("SOCKS: error connecting to destionation: "+
-					err.Error())
+			log.Printf("SOCKS: error connecting to destionation: " +
+				err.Error())
 			downstream <- socks5Reply(cno, err, nil)
 			return
 		}
@@ -381,13 +365,13 @@ func relaySocksProxy(cno int, upstream <-chan []byte,
 
 func relayNewConn(cno int, downstream chan<- connbuf) chan<- []byte {
 
-/* connect to local HTTP proxy
+	/* connect to local HTTP proxy
 	conn,err := net.Dial("tcp", "localhost:8888")
 	if err != nil {
 		panic("error dialing proxy: "+err.Error())
 	}
 	go relayReadConn(cno, conn, downstream)
-*/
+	*/
 
 	upstream := make(chan []byte)
 	go relaySocksProxy(cno, upstream, downstream)
@@ -395,17 +379,17 @@ func relayNewConn(cno int, downstream chan<- connbuf) chan<- []byte {
 }
 
 func openRelay(ctno int) net.Conn {
-	conn,err := net.Dial("tcp", relayhost)
+	conn, err := net.Dial("tcp", relayhost)
 	if err != nil {
-		panic("Can't connect to relay:"+err.Error())
+		panic("Can't connect to relay:" + err.Error())
 	}
 
 	// Tell the relay our client or trustee number
-	b := make([]byte,1)
+	b := make([]byte, 1)
 	b[0] = byte(ctno)
-	n,err := conn.Write(b)
+	n, err := conn.Write(b)
 	if n < 1 || err != nil {
-		panic("Error writing to socket:"+err.Error())
+		panic("Error writing to socket:" + err.Error())
 	}
 
 	return conn
@@ -413,14 +397,14 @@ func openRelay(ctno int) net.Conn {
 
 func clientListen(listenport string, newconn chan<- net.Conn) {
 	log.Printf("Listening on port %s\n", listenport)
-	lsock,err := net.Listen("tcp", listenport)
+	lsock, err := net.Listen("tcp", listenport)
 	if err != nil {
 		log.Printf("Can't open listen socket at port %s: %s",
-				listenport, err.Error())
+			listenport, err.Error())
 		return
 	}
 	for {
-		conn,err := lsock.Accept()
+		conn, err := lsock.Accept()
 		log.Printf("Accept on port %s\n", listenport)
 		if err != nil {
 			//log.Printf("Accept error: %s", err.Error())
@@ -432,12 +416,12 @@ func clientListen(listenport string, newconn chan<- net.Conn) {
 }
 
 func clientConnRead(cno int, conn net.Conn, upload chan<- []byte,
-		close chan<- int) {
+	close chan<- int) {
 
 	for {
 		// Read up to a cell worth of data to send upstream
 		buf := make([]byte, payloadlen)
-		n,err := conn.Read(buf[proxyhdrlen:])
+		n, err := conn.Read(buf[proxyhdrlen:])
 
 		// Encode the connection number and actual data length
 		binary.BigEndian.PutUint32(buf[0:4], uint32(cno))
@@ -452,10 +436,10 @@ func clientConnRead(cno int, conn net.Conn, upload chan<- []byte,
 			if err == io.EOF {
 				println("clientUpload: EOF, closing")
 			} else {
-				println("clientUpload: "+err.Error())
+				println("clientUpload: " + err.Error())
 			}
 			conn.Close()
-			close <- cno	// signal that channel is closed
+			close <- cno // signal that channel is closed
 			return
 		}
 	}
@@ -467,9 +451,9 @@ func clientReadRelay(rconn net.Conn, fromrelay chan<- connbuf) {
 	totbytes := uint64(0)
 	for {
 		// Read the next downstream/broadcast cell from the relay
-		n,err := io.ReadFull(rconn, hdr[:])
+		n, err := io.ReadFull(rconn, hdr[:])
 		if n != len(hdr) {
-			panic("clientReadRelay: "+err.Error())
+			panic("clientReadRelay: " + err.Error())
 		}
 		cno := int(binary.BigEndian.Uint32(hdr[0:4]))
 		dlen := int(binary.BigEndian.Uint16(hdr[4:6]))
@@ -480,13 +464,13 @@ func clientReadRelay(rconn net.Conn, fromrelay chan<- connbuf) {
 
 		// Read the downstream data itself
 		buf := make([]byte, dlen)
-		n,err = io.ReadFull(rconn, buf)
+		n, err = io.ReadFull(rconn, buf)
 		if n != dlen {
-			panic("clientReadRelay: "+err.Error())
+			panic("clientReadRelay: " + err.Error())
 		}
 
 		// Pass the downstream cell to the main loop
-		fromrelay <- connbuf{cno,buf}
+		fromrelay <- connbuf{cno, buf}
 
 		totcells++
 		totbytes += uint64(dlen)
@@ -498,44 +482,44 @@ func clientReadRelay(rconn net.Conn, fromrelay chan<- connbuf) {
 func startClient(clino int) {
 	fmt.Printf("startClient %d\n", clino)
 
-	tg := dcnet.TestSetup(suite, factory, nclients, ntrustees)
+	tg := dcnet.TestSetup(nil, suite, factory, nclients, ntrustees)
 	me := tg.Clients[clino]
 	clisize := me.Coder.ClientCellSize(payloadlen)
 
 	rconn := openRelay(clino)
 	fromrelay := make(chan connbuf)
 	go clientReadRelay(rconn, fromrelay)
-	println("client",clino,"connected")
+	println("client", clino, "connected")
 
 	// We're the "slot owner" - start an HTTP proxy
 	newconn := make(chan net.Conn)
 	upload := make(chan []byte)
 	close := make(chan int)
-	conns := make([]net.Conn, 1)	// reserve conns[0]
+	conns := make([]net.Conn, 1) // reserve conns[0]
 	if clino == 0 {
-		go clientListen(":1080",newconn)
+		go clientListen(":1080", newconn)
 		//go clientListen(":8080",newconn)
 	}
 
 	// Client/proxy main loop
-	upq := make([][]byte,0)
+	upq := make([][]byte, 0)
 	totupcells := uint64(0)
 	totupbytes := uint64(0)
 	for {
 		select {
-		case conn := <-newconn:		// New TCP connection
+		case conn := <-newconn: // New TCP connection
 			cno := len(conns)
 			conns = append(conns, conn)
 			//fmt.Printf("new conn %d %p %p\n", cno, conn, conns[cno])
 			go clientConnRead(cno, conn, upload, close)
 
-		case buf := <-upload:		// Upstream data from client
+		case buf := <-upload: // Upstream data from client
 			upq = append(upq, buf)
 
-		case cno := <-close:		// Connection closed
+		case cno := <-close: // Connection closed
 			conns[cno] = nil
 
-		case cbuf := <-fromrelay:	// Downstream cell from relay
+		case cbuf := <-fromrelay: // Downstream cell from relay
 			//print(".")
 
 			cno := cbuf.cno
@@ -549,7 +533,7 @@ func startClient(clino int) {
 				//println(hex.Dump(buf))
 				if blen > 0 {
 					// Data from relay for this connection
-					n,err := conns[cno].Write(buf)
+					n, err := conns[cno].Write(buf)
 					if n < blen {
 						panic("Write to client: " +
 							err.Error())
@@ -557,7 +541,7 @@ func startClient(clino int) {
 				} else {
 					// Relay indicating EOF on this conn
 					fmt.Printf("upstream closed conn %d",
-							cno);
+						cno)
 					conns[cno].Close()
 				}
 			}
@@ -571,16 +555,15 @@ func startClient(clino int) {
 				upq = upq[1:]
 				//fmt.Printf("^ %d\n", len(p))
 			}
-			slice := me.Coder.ClientEncode(p, payloadlen,
-							me.Histoream)
+			slice := me.Coder.ClientEncode(p, payloadlen, me.History)
 			//println("client slice")
 			//println(hex.Dump(slice))
 			if len(slice) != clisize {
 				panic("client slice wrong size")
 			}
-			n,err := rconn.Write(slice)
+			n, err := rconn.Write(slice)
 			if n != len(slice) {
-				panic("Write to relay conn: "+err.Error())
+				panic("Write to relay conn: " + err.Error())
 			}
 
 			totupcells++
@@ -592,11 +575,11 @@ func startClient(clino int) {
 }
 
 func startTrustee(tno int) {
-	tg := dcnet.TestSetup(suite, factory, nclients, ntrustees)
+	tg := dcnet.TestSetup(nil, suite, factory, nclients, ntrustees)
 	me := tg.Trustees[tno]
 
 	conn := openRelay(tno | 0x80)
-	println("trustee",tno,"connected")
+	println("trustee", tno, "connected")
 
 	// Just generate ciphertext cells and stream them to the server.
 	for {
@@ -606,9 +589,9 @@ func startTrustee(tno int) {
 		// Send it to the relay
 		//println("trustee slice")
 		//println(hex.Dump(tslice))
-		n,err := conn.Write(tslice)
+		n, err := conn.Write(tslice)
 		if n < len(tslice) || err != nil {
-			panic("can't write to socket: "+err.Error())
+			panic("can't write to socket: " + err.Error())
 		}
 	}
 }
@@ -616,18 +599,15 @@ func startTrustee(tno int) {
 func interceptCtrlC() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func(){
+	go func() {
 		for sig := range c {
-			panic("signal: "+sig.String())	// with stacktrace
+			panic("signal: " + sig.String()) // with stacktrace
 		}
 	}()
 }
 
 func main() {
 	interceptCtrlC()
-
-	//testSuites()
-	//testDCNet()
 
 	isrel := flag.Bool("relay", false, "Start relay node")
 	iscli := flag.Int("client", -1, "Start client node")
@@ -643,7 +623,6 @@ func main() {
 	} else if *istru >= 0 {
 		startTrustee(*istru)
 	} else {
-		panic("must specify -relay, -client=n, or -trustee=n")
+		println("Error: must specify -relay, -client=n, or -trustee=n")
 	}
 }
-
