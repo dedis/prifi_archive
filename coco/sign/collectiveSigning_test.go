@@ -1,4 +1,4 @@
-package coco_test
+package sign_test
 
 import (
 	"strconv"
@@ -96,7 +96,7 @@ func TestStatic(t *testing.T) {
 //    / \   \
 //   2   3   5
 func TestTreeFromStaticConfig(t *testing.T) {
-	hostConfig, err := oldconfig.LoadConfig("test/data/exconf.json")
+	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestTreeFromStaticConfig(t *testing.T) {
 }
 
 func TestTreeBigConfig(t *testing.T) {
-	hc, err := oldconfig.LoadConfig("test/data/exwax.json")
+	hc, err := oldconfig.LoadConfig("../test/data/exwax.json")
 	if err != nil {
 		t.Fatal()
 	}
@@ -131,7 +131,7 @@ func TestMultipleRounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hostConfig, err := oldconfig.LoadConfig("test/data/exconf.json")
+	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestMultipleRounds(t *testing.T) {
 }
 
 func TestTCPStaticConfig(t *testing.T) {
-	hc, err := oldconfig.LoadConfig("test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
+	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}
@@ -174,7 +174,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
-	hc, err := oldconfig.LoadConfig("test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
+	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}

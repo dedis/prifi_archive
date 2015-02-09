@@ -1,4 +1,4 @@
-package coco_test
+package stamp_test
 
 import (
 	"strconv"
@@ -23,7 +23,7 @@ func TestTSSIntegration(t *testing.T) {
 	nMessages := 4 // per round
 	nRounds := 3
 
-	hostConfig, err := oldconfig.LoadConfig("test/data/exconf.json")
+	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
