@@ -12,7 +12,7 @@ import (
  */
 type GoConnManager struct {
 	// Tracks the connections to various peers
-	peerMap map[abstract.Point]*coconet.GoConn
+	peerMap map[string]*coconet.GoConn
 	// This directory facilitates using go channels for testing purposes.
 	dir *coconet.GoDirectory
 	// The public key of the server that owns this manager.
@@ -31,7 +31,7 @@ type GoConnManager struct {
  */
 func (gcm *GoConnManager) Init(key abstract.Point, goDir *coconet.GoDirectory) *GoConnManager {
 	gcm.pubKey = key
-	gcm.peerMap = make(map[abstract.Point]*coconet.GoConn)
+	gcm.peerMap = make(map[string]*coconet.GoConn)
 	if goDir == nil {
 		gcm.dir = coconet.NewGoDirectory()
 	} else {
@@ -53,7 +53,7 @@ func (gcm *GoConnManager) AddConn(theirKey abstract.Point) error {
 	if err != nil {
 		return err
 	}
-	gcm.peerMap[theirKey] = newConn
+	gcm.peerMap[theirKey.String()] = newConn
 	return nil
 }
 
@@ -71,8 +71,11 @@ func (gcm *GoConnManager) GetDir() *coconet.GoDirectory {
  * Returns:
  * 	An error denoting whether the put was successfull
  */
-func (gcm *GoConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
-	return gcm.peerMap[p].Put(data)
+func (gcm * GoConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
+	if gcm.peerMap[p.String()] == nil {
+		panic("DADADAAAA")
+	}
+	return gcm.peerMap[p.String()].Put(data)
 }
 
 /* Get a message from a given peer.
@@ -84,6 +87,6 @@ func (gcm *GoConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) er
  * Returns:
  *	An error denoting whether the get to the buffer was successfull
  */
-func (gcm *GoConnManager) Get(p abstract.Point, bum coconet.BinaryUnmarshaler) error {
-	return gcm.peerMap[p].Get(bum)
+func (gcm GoConnManager) Get(p abstract.Point, bum coconet.BinaryUnmarshaler) error {
+	return gcm.peerMap[p.String()].Get(bum)
 }
