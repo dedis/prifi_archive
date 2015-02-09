@@ -97,7 +97,7 @@ func TestPolicyApprovedMarshallUnMarshallVerify(t *testing.T) {
 	}
 
 	expectedMessage := keyPair.Public.String() + " insures " + keyPair2.Public.String()
-	if  !keyPair.Public.Equal(msg.PubKey)      ||
+	if !keyPair.Public.Equal(msg.PubKey)      ||
 	    expectedMessage != string(msg.Message) {
 	    t.Error("The original message does not contain the proper values")
 	}
@@ -109,4 +109,58 @@ func TestPolicyApprovedMarshallUnMarshallVerify(t *testing.T) {
   	   !newMsg.verifyCertificate(keyPair.Suite, keyPair2.Public) {
   		t.Error("The signature is invalid.")   
   	}
+}
+
+
+func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
+	// Send an RequestInsuranceMessage
+	encodedMsg, err := policy.MarshalBinary()
+	if err != nil {
+		t.Fatal("Marshalling failed!", err)
+	}
+	policyMsg2 := new(PolicyMessage)
+	err = policyMsg2.UnmarshalBinary(encodedMsg)
+	if err != nil {
+		t.Fatal("Unmarshalling failed!", err)
+	}
+	
+	if policy.Type != policyMsg2.Type {
+		t.Error("Unexpected MessageType")
+	}
+	
+	okay := false
+
+	switch policyMsg2.Type {
+		case RequestInsurance:
+			msg1 := policy.getRIM()
+			msg2 := policyMsg2.getRIM()
+			if msg1.Share.Equal(msg2.Share) &&
+			   msg1.PubCommit.Equal(msg2.PubCommit) {
+			   okay = true
+			}
+		case PolicyApproved:
+			msg1 := policy.getPAM()
+			msg2 := policyMsg2.getPAM()
+			if msg1.PubKey.Equal(msg2.PubKey) &&
+			   string(msg1.Message) == string(msg2.Message)   &&
+			   string(msg2.Signature) == string(msg2.Signature) {
+			   okay = true
+			}
+	}
+
+	if !okay {
+		t.Error("Message corroded after encoding/decoding.")
+	}
+}
+
+// Verifies that a PolicyApprovedMessage can be marshalled and unmarshalled
+// properly. It also checks the verifyCertificate method as well. It insures
+// that the signature was properly preserved.
+func TestPolicyMessage(t *testing.T) {
+
+	requestMsg := new(RequestInsuranceMessage).createMessage(prishares.Share(0), pubCommit)
+	approveMsg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
+	
+	PolicyMessageHelper(t, new(PolicyMessage).createRIMessage(requestMsg))
+	PolicyMessageHelper(t, new(PolicyMessage).createPAMessage(approveMsg))
 }

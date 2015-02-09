@@ -2,13 +2,14 @@ package insure
 
 import (
 	"bytes"
-	"encoding/gob"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/anon"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly"
 	"github.com/dedis/crypto/random"
+	
+	"github.com/dedis/protobuf"
 )
 
 /* Modelled off coco/signingMessage.go, this file is responsible for encoding/
@@ -29,7 +30,46 @@ type PolicyMessage struct {
 	pam  *PolicyApprovedMessage
 }
 
-func (pm PolicyMessage) MarshalBinary() ([]byte, error) {
+/* Creates a new PolicyMessage
+ *
+ * Arguments:
+ *	m = A RequestInsuranceMessage for sending over the network
+ *
+ * Returns:
+ *	A new PolicyMessage responsible for sending an RequestInsuranceMessage
+ */
+func (pm *PolicyMessage) createRIMessage(m *RequestInsuranceMessage) *PolicyMessage {
+	pm.Type = RequestInsurance
+	pm.rim  = m
+	return pm
+}
+
+/* Creates a new PolicyMessage
+ *
+ * Arguments:
+ *	m = A PolicyApprovedMessage for sending over the network
+ *
+ * Returns:
+ *	A new PolicyMessage responsible for sending an PolicyApprovedMessage
+ */
+func (pm *PolicyMessage) createPAMessage(m *PolicyApprovedMessage) *PolicyMessage {
+	pm.Type = PolicyApproved
+	pm.pam  = m
+	return pm
+}
+
+// Returns the RequestInsuranceMessage of this PolicyMessage
+func (pm *PolicyMessage) getRIM() *RequestInsuranceMessage {
+	return pm.rim
+}
+
+// Returns the PolicyApprovedMessage of this PolicyMessage
+func (pm *PolicyMessage) getPAM() *PolicyApprovedMessage {
+	return pm.pam
+}
+
+// This code is responsible for mashalling the message for sending off.
+func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	var sub []byte
 	var err error
@@ -47,19 +87,25 @@ func (pm PolicyMessage) MarshalBinary() ([]byte, error) {
 	return b.Bytes(), err
 }
 
+// This function is responsible for unmarshalling the data. It keeps track
+// of which type the message is and decodes it properly.
 func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 	pm.Type = MessageType(data[0])
 	msgBytes := data[1:]
 	var err error
 	switch pm.Type {
 	case RequestInsurance:
-		pm.rim, err = pm.rim.UnmarshalBinary(msgBytes)
+		pm.rim, err = new(RequestInsuranceMessage).UnmarshalBinary(msgBytes)
 	case PolicyApproved:
-		pm.pam, err = pm.pam.UnmarshalBinary(msgBytes)
+		pm.pam, err = new(PolicyApprovedMessage).UnmarshalBinary(msgBytes)
 	}
 	return err
 }
 
+
+// These messages are used to send insurance requests. A node looking for an
+// insurance policy will send these to other nodes to ask them to become
+// insurers.
 type RequestInsuranceMessage struct {
 	// The private share to give to the insurer
 	Share abstract.Secret
@@ -84,19 +130,25 @@ func (msg *RequestInsuranceMessage) createMessage(s abstract.Secret,
 	return msg
 }
 
-func (msg RequestInsuranceMessage) MarshalBinary() ([]byte, error) {
+// Encodes the message for sending.
+func (msg *RequestInsuranceMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
-	abstract.Write(&b, &msg, INSURE_GROUP)
+	abstract.Write(&b, msg, INSURE_GROUP)
 	return b.Bytes(), nil
+//	return protobuf.Encode(msg);
 }
 
-
+// Decodes a message received.
+// NOTE: In order to be encoded properly, public polynomials need to be
+// initialized with the right group and minimum number of shares.
 func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsuranceMessage, error) {
 	msg.PubCommit = new(poly.PubPoly)
 	msg.PubCommit.Init(INSURE_GROUP, TSHARES, nil)
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, msg, INSURE_GROUP)
 	return msg, err
+//	return 	msg, protobuf.Decode(data, msg)
+
 }
 
 type PolicyApprovedMessage struct {
@@ -140,50 +192,13 @@ func (msg *PolicyApprovedMessage) createMessage(kp *config.KeyPair,
 
 // Encodes a policy message for sending over the Internet
 func (msg *PolicyApprovedMessage) MarshalBinary() ([]byte, error) {
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(msg.PubKey.Encode())
-	if err != nil {
-		return b.Bytes(), err
-	}
-	err = enc.Encode(msg.Message)
-	if err != nil {
-		return b.Bytes(), err
-	}
-	err = enc.Encode(msg.Signature)
-	if err != nil {
-		return b.Bytes(), err
-	}
-	return b.Bytes(), err
-
-//	Encoding with the crypto library (waiting on issue to be fixed)
-//	b := bytes.Buffer{}
-//	abstract.Write(&b, msg, KEY_SUITE)
-//	return b.Bytes(), nil
+	return protobuf.Encode(msg);
 }
 
 // Decodes a policy message for sending over the Internet
 func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) (*PolicyApprovedMessage, error) {
-	b := bytes.NewBuffer(data)
-	temp := []byte{}
-	dec := gob.NewDecoder(b)
-	err := dec.Decode(&temp)
-	if err != nil {
-		return msg, err
-	}
 	msg.PubKey = KEY_SUITE.Point()
-	msg.PubKey.Decode(temp)
-	err = dec.Decode(&msg.Message)
-	if err != nil {
-		return msg, err
-	}
-	err = dec.Decode(&msg.Signature)
-	return msg, err
-
-//	Decoding with the crypto library (waiting on issue to be fixed)
-//	b := bytes.NewBuffer(data)
-//	err := abstract.Read(b, msg, KEY_SUITE)
-//	return msg, err
+	return msg, protobuf.Decode(data, msg);
 }
 
 /* Verifies that a PolicyApproveMessage has been properly constructed.
@@ -196,7 +211,6 @@ func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) (*PolicyApprovedM
  * Returns:
  *	whether or not the message is valid.
  */
-
 func (msg *PolicyApprovedMessage) verifyCertificate(su abstract.Suite,
 	insuredKey abstract.Point) bool {
 
