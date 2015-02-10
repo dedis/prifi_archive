@@ -79,9 +79,12 @@ func main() {
 	if hc.SNodes[0].IsRoot() {
 		time.Sleep(3 * time.Second)
 		start := time.Now()
-		iters := 1
+		iters := 10
 
 		for i := 0; i < iters; i++ {
+			if i == 1 {
+				start = time.Now()
+			}
 			fmt.Println("ANNOUNCING")
 			hc.SNodes[0].LogTest = []byte("Hello World")
 			err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
@@ -91,10 +94,10 @@ func main() {
 		}
 
 		elapsed := time.Since(start)
-		log.Printf("took %d ns/op\n", elapsed.Nanoseconds()/int64(iters))
+		log.Printf("took %d ns/op\n", elapsed.Nanoseconds()/int64(iters-1))
 	} else {
 		// otherwise wait a little bit (hopefully it finishes by the end of this)
-		time.Sleep(20 * time.Second)
+		time.Sleep(480 * time.Second)
 	}
 	fmt.Println("DONE")
 }

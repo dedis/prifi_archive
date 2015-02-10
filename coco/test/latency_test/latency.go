@@ -67,7 +67,7 @@ func main() {
 			}
 			output, err := exec.Command("ping", host, "-c", "20").Output()
 			if err != nil {
-				log.Println("error pinging: ", string(output), err)
+				log.Println("error pinging: ", err)
 				return
 			}
 			//output := string(boutput)

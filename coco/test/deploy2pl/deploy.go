@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -25,18 +26,18 @@ func init() {
 	log.SetFlags(log.Lshortfile)
 	flag.StringVar(&hostfile, "hostfile", "hosts.txt", "file with hostnames space separated")
 	flag.IntVar(&depth, "depth", 2, "the depth of the tree to build")
-	flag.StringVar(&port, "port", "9010", "the port for the signing nodes to run at")
+	flag.StringVar(&port, "port", "9015", "the port for the signing nodes to run at")
 }
 
 func scp(username, host, file, dest string) error {
-	cmd := exec.Command("scp", "-C", file, username+"@"+host+":"+dest)
+	cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-C", file, username+"@"+host+":"+dest)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
 func sshRun(username, host, command string) ([]byte, error) {
-	cmd := exec.Command("ssh", username+"@"+host,
+	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", username+"@"+host,
 		"eval '"+command+"'")
 	//log.Println(cmd)
 	cmd.Stderr = os.Stderr
@@ -44,7 +45,7 @@ func sshRun(username, host, command string) ([]byte, error) {
 }
 
 func sshRunStdout(username, host, command string) error {
-	cmd := exec.Command("ssh", username+"@"+host,
+	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", username+"@"+host,
 		"eval '"+command+"'")
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
@@ -59,7 +60,22 @@ func build(path, goarch, goos string) error {
 	return cmd.Run()
 }
 
+func timeoutRun(d time.Duration, f func() error) error {
+	echan := make(chan error)
+	go func() {
+		echan <- f()
+	}()
+	var e error
+	select {
+	case e = <-echan:
+	case <-time.After(d):
+		e = errors.New("function timed out")
+	}
+	return e
+}
+
 func main() {
+	flag.Parse()
 	content, err := ioutil.ReadFile(hostfile)
 	if err != nil {
 		log.Fatal(err)
@@ -80,59 +96,58 @@ func main() {
 	for _, host := range hostnames {
 		wg.Add(1)
 		log.Println("latency test:", host)
-		go func(host string) {
-			done := make(chan bool)
-			go func() {
-				defer wg.Done()
-				if scp("yale_dissent", host, "latency_test", "latency_test") != nil {
-					log.Println("Failed:", host, err)
-					mu.Lock()
-					failed[host] = true
-					mu.Unlock()
-					done <- false
-					return
-				}
 
-				if scp("yale_dissent", host, hostfile, "hosts.txt") != nil {
-					log.Println("Failed:", host, err)
-					mu.Lock()
-					failed[host] = true
-					mu.Unlock()
-					done <- false
-					return
-				}
-				log.Println("running latency_test:", host)
-				output, err := sshRun("yale_dissent", host, "./latency_test -hostfile hosts.txt -hostname "+host)
-				if err != nil {
-					log.Println("Failed:", host, err)
-					mu.Lock()
-					failed[host] = true
-					mu.Unlock()
-					done <- false
-					return
-				}
-				fmt.Println("output:", string(output))
-				mu.Lock()
-				edgelist = append(edgelist, output...)
-				mu.Unlock()
-				done <- true
-			}()
-			select {
-			case t := <-done:
-				if !t {
-					log.Println("Failed:", host, err)
-					mu.Lock()
-					failed[host] = true
-					mu.Unlock()
-				}
-				return
-			case <-time.After(60 * time.Second):
+		go func(host string) {
+			starttime := time.Now()
+			defer wg.Done()
+			err := timeoutRun(10*time.Second,
+				func() error { return scp("yale_dissent", host, "latency_test", "latency_test") })
+			if err != nil {
 				log.Println("Failed:", host, err)
 				mu.Lock()
 				failed[host] = true
 				mu.Unlock()
 				return
 			}
+			err = timeoutRun(10*time.Second,
+				func() error { return sshRunStdout("yale_dissent", host, "killall cocoexec; rm -rf cocoexec") })
+			if err != nil {
+				log.Println("Failed:", host, err)
+				mu.Lock()
+				failed[host] = true
+				mu.Unlock()
+				return
+			}
+			err = timeoutRun(10*time.Second,
+				func() error { return scp("yale_dissent", host, hostfile, "hosts.txt") })
+			if err != nil {
+				log.Println("Failed:", host, err)
+				mu.Lock()
+				failed[host] = true
+				mu.Unlock()
+				return
+			}
+			log.Println("running latency_test:", host)
+			output, err := sshRun("yale_dissent", host, "./latency_test -hostfile hosts.txt -hostname "+host)
+			if err != nil {
+				log.Println("Failed:", host, err)
+				mu.Lock()
+				failed[host] = true
+				mu.Unlock()
+				return
+			}
+			if time.Since(starttime) > (20 * time.Minute) {
+				log.Println("Failed took too long:", host, err)
+				mu.Lock()
+				failed[host] = true
+				mu.Unlock()
+				return
+			}
+			fmt.Println("output:", string(output))
+			mu.Lock()
+			edgelist = append(edgelist, output...)
+			mu.Unlock()
+			return
 		}(host)
 	}
 	wg.Wait()
@@ -180,14 +195,15 @@ func main() {
 		go func(host string) {
 			defer wg.Done()
 			if err = scp("yale_dissent", host, "cfg.json", "cfg.json"); err != nil {
-				log.Fatal(err)
+				log.Fatal(host, err)
 			}
 			if err = scp("yale_dissent", host, "exec", "cocoexec"); err != nil {
-				log.Fatal(err)
+				log.Println(host, err)
 			}
+			time.Sleep(1 * time.Second)
 			log.Println("running signing node")
 			if err = sshRunStdout("yale_dissent", host, "./cocoexec -hostname "+host+":"+port+" -config cfg.json"); err != nil {
-				log.Fatal(err)
+				log.Fatal(host, err)
 			}
 		}(host)
 	}
