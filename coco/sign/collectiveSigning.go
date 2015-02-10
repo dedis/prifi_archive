@@ -3,11 +3,9 @@ package sign
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"log"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
@@ -44,9 +42,9 @@ func (sn *SigningNode) Listen() error {
 				// In real system some action is required
 				return ErrUnknownMessageType
 			case Announcement:
-				sn.Announce(sm.am)
+				sn.Announce(sm.Am)
 			case Challenge:
-				sn.Challenge(sm.chm)
+				sn.Challenge(sm.Chm)
 			}
 		}
 	}
@@ -59,7 +57,7 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	// PutDown requires each child to have his own message
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
-		sm := SigningMessage{Type: Announcement, am: am}
+		sm := SigningMessage{Type: Announcement, Am: am}
 		messgs[i] = sm
 	}
 	if err := sn.PutDown(messgs); err != nil {
@@ -80,8 +78,6 @@ func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 
 	// wait for all children to commit
 	var err error
-	log.Printf("HOST: %v %#v\n", sn.Name(), sn.Host)
-	log.Printf("PEERS: %v %#v\n", sn.Name(), sn.Host.Peers())
 	if err = sn.GetDown(messgs); err != nil {
 		return nil, err
 	}
@@ -152,13 +148,10 @@ func (sn *SigningNode) Commit() error {
 	sn.initCommitCrypto()
 
 	// get commits from kids
-	fmt.Println(sn.Name(), "in comm get down")
 	messgs, err := sn.getDownMessgs()
 	if err != nil {
-		fmt.Println(sn.Name(), " get down ", err)
 		return err
 	}
-	fmt.Println(sn.Name(), "in comm after get down")
 
 	// Commits from children are the first Merkle Tree leaves for the round
 	sn.Leaves = make([]hashid.HashId, 0)
@@ -170,13 +163,12 @@ func (sn *SigningNode) Commit() error {
 			// In real system failing is required
 			panic("Reply to announcement is not a commit")
 		case Commitment:
-			sn.Leaves = append(sn.Leaves, sm.com.MTRoot)
-			sn.Log.V_hat.Add(sn.Log.V_hat, sm.com.V_hat)
+			sn.Leaves = append(sn.Leaves, sm.Com.MTRoot)
+			sn.Log.V_hat.Add(sn.Log.V_hat, sm.Com.V_hat)
 		}
 	}
 
 	if sn.Type == PubKey {
-		fmt.Println(sn.Name(), "in commit pubkey type")
 		return sn.actOnCommits()
 	} else {
 		sn.GetChildrenMerkleRoots()
@@ -198,12 +190,9 @@ func (sn *SigningNode) actOnCommits() (err error) {
 			V:      sn.Log.V,
 			V_hat:  sn.Log.V_hat,
 			MTRoot: sn.MTRoot}
-		fmt.Println(sn.Name(), " beefore put up commit")
-		time.Sleep(3 * time.Second)
 		err = sn.PutUp(SigningMessage{
 			Type: Commitment,
-			com:  com})
-		fmt.Println(sn.Name(), " after put up commit ", err)
+			Com:  com})
 	}
 	return
 }
@@ -253,7 +242,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 		newChm.Proof = append(baseProof, sn.Proofs[i]...)
 
 		var messg coconet.BinaryMarshaler
-		messg = SigningMessage{Type: Challenge, chm: &newChm}
+		messg = SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
 		if err := child.Put(messg); err != nil {
@@ -268,7 +257,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
 	for _, child := range sn.Children() {
 		var messg coconet.BinaryMarshaler
-		messg = SigningMessage{Type: Challenge, chm: chm}
+		messg = SigningMessage{Type: Challenge, Chm: chm}
 
 		// send challenge message to child
 		if err := child.Put(messg); err != nil {
@@ -285,7 +274,6 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 	sn.c = chm.C
 
 	if sn.Type == PubKey {
-		fmt.Println("in challenge pubkey type")
 		if err := sn.SendChildrenChallenges(chm); err != nil {
 			return err
 		}
@@ -329,9 +317,9 @@ func (sn *SigningNode) Respond() error {
 			// In real system failing is required
 			panic("Reply to challenge is not a response")
 		case Error:
-			return sm.err.Err
+			return sm.Err.Err
 		case Response:
-			sn.r_hat.Add(sn.r_hat, sm.rm.R_hat)
+			sn.r_hat.Add(sn.r_hat, sm.Rm.R_hat)
 		}
 	}
 
@@ -341,12 +329,12 @@ func (sn *SigningNode) Respond() error {
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
-				err:  &ErrorMessage{Err: err}})
+				Err:  &ErrorMessage{Err: err}})
 		}
 		// create and putup own response message
 		return sn.PutUp(SigningMessage{
 			Type: Response,
-			rm:   &ResponseMessage{sn.r_hat}})
+			Rm:   &ResponseMessage{sn.r_hat}})
 	}
 	return err
 }

@@ -16,12 +16,12 @@ import (
 //     1
 //    / \
 //   2   3
-// func TestStaticMerkle(t *testing.T) {
+func TestStaticMerkle(t *testing.T) {
 
-// 	if err := runStaticTest(sign.MerkleTree); err != nil {
-// 		t.Fatal(err)
-// 	}
-// }
+	if err := runStaticTest(sign.MerkleTree); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestStaticPubKey(t *testing.T) {
 	if err := runStaticTest(sign.PubKey); err != nil {

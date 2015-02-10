@@ -38,7 +38,7 @@ func TestPathLong(t *testing.T) {
 
 	newHash := sha256.New
 	hash := newHash()
-	n := 1000 // takes 6 secons
+	n := 100 // takes 6 secons
 	for k := 0; k < n; k++ {
 		leaves := make([]hashid.HashId, k)
 		for i := range leaves {
