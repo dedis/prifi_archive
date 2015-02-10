@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/test/config"
@@ -24,7 +25,7 @@ func init() {
 	log.SetFlags(log.Lshortfile)
 	flag.StringVar(&hostfile, "hostfile", "hosts.txt", "file with hostnames space separated")
 	flag.IntVar(&depth, "depth", 2, "the depth of the tree to build")
-	flag.StringVar(&port, "port", "9002", "the port for the signing nodes to run at")
+	flag.StringVar(&port, "port", "9010", "the port for the signing nodes to run at")
 }
 
 func scp(username, host, file, dest string) error {
@@ -80,35 +81,58 @@ func main() {
 		wg.Add(1)
 		log.Println("latency test:", host)
 		go func(host string) {
-			defer wg.Done()
-			if scp("yale_dissent", host, "latency_test", "latency_test") != nil {
-				log.Println("Failed:", host, err)
-				mu.Lock()
-				failed[host] = true
-				mu.Unlock()
-				return
-			}
+			done := make(chan bool)
+			go func() {
+				defer wg.Done()
+				if scp("yale_dissent", host, "latency_test", "latency_test") != nil {
+					log.Println("Failed:", host, err)
+					mu.Lock()
+					failed[host] = true
+					mu.Unlock()
+					done <- false
+					return
+				}
 
-			if scp("yale_dissent", host, hostfile, "hosts.txt") != nil {
+				if scp("yale_dissent", host, hostfile, "hosts.txt") != nil {
+					log.Println("Failed:", host, err)
+					mu.Lock()
+					failed[host] = true
+					mu.Unlock()
+					done <- false
+					return
+				}
+				log.Println("running latency_test:", host)
+				output, err := sshRun("yale_dissent", host, "./latency_test -hostfile hosts.txt -hostname "+host)
+				if err != nil {
+					log.Println("Failed:", host, err)
+					mu.Lock()
+					failed[host] = true
+					mu.Unlock()
+					done <- false
+					return
+				}
+				fmt.Println("output:", string(output))
+				mu.Lock()
+				edgelist = append(edgelist, output...)
+				mu.Unlock()
+				done <- true
+			}()
+			select {
+			case t := <-done:
+				if !t {
+					log.Println("Failed:", host, err)
+					mu.Lock()
+					failed[host] = true
+					mu.Unlock()
+				}
+				return
+			case <-time.After(60 * time.Second):
 				log.Println("Failed:", host, err)
 				mu.Lock()
 				failed[host] = true
 				mu.Unlock()
 				return
 			}
-			log.Println("running latency_test:", host)
-			output, err := sshRun("yale_dissent", host, "./latency_test -hostfile hosts.txt -hostname "+host)
-			if err != nil {
-				log.Println("Failed:", host, err)
-				mu.Lock()
-				failed[host] = true
-				mu.Unlock()
-				return
-			}
-			fmt.Println("output:", string(output))
-			mu.Lock()
-			edgelist = append(edgelist, output...)
-			mu.Unlock()
 		}(host)
 	}
 	wg.Wait()

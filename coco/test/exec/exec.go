@@ -34,6 +34,7 @@ func init() {
 
 func main() {
 	flag.Parse()
+	log.SetPrefix(hostname + ":")
 	fmt.Println("Execing")
 	// open connection with remote logging interface if there is one
 	if false && logger != "" {
