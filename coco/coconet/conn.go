@@ -124,6 +124,7 @@ func (c *GoConn) Put(data BinaryMarshaler) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("Sending data: %#v\n", data)
 	ch <- b
 	return nil
 }
@@ -141,7 +142,12 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	c.dir.Unlock()
 
 	data := <-ch
-	return bum.UnmarshalBinary(data)
+	log.Println("DATA:", data)
+	err := bum.UnmarshalBinary(data)
+	if err != nil {
+		log.Println("ERROR UNMARSHALING:", err)
+	}
+	return err
 }
 
 // TcpConn is a prototype TCP connection with gob encoding.

@@ -15,7 +15,19 @@ import (
 
 var ROUND_TIME time.Duration = 1 * time.Second
 
+type Type int // used by other modules as sign.Type
+
+const (
+	// Default Signature involves creating Merkle Trees
+	MerkleTree = iota
+	// Basic Signature removes all Merkle Trees Collective PubKey
+	// Collective public keys are still created and can be useds
+	PubKey
+)
+
 type SigningNode struct {
+	Type Type
+
 	coconet.Host
 	suite   abstract.Suite
 	PubKey  abstract.Point  // long lasting public key
@@ -35,8 +47,9 @@ type SigningNode struct {
 
 	nRounds int
 
-	// own big merkle subtree root
-	MTRoot hashid.HashId // mt root for subtree, passed upwards
+	// own big merkle subtree
+	MTRoot hashid.HashId   // mt root for subtree, passed upwards
+	Leaves []hashid.HashId // leaves used to build the merkle subtre
 
 	// mtRoot before adding HashedLog
 	LocalMTRoot      hashid.HashId
