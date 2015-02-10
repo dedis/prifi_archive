@@ -42,9 +42,9 @@ func (sn *SigningNode) Listen() error {
 				// In real system some action is required
 				return ErrUnknownMessageType
 			case Announcement:
-				sn.Announce(sm.am)
+				sn.Announce(sm.Am)
 			case Challenge:
-				sn.Challenge(sm.chm)
+				sn.Challenge(sm.Chm)
 			}
 		}
 	}
@@ -58,7 +58,7 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	// PutDown requires each child to have his own message
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
-		sm := SigningMessage{Type: Announcement, am: am}
+		sm := SigningMessage{Type: Announcement, Am: am}
 		messgs[i] = sm
 	}
 	if err := sn.PutDown(messgs); err != nil {
@@ -98,7 +98,7 @@ func (sn *SigningNode) actOnCommits() (err error) {
 			MTRoot: sn.MTRoot}
 		err = sn.PutUp(SigningMessage{
 			Type: Commitment,
-			com:  com})
+			Com:  com})
 	}
 	return
 }
@@ -151,8 +151,8 @@ func (sn *SigningNode) Commit() error {
 			// In real system failing is required
 			panic("Reply to announcement is not a commit")
 		case Commitment:
-			leaves = append(leaves, sm.com.MTRoot)
-			sn.Log.V_hat.Add(sn.Log.V_hat, sm.com.V_hat)
+			leaves = append(leaves, sm.Com.MTRoot)
+			sn.Log.V_hat.Add(sn.Log.V_hat, sm.Com.V_hat)
 		}
 	}
 	// keep children commits twice (in sn and in sn.Log for the moment)
@@ -246,7 +246,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		newChm.Proof = append(baseProof, sn.Proofs[i]...)
 
 		var messg coconet.BinaryMarshaler
-		messg = SigningMessage{Type: Challenge, chm: &newChm}
+		messg = SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
 		if err := child.Put(messg); err != nil {
@@ -284,9 +284,9 @@ func (sn *SigningNode) Respond() error {
 			// In real system failing is required
 			panic("Reply to challenge is not a response")
 		case Error:
-			return sm.err.Err
+			return sm.Err.Err
 		case Response:
-			sn.r_hat.Add(sn.r_hat, sm.rm.R_hat)
+			sn.r_hat.Add(sn.r_hat, sm.Rm.R_hat)
 		}
 	}
 
@@ -296,12 +296,12 @@ func (sn *SigningNode) Respond() error {
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
-				err:  &ErrorMessage{Err: err}})
+				Err:  &ErrorMessage{Err: err}})
 		}
 		// create and putup own response message
 		return sn.PutUp(SigningMessage{
 			Type: Response,
-			rm:   &ResponseMessage{sn.r_hat}})
+			Rm:   &ResponseMessage{sn.r_hat}})
 	}
 	return err
 }

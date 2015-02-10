@@ -3,34 +3,40 @@ package sign_test
 import (
 	"bytes"
 	"fmt"
+	"log"
+	"reflect"
 	"testing"
 
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/proof"
 	"github.com/dedis/prifi/coco/sign"
 )
+
+func init() {
+	log.SetFlags(log.Lshortfile)
+}
 
 // test marshalling and unmarshalling for
 // the various types of signing messages
 
 func TestMUAnnouncement(t *testing.T) {
 	logTest := []byte("Hello World")
-	am := sign.AnnouncementMessage{LogTest: logTest}
-
-	dataBytes, err := sign.AnnouncementMessage.MarshalBinary(am)
+	sm := &sign.SigningMessage{Type: sign.Announcement, Am: &sign.AnnouncementMessage{LogTest: logTest}}
+	dataBytes, err := sm.MarshalBinary()
 	if err != nil {
 		t.Error("Marshaling didn't work")
 	}
 
-	am2 := &sign.AnnouncementMessage{}
-	am2.UnmarshalBinary(dataBytes)
+	sm2 := &sign.SigningMessage{}
+	sm2.UnmarshalBinary(dataBytes)
 	if err != nil {
 		t.Error("Unmarshaling didn't work")
 	}
-
-	fmt.Println(am2)
+	if !reflect.DeepEqual(sm, sm2) {
+		t.Fatal("sm != sm2: ", sm, sm2, sm.Am, sm2.Am)
+	}
+	fmt.Println(sm2)
 	fmt.Println("Marshal and Unmarshal work")
 }
 
@@ -43,23 +49,22 @@ func TestMUChallenge(t *testing.T) {
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
 
-	cm := sign.ChallengeMessage{}
+	cm := &sign.ChallengeMessage{}
 	cm.C = suite.Secret().Pick(rand)
 	cm.MTRoot = make([]byte, hashid.Size)
 	cm.Proof = proof.Proof(make([]hashid.HashId, nHashIds))
 	for i := 0; i < nHashIds; i++ {
 		cm.Proof[i] = make([]byte, hashid.Size)
 	}
-
-	cmBytes, err := cm.MarshalBinary()
+	sm := &sign.SigningMessage{Type: sign.Challenge, Chm: cm}
+	smBytes, err := sm.MarshalBinary()
 	if err != nil {
 		t.Error(err)
 	}
 
-	var messg coconet.BinaryUnmarshaler
-	messg = &sign.ChallengeMessage{}
-	err = messg.UnmarshalBinary(cmBytes)
-	cm2 := messg.(*sign.ChallengeMessage)
+	messg := &sign.SigningMessage{}
+	err = messg.UnmarshalBinary(smBytes)
+	cm2 := messg.Chm
 
 	// test for equality after marshal and unmarshal
 	if !cm2.C.Equal(cm.C) ||
@@ -81,23 +86,22 @@ func TestMUCommit(t *testing.T) {
 	rand := suite.Cipher([]byte("exampfsdjkhujgkjsgfjgle"))
 	rand2 := suite.Cipher([]byte("examplsfhsjedgjhsge2"))
 
-	cm := sign.CommitmentMessage{}
+	cm := &sign.CommitmentMessage{}
 	cm.V, _ = suite.Point().Pick(nil, rand)
 	cm.V_hat, _ = suite.Point().Pick(nil, rand2)
 
 	// log.Println("v and v_hat len", cm.V.Len(), cm.V_hat.Len())
 
 	cm.MTRoot = make([]byte, hashid.Size)
-
-	cmBytes, err := cm.MarshalBinary()
+	sm := sign.SigningMessage{Type: sign.Commitment, Com: cm}
+	smBytes, err := sm.MarshalBinary()
 	if err != nil {
 		t.Error(err)
 	}
 
-	var messg coconet.BinaryUnmarshaler
-	messg = &sign.CommitmentMessage{}
-	err = messg.UnmarshalBinary(cmBytes)
-	cm2 := messg.(*sign.CommitmentMessage)
+	messg := &sign.SigningMessage{}
+	err = messg.UnmarshalBinary(smBytes)
+	cm2 := messg.Com
 
 	// test for equality after marshal and unmarshal
 	if !cm2.V.Equal(cm.V) ||
