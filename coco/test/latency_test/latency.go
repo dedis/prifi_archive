@@ -23,12 +23,14 @@ import (
 var fname string
 var hostname string
 var threshold int
+var pingthresh int
 
 func init() {
 	log.SetFlags(log.Lshortfile)
 	log.SetOutput(os.Stderr)
 	flag.StringVar(&hostname, "hostname", "", "the hostname of this machine")
 	flag.StringVar(&fname, "hostfile", "hosts.txt", "a file of hostnames. one per line.")
+	flag.IntVar(&pingthresh, "pingthresh", 100, "the maximum avg ping time allowed")
 	flag.IntVar(&threshold, "threshold", 90, "the threshold")
 }
 
@@ -91,6 +93,7 @@ func main() {
 			matches := pingStats.FindSubmatch(output)
 			if matches == nil {
 				log.Println("FAILED:", host)
+				return
 			}
 			//log.Println(matches)
 			//log.Println(string(matches[2]))
@@ -98,6 +101,10 @@ func main() {
 			avg, _ := strconv.ParseFloat(string(matches[2]), 64)
 			//max, _ := strconv.Atoi(string(matches[3]))
 			//stddev, _ := strconv.Atoi(string(matches[4]))
+			if avg > float64(pingthresh) {
+				log.Println("FAILED:", host)
+				return
+			}
 			log.Println(hostname, host, avg)
 			fmt.Println(hostname, host, avg)
 
