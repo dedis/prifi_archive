@@ -2,6 +2,7 @@ package stamp_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"strconv"
 	"sync"
@@ -14,9 +15,13 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
+func init() {
+	log.SetOutput(ioutil.Discard)
+}
+
 func TestTimestampFromConfig(t *testing.T) {
-	nMessages := 1
-	nRounds := 2
+	nMessages := 10
+	nRounds := 100
 
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
@@ -27,7 +32,7 @@ func TestTimestampFromConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stampers, clients, err := hc.RunTimestamper(1)
+	stampers, clients, err := hc.RunTimestamper(20)
 	if err != nil {
 		log.Fatal(err)
 	}

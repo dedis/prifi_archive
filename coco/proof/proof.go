@@ -1,11 +1,11 @@
 package proof
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"errors"
 	"fmt"
 	"hash"
-	"sort"
 	"strconv"
 
 	"github.com/dedis/crypto/abstract"
@@ -30,14 +30,10 @@ type hashContext struct {
 	hash    hash.Hash
 }
 
-func (c *hashContext) hashNode(buf []byte, vHashIds ...hashid.HashId) []byte {
-	// unpack hashIds
-	hashIds := make([]hashid.HashId, 0)
-	for _, vHashId := range vHashIds {
-		hashIds = append(hashIds, vHashId)
+func (c *hashContext) hashNode(buf []byte, left, right hashid.HashId) []byte {
+	if bytes.Compare(left, right) > 0 {
+		left, right = right, left
 	}
-	sort.Sort(hashid.ByHashId(hashIds))
-
 	if c.hash == nil {
 		c.hash = c.newHash()
 	} else {
@@ -45,10 +41,8 @@ func (c *hashContext) hashNode(buf []byte, vHashIds ...hashid.HashId) []byte {
 	}
 	h := c.hash
 
-	for _, hashId := range hashIds {
-		h.Write(hashId)
-
-	}
+	h.Write(left)
+	h.Write(right)
 
 	s := h.Sum(buf)
 	return s
@@ -175,7 +169,7 @@ func ProofTree(newHash func() hash.Hash, leaves []hashid.HashId) (hashid.HashId,
 	// Some towards the end may end up being shorter than depth.
 	proofs := make([]Proof, nleaves)
 	for i := 0; i < nleaves; i++ {
-		p := make([]hashid.HashId, depth)[:0]
+		p := make([]hashid.HashId, 0, depth)
 		// p = append(p, root)
 		for d := depth - 1; d >= 0; d-- {
 			h := tree[depth-d][sibling(i>>uint(d))]
