@@ -13,7 +13,6 @@ type Client struct {
 
 	name string
 	Sns  map[string]coconet.Conn // signing nodes I work/ communicate with
-	dir  *coconet.GoDirectory    // directory of connection with sns
 
 	// client history maps request numbers to replies from TSServer
 	// maybe at later phases we will want pair(reqno, TSServer) as key
@@ -29,8 +28,8 @@ type Client struct {
 	roundChan   chan int // round numberd are sent in as rounds change
 }
 
-func NewClient(name string, dir *coconet.GoDirectory) (c *Client) {
-	c = &Client{name: name, dir: dir}
+func NewClient(name string) (c *Client) {
+	c = &Client{name: name}
 	c.Sns = make(map[string]coconet.Conn)
 	c.history = make(map[SeqNo]TimeStampMessage)
 	c.doneChan = make(map[SeqNo]chan bool)
@@ -40,6 +39,18 @@ func NewClient(name string, dir *coconet.GoDirectory) (c *Client) {
 
 func (c *Client) Name() string {
 	return c.name
+}
+
+func (c *Client) Connect() {
+	for _, c := range c.Sns {
+		c.Connect()
+	}
+}
+
+func (c *Client) Close() {
+	for _, c := range c.Sns {
+		c.Close()
+	}
 }
 
 // Listen to all servers for responses to requests initiated by client

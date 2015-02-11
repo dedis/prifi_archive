@@ -2,6 +2,7 @@ package stamp
 
 import (
 	"log"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -15,7 +16,8 @@ import (
 
 type Server struct {
 	coco.Signer
-	Clients map[string]*coconet.GoConn
+	name    string
+	Clients map[string]coconet.Conn
 
 	// for aggregating messages from clients
 	mux        sync.Mutex
@@ -34,7 +36,7 @@ type Server struct {
 func NewServer(signer coco.Signer) *Server {
 	s := &Server{}
 
-	s.Clients = make(map[string]*coconet.GoConn)
+	s.Clients = make(map[string]coconet.Conn)
 	s.Queue = make([][]MustReplyMessage, 2)
 	s.READING = 0
 	s.PROCESSING = 1
@@ -42,7 +44,50 @@ func NewServer(signer coco.Signer) *Server {
 	s.Signer = signer
 	s.Signer.RegisterAnnounceFunc(s.OnAnnounce())
 	s.Signer.RegisterDoneFunc(s.OnDone())
+	h, p, err := net.SplitHostPort(s.Signer.Name())
+	if err == nil {
+		i, err := strconv.Atoi(p)
+		if err != nil {
+			log.Fatal(err)
+		}
+		s.name = net.JoinHostPort(h, strconv.Itoa(i+1))
+	}
 	return s
+}
+
+// listen for clients connections
+// this server needs to be running on a different port
+// than the Signer that is beneath it
+func (s *Server) ListenForClients() error {
+	ln, err := net.Listen("tcp", s.name)
+	if err != nil {
+		log.Println("failed to listen:", err)
+		return err
+	}
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				// handle error
+				log.Println("failed to accept connection")
+				continue
+			}
+			if conn == nil {
+				log.Println("!!!nil connection!!!")
+			}
+			bs := make([]byte, 300)
+			n, err := conn.Read(bs)
+			if err != nil {
+				log.Println(err)
+				conn.Close()
+				continue
+			}
+			name := string(bs[:n])
+			s.Clients[name] = coconet.NewTCPConnFromNet(conn)
+		}
+	}()
+	return nil
 }
 
 // Listen on client connections. If role is root also send annoucement
@@ -56,7 +101,7 @@ func (s *Server) ListenToClients(role string, nRounds int) {
 	Queue[PROCESSING] = make([]MustReplyMessage, 0)
 	s.mux.Unlock()
 	for _, c := range s.Clients {
-		go func(c *coconet.GoConn) {
+		go func(c coconet.Conn) {
 			for {
 				tsm := TimeStampMessage{}
 				c.Get(&tsm)
@@ -167,9 +212,9 @@ func (s *Server) AggregateCommits() []byte {
 	// create Merkle tree for this round's messages and check corectness
 	s.Root, s.Proofs = proof.ProofTree(s.GetSuite().Hash, s.Leaves)
 	if proof.CheckLocalProofs(s.GetSuite().Hash, s.Root, s.Leaves, s.Proofs) == true {
-		log.Println("Local Proofs of", s.Name(), "successful for round "+strconv.Itoa(s.nRounds))
+		log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
 	} else {
-		panic("Local Proofs" + s.Name() + " unsuccessful for round " + strconv.Itoa(s.nRounds))
+		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
 	}
 
 	return s.Root

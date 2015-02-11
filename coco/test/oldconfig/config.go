@@ -20,6 +20,7 @@ import (
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/sign"
+	"github.com/dedis/prifi/coco/stamp"
 )
 
 /*
@@ -336,7 +337,7 @@ func GetAddress() (string, error) {
 	return ipv4host, nil
 }
 
-var startConfigPort = 8089
+var startConfigPort = 10000
 
 type ConfigOptions struct {
 	ConnType  string   // "go", tcp"
@@ -490,6 +491,73 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 		}(sn)
 	}
 	return nil
+}
+
+// run each host in hostnameSlice with the number of clients given
+func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*stamp.Server, []*stamp.Client, error) {
+	hostnames := make(map[string]*sign.SigningNode)
+	// make a list of hostnames we want to run
+	if hostnameSlice == nil {
+		hostnames = hc.Hosts
+	} else {
+		for _, h := range hostnameSlice {
+			sn, ok := hc.Hosts[h]
+			if !ok {
+				return nil, nil, errors.New("hostname given not in config file:" + h)
+			}
+			hostnames[h] = sn
+		}
+	}
+
+	Clients := make([]*stamp.Client, 0, len(hostnames)*nclients)
+	// for each client in
+	stampers := make([]*stamp.Server, 0, len(hostnames))
+	for _, sn := range hc.SNodes {
+		if _, ok := hostnames[sn.Name()]; !ok {
+			log.Println("signing node not in hostnmaes")
+			continue
+		}
+		stampers = append(stampers, stamp.NewServer(sn))
+		if hc.Dir == nil {
+			log.Println("listening for clients")
+			stampers[len(stampers)-1].ListenForClients()
+		}
+	}
+
+	clientsLists := make([][]*stamp.Client, len(hc.SNodes[1:]))
+	for i, s := range stampers[1:] {
+		// cant assume the type of connection
+		clients := make([]*stamp.Client, nclients)
+		for j := range clients {
+			clients[j] = stamp.NewClient("client" + strconv.Itoa((i-1)*len(clients)+j))
+			var c coconet.Conn
+
+			// if we are using tcp connections
+			if hc.Dir == nil {
+				// the timestamp server serves at the old port + 1
+				h, p, err := net.SplitHostPort(s.Name())
+				if err != nil {
+					log.Fatal("RunTimestamper: bad Tcp host")
+				}
+				pn, err := strconv.Atoi(p)
+				if err != nil {
+					log.Fatal("port is not valid integer")
+				}
+				hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
+				c = coconet.NewTCPConn(hp)
+			} else {
+				c, _ = coconet.NewGoConn(hc.Dir, clients[j].Name(), s.Name())
+				stoc, _ := coconet.NewGoConn(hc.Dir, s.Name(), clients[j].Name())
+				s.Clients[clients[j].Name()] = stoc
+			}
+			// connect to the server from the client
+			clients[j].Sns[s.Name()] = c
+			clients[j].Connect()
+		}
+		Clients = append(Clients, clients...)
+		clientsLists[i] = clients
+	}
+	return stampers, Clients, nil
 }
 
 // LoadConfig loads a configuration file in the format specified above. It

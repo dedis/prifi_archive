@@ -1,6 +1,8 @@
 package stamp_test
 
 import (
+	"fmt"
+	"log"
 	"strconv"
 	"sync"
 	"testing"
@@ -8,10 +10,67 @@ import (
 
 	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/stamp"
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
+
+func TestTimestampFromConfig(t *testing.T) {
+	nMessages := 1
+	nRounds := 2
+
+	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = hc.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stampers, clients, err := hc.RunTimestamper(1)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, c := range clients {
+		go c.Listen()
+		go c.ShowHistory()
+	}
+	for _, s := range stampers[1:] {
+		go s.ListenToClients("regular", nRounds)
+	}
+	go stampers[0].ListenToClients("root", nRounds)
+	log.Println("About to start senidng client messages")
+	// time.Sleep(1 * time.Second)
+	for r := 0; r < nRounds; r++ {
+		var wg sync.WaitGroup
+		for _, c := range clients {
+			for i := 0; i < nMessages; i++ {
+				// TODO: messages should be sent hashed eventually
+				messg := []byte("messg:" + strconv.Itoa(r) + "." + strconv.Itoa(i))
+				wg.Add(1)
+				go func(c *stamp.Client, messg []byte, i int) {
+					defer wg.Done()
+					server := "NO VALID SERVER"
+					for k := range c.Sns {
+						server = k
+						break
+					}
+					c.TimeStamp(messg, server)
+				}(c, messg, r)
+			}
+		}
+		// wait between rounds
+		wg.Wait()
+		fmt.Println("done with round:", r, nRounds)
+	}
+	for _, h := range hc.SNodes {
+		h.Close()
+	}
+	for _, c := range clients {
+		c.Close()
+	}
+}
 
 // Configuration file data/exconf.json
 //       0
@@ -38,11 +97,10 @@ func TestTSSIntegration(t *testing.T) {
 	for i := range stampers {
 		stampers[i] = stamp.NewServer(hostConfig.SNodes[i])
 	}
+
 	clientsLists := make([][]*stamp.Client, len(hostConfig.SNodes[1:]))
 	for i, s := range stampers[1:] {
-		clientsLists[i] = createClientsForTSServer(ncps, s,
-			// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-			s.Signer.(*sign.SigningNode).Host.(*coconet.GoHost).GetDirectory(), 0+i+ncps)
+		clientsLists[i] = createClientsForTSServer(ncps, s, hostConfig.Dir, 0+i+ncps)
 	}
 	for i, s := range stampers[1:] {
 		go s.ListenToClients("regular", nRounds)
@@ -75,7 +133,7 @@ func TestTSSIntegration(t *testing.T) {
 func createClientsForTSServer(nClients int, s *stamp.Server, dir *coconet.GoDirectory, fClient int) []*stamp.Client {
 	clients := make([]*stamp.Client, 0, nClients)
 	for i := 0; i < nClients; i++ {
-		clients = append(clients, stamp.NewClient("client"+strconv.Itoa(fClient+i), dir))
+		clients = append(clients, stamp.NewClient("client"+strconv.Itoa(fClient+i)))
 
 		// intialize TSServer conn to client
 		ngc, err := coconet.NewGoConn(dir, s.Name(), clients[i].Name())
