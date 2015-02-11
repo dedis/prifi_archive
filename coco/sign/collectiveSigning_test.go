@@ -16,7 +16,20 @@ import (
 //     1
 //    / \
 //   2   3
-func TestStatic(t *testing.T) {
+func TestStaticMerkle(t *testing.T) {
+
+	if err := runStaticTest(sign.MerkleTree); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStaticPubKey(t *testing.T) {
+	if err := runStaticTest(sign.PubKey); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runStaticTest(signType sign.Type) error {
 	// Crypto setup
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
@@ -33,23 +46,18 @@ func TestStatic(t *testing.T) {
 	}
 
 	// Add edges to children
-	//gc, _ = NewGoConn(directory, h[0].name, h[1].name)
 	h[0].AddChildren(h[1].Name())
-	//gc, _ = NewGoConn(directory, h[1].name, h[2].name)
-	//gc2, _ = NewGoConn(directory, h[1].name, h[3].name)
 	h[1].AddChildren(h[2].Name(), h[3].Name())
 	// Add edges to parents
-	//gc, _ = NewGoConn(directory, h[1].name, h[0].name)
 	h[1].AddParent(h[0].Name())
-	//gc, _ = NewGoConn(directory, h[2].name, h[1].name)
 	h[2].AddParent(h[1].Name())
-	//gc, _ = NewGoConn(directory, h[3].name, h[1].name)
 	h[3].AddParent(h[1].Name())
 
 	// Create Signing Nodes out of the hosts
 	nodes := make([]*sign.SigningNode, nNodes)
 	for i := 0; i < nNodes; i++ {
 		nodes[i] = sign.NewSigningNode(h[i], suite, rand)
+		nodes[i].Type = signType
 
 		// To test the already keyed signing node, uncomment
 		// PrivKey := suite.Secret().Pick(rand)
@@ -82,11 +90,7 @@ func TestStatic(t *testing.T) {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].LogTest = []byte("Hello World")
-	err := nodes[0].Announce(&sign.AnnouncementMessage{nodes[0].LogTest})
-	if err != nil {
-		t.Log(err)
-		t.Fail()
-	}
+	return nodes[0].Announce(&sign.AnnouncementMessage{nodes[0].LogTest})
 }
 
 // Configuration file data/exconf.json

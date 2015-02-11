@@ -53,7 +53,6 @@ func (sn *SigningNode) Listen() error {
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
-	//fmt.Println(sn.Name(), "announces")
 	// Inform all children of announcement
 	// PutDown requires each child to have his own message
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
@@ -76,13 +75,108 @@ func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	for i := range messgs {
 		messgs[i] = &SigningMessage{}
 	}
+
 	// wait for all children to commit
 	var err error
 	if err = sn.GetDown(messgs); err != nil {
 		return nil, err
 	}
-
 	return messgs, nil
+}
+
+// Create round lasting secret and commit point v and V
+// Initialize log structure for the round
+func (sn *SigningNode) initCommitCrypto() {
+	// generate secret and point commitment for this round
+	rand := sn.suite.Cipher([]byte(sn.Name()))
+	sn.Log = SNLog{}
+	sn.Log.v = sn.suite.Secret().Pick(rand)
+	sn.Log.V = sn.suite.Point().Mul(nil, sn.Log.v)
+	// initialize product of point commitments
+	sn.Log.V_hat = sn.Log.V
+}
+
+func (sn *SigningNode) GetChildrenMerkleRoots() {
+	// children commit roots
+	sn.CMTRoots = make([]hashid.HashId, len(sn.Leaves))
+	copy(sn.CMTRoots, sn.Leaves)
+
+	// concatenate children commit roots in one binary blob for easy marshalling
+	sn.Log.CMTRoots = make([]byte, 0)
+	for _, leaf := range sn.Leaves {
+		sn.Log.CMTRoots = append(sn.Log.CMTRoots, leaf...)
+	}
+}
+
+func (sn *SigningNode) GetLocalMerkleRoot() {
+	// add own local mtroot to leaves
+	if sn.CommitFunc != nil {
+		sn.LocalMTRoot = sn.CommitFunc()
+	} else {
+		sn.LocalMTRoot = make([]byte, hashid.Size)
+	}
+	sn.Leaves = append(sn.Leaves, sn.LocalMTRoot)
+	sn.LocalMTRootIndex = len(sn.Leaves) - 1
+
+}
+
+func (sn *SigningNode) ComputeCombinedMerkleRoot() {
+	// add hash of whole log to leaves
+	sn.Leaves = append(sn.Leaves, sn.HashedLog)
+
+	// compute MT root based on Log as right child and
+	// MT of leaves as left child and send it up to parent
+	sort.Sort(hashid.ByHashId(sn.Leaves))
+	left, proofs := proof.ProofTree(sn.GetSuite().Hash, sn.Leaves)
+	right := sn.HashedLog
+	moreLeaves := make([]hashid.HashId, 0)
+	moreLeaves = append(moreLeaves, left, right)
+	sn.MTRoot, _ = proof.ProofTree(sn.GetSuite().Hash, moreLeaves)
+
+	// Hashed Log has to come first in the proof
+	sn.Proofs = make([]proof.Proof, len(sn.CMTRoots)+1) // +1 for local proof
+	for i := 0; i < len(sn.Proofs); i++ {
+		sn.Proofs[i] = append(sn.Proofs[i], right)
+	}
+
+	// separate proofs by children (need to send personalized proofs to children)
+	// also separate local proof (need to send it to timestamp server)
+	sn.SeparateProofs(proofs, sn.Leaves)
+}
+
+func (sn *SigningNode) Commit() error {
+	sn.initCommitCrypto()
+
+	// get commits from kids
+	messgs, err := sn.getDownMessgs()
+	if err != nil {
+		return err
+	}
+
+	// Commits from children are the first Merkle Tree leaves for the round
+	sn.Leaves = make([]hashid.HashId, 0)
+	for _, messg := range messgs {
+		sm := messg.(*SigningMessage)
+		switch sm.Type {
+		default:
+			// Not possible in current system where little randomness is allowed
+			// In real system failing is required
+			panic("Reply to announcement is not a commit")
+		case Commitment:
+			sn.Leaves = append(sn.Leaves, sm.Com.MTRoot)
+			sn.Log.V_hat.Add(sn.Log.V_hat, sm.Com.V_hat)
+		}
+	}
+
+	if sn.Type == PubKey {
+		return sn.actOnCommits()
+	} else {
+		sn.GetChildrenMerkleRoots()
+		sn.GetLocalMerkleRoot()
+		sn.HashLog()
+		sn.ComputeCombinedMerkleRoot()
+		return sn.actOnCommits()
+	}
 }
 
 // Finalize commits by initiating the challenge pahse if root
@@ -103,109 +197,6 @@ func (sn *SigningNode) actOnCommits() (err error) {
 	return
 }
 
-// Create round lasting secret and commit point v and V
-// Initialize log structure for the round
-func (sn *SigningNode) initCommitCrypto() {
-	// generate secret and point commitment for this round
-	rand := sn.suite.Cipher([]byte(sn.Name()))
-	sn.Log = SNLog{}
-	sn.Log.v = sn.suite.Secret().Pick(rand)
-	sn.Log.V = sn.suite.Point().Mul(nil, sn.Log.v)
-	// initialize product of point commitments
-	sn.Log.V_hat = sn.Log.V
-}
-
-func (sn *SigningNode) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId) {
-	for i := 0; i < len(sn.CMTRoots); i++ {
-		for j := 0; j < len(leaves); j++ {
-			if bytes.Compare(sn.CMTRoots[i], leaves[j]) == 0 {
-				sn.Proofs[i] = append(sn.Proofs[i], proofs[j]...)
-				continue
-			}
-		}
-	}
-
-	for j := 0; j < len(leaves); j++ {
-		if bytes.Compare(sn.LocalMTRoot, leaves[j]) == 0 {
-			sn.Proofs[sn.LocalMTRootIndex] = append(sn.Proofs[sn.LocalMTRootIndex], proofs[j]...)
-		}
-	}
-}
-
-func (sn *SigningNode) Commit() error {
-	sn.initCommitCrypto()
-
-	// get commits from kids
-	messgs, err := sn.getDownMessgs()
-	if err != nil {
-		return err
-	}
-
-	// Commits from children are the first Merkle Tree leaves for the round
-	leaves := make([]hashid.HashId, 0)
-	for _, messg := range messgs {
-		sm := messg.(*SigningMessage)
-		switch sm.Type {
-		default:
-			// Not possible in current system where little randomness is allowed
-			// In real system failing is required
-			panic("Reply to announcement is not a commit")
-		case Commitment:
-			leaves = append(leaves, sm.Com.MTRoot)
-			sn.Log.V_hat.Add(sn.Log.V_hat, sm.Com.V_hat)
-		}
-	}
-	// keep children commits twice (in sn and in sn.Log for the moment)
-	sn.CMTRoots = make([]hashid.HashId, len(leaves))
-	copy(sn.CMTRoots, leaves)
-	// concatenate children mtroots in one binary blob for easy marshalling
-	sn.Log.CMTRoots = make([]byte, 0)
-	for _, leaf := range leaves {
-		sn.Log.CMTRoots = append(sn.Log.CMTRoots, leaf...)
-	}
-
-	// add own local mtroot to leaves
-	if sn.CommitFunc != nil {
-		sn.LocalMTRoot = sn.CommitFunc()
-	} else {
-		sn.LocalMTRoot = make([]byte, hashid.Size)
-	}
-	leaves = append(leaves, sn.LocalMTRoot)
-	sn.LocalMTRootIndex = len(leaves) - 1
-
-	// add hash of whole log to leaves
-	sn.HashedLog, err = sn.hashLog()
-	if err != nil {
-		return err
-	}
-	// log.Println("------HashedLog", sn.Name(), len(sn.HashedLog), sn.HashedLog)
-	leaves = append(leaves, sn.HashedLog)
-
-	// compute MT root based on Log as right child and
-	// MT of leaves as left child and send it up to parent
-	sort.Sort(hashid.ByHashId(leaves))
-	left, proofs := proof.ProofTree(sn.GetSuite().Hash, leaves)
-	right := sn.HashedLog
-
-	moreLeaves := make([]hashid.HashId, 0)
-	moreLeaves = append(moreLeaves, left, right)
-	sn.MTRoot, _ = proof.ProofTree(sn.GetSuite().Hash, moreLeaves)
-	// fmt.Println("-----MTROOT", sn.Name(), len(sn.MTRoot), sn.MTRoot)
-
-	// Hashed Log has to come first in the proof
-	sn.Proofs = make([]proof.Proof, len(sn.CMTRoots)+1) // +1 for local proof
-	for i := 0; i < len(sn.Proofs); i++ {
-		sn.Proofs[i] = append(sn.Proofs[i], right)
-	}
-	// separate proofs by children (ignore proofs for HashedLog and LocalMT)
-	// also separate local proof need to send it to timestamp server
-	sn.SeparateProofs(proofs, leaves)
-
-	// check that will be able to rederive your mtroot from proofs
-	sn.checkChildrenProofs()
-	return sn.actOnCommits()
-}
-
 func (sn *SigningNode) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
 	// proof from client to my root
 	proof.CheckProof(sn.GetSuite().Hash, sn.MTRoot, sn.LocalMTRoot, sn.Proofs[sn.LocalMTRootIndex])
@@ -215,34 +206,39 @@ func (sn *SigningNode) VerifyAllProofs(chm *ChallengeMessage, proofForClient pro
 	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.LocalMTRoot, proofForClient)
 }
 
-// initiated by root, propagated by all others
-func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
-	// Reply to client (timestamp server)
+// Create Merkle Proof for local client (timestamp server)
+// Send Merkle Proof to local client (timestamp server)
+func (sn *SigningNode) SendLocalMerkleProof(chm *ChallengeMessage) error {
 	if sn.DoneFunc != nil {
 		proofForClient := make(proof.Proof, len(chm.Proof))
 		copy(proofForClient, chm.Proof)
 
 		// To the proof from our root to big root we must add the separated proof
-		// from the localMKT of the lcient to our root
+		// from the localMKT of the client (timestamp server) to our root
 		proofForClient = append(proofForClient, sn.Proofs[sn.LocalMTRootIndex]...)
 
-		// if want to verify paritial and full proofs
+		// if want to verify partial and full proofs
 		sn.VerifyAllProofs(chm, proofForClient)
 
 		// 'reply' to client
+		// TODO: add error to done function
 		sn.DoneFunc(chm.MTRoot, sn.MTRoot, proofForClient)
 	}
 
-	sn.c = chm.C
+	return nil
+}
+
+// Create Personalized Merkle Proofs for children servers
+// Send Personalized Merkle Proofs to children servers
+func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error {
+	// proof from big root to our root will be sent to all children
 	baseProof := make(proof.Proof, len(chm.Proof))
 	copy(baseProof, chm.Proof)
 
-	// for each child, create levelProof for this(root) level
+	// for each child, create personalized part of proof
 	// embed it in SigningMessage, and send it
 	for i, child := range sn.Children() {
 		newChm := *chm
-		// proof for this level involves all leaves used to create sn.MTRoot
-		// must exclude child's own committed MTRoot for each child
 		newChm.Proof = append(baseProof, sn.Proofs[i]...)
 
 		var messg coconet.BinaryMarshaler
@@ -254,8 +250,45 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		}
 	}
 
-	// initiate response phase
-	return sn.Respond()
+	return nil
+}
+
+// Send children challenges
+func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
+	for _, child := range sn.Children() {
+		var messg coconet.BinaryMarshaler
+		messg = SigningMessage{Type: Challenge, Chm: chm}
+
+		// send challenge message to child
+		if err := child.Put(messg); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// initiated by root, propagated by all others
+func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
+	// register challenge
+	sn.c = chm.C
+
+	if sn.Type == PubKey {
+		if err := sn.SendChildrenChallenges(chm); err != nil {
+			return err
+		}
+		return sn.Respond()
+	} else {
+		// messages from clients, proofs computed
+		if err := sn.SendLocalMerkleProof(chm); err != nil {
+			return err
+		}
+		if err := sn.SendChildrenChallengesProofs(chm); err != nil {
+			return err
+		}
+		return sn.Respond()
+	}
+
 }
 
 func (sn *SigningNode) initResponseCrypto() {
@@ -344,6 +377,14 @@ func (sn *SigningNode) VerifyResponses() error {
 	return nil
 }
 
+// Called when log for round if full and ready to be hashed
+func (sn *SigningNode) HashLog() error {
+	var err error
+	sn.HashedLog, err = sn.hashLog()
+	return err
+}
+
+// Auxilary function to perform the actual hashing of the log
 func (sn *SigningNode) hashLog() ([]byte, error) {
 	h := sn.suite.Hash()
 	logBytes, err := sn.Log.MarshalBinary()
@@ -354,6 +395,28 @@ func (sn *SigningNode) hashLog() ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
+// Identify which proof corresponds to which leaf
+// Needed given that the leaves are sorted before passed to the function that create
+// the Merkle Tree and its Proofs
+func (sn *SigningNode) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId) {
+	// separate proofs for children servers mt roots
+	for i := 0; i < len(sn.CMTRoots); i++ {
+		for j := 0; j < len(leaves); j++ {
+			if bytes.Compare(sn.CMTRoots[i], leaves[j]) == 0 {
+				sn.Proofs[i] = append(sn.Proofs[i], proofs[j]...)
+				continue
+			}
+		}
+	}
+
+	// separate proof for local mt root
+	for j := 0; j < len(leaves); j++ {
+		if bytes.Compare(sn.LocalMTRoot, leaves[j]) == 0 {
+			sn.Proofs[sn.LocalMTRootIndex] = append(sn.Proofs[sn.LocalMTRootIndex], proofs[j]...)
+		}
+	}
+}
+
 // Returns a secret that depends on on a message and a point
 func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstract.Secret {
 	pb, _ := p.MarshalBinary()
@@ -362,17 +425,13 @@ func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstrac
 	return suite.Secret().Pick(c)
 }
 
+// Check that starting from its own committed message each child can reach our subtrees' mtroot
+// Also checks that starting from local mt root we can get to  our subtrees' mtroot <-- could be in diff fct
 func (sn *SigningNode) checkChildrenProofs() {
 	cmtAndLocal := make([]hashid.HashId, len(sn.CMTRoots))
 	copy(cmtAndLocal, sn.CMTRoots)
 	cmtAndLocal = append(cmtAndLocal, sn.LocalMTRoot)
 
-	if sn.Name() == "host1" {
-		log.Println(sn.Name(), "LMT", sn.LocalMTRoot, "Proofs", sn.Proofs[len(sn.Proofs)-1])
-		log.Println("sn.MTRoot", sn.MTRoot)
-	}
-
-	// log.Println(sn.Name(), "about to check chidlren's proofs")
 	if proof.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, cmtAndLocal, sn.Proofs) == true {
 		log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
