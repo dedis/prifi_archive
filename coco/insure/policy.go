@@ -43,9 +43,9 @@ type Policy interface {
 	// needed to reconstruct the secret. Once it has achieved at least "r"
 	// receipts from other servers verifying that it has taken out a policy
 	// with them (where t <= r <= n), the function returns the new policy.
-	TakeOutPolicy(keyPair config.KeyPair, serverList []abstract.Point,
+	TakeOutPolicy(keyPair *config.KeyPair, serverList []abstract.Point,
 		selectInsurers func([]abstract.Point, int) ([]abstract.Point, bool),
-		cman connMan.ConnManager, t, n int) (*Policy, bool)
+		cman connMan.ConnManager, n int) (*Policy, bool)
 
 	// Returns the list of insurers for the policy
 	GetInsurers() []abstract.Point
