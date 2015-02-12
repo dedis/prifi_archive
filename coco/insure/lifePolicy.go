@@ -25,8 +25,8 @@ import (
  */
 
 type LifePolicy struct {
-	// Private Key that is being insured.
-	privateKey abstract.Secret
+	// The key that is being insured.
+	keyPair *config.KeyPair
 
 	// A list of the public keys of the insurers of this policy
 	insurersList []abstract.Point
@@ -34,7 +34,47 @@ type LifePolicy struct {
 	// Digitial Signatures that serve as "proof of insurance"
 	// The PolicyApprovedMessage contains the signatures.
 	proofList *list.List
+
+	// Denotes whether or not a policy has been taken out yet.
+	hasPolicy bool
+	
+	// This stores the secrets of other nodes this server is insuring.
+	// The map is: abstract.Point.String() => abstract.Secret
+	insuredClients map[string]abstract.Secret
 }
+
+
+/* This method initializes a policy. This function should be called first before
+ * using the policy in any manner. After being initialize, the policy will be
+ * able to insure other clients. However, it will not provide a policy for the
+ * owner server until TakeOutPolicy has been called.
+ *
+ * Arguments:
+ *   keyPair         = the public/private key of the owner server
+ *
+ */
+func (lp *LifePolicy) Init(keyPair *config.KeyPair) *list.List {
+	lp.keyPair = keyPair
+	lp.hasPolicy = false
+	lp.insuredClients = make(map[string]abstract.Secret)
+	return lp.proofList
+}
+
+// Returns the private key that is being insured.
+func (lp *LifePolicy) getKeyPair() *config.KeyPair {
+	return lp.keyPair
+}
+
+// Returns the list of insurers for the policy.
+func (lp *LifePolicy) GetInsurers() []abstract.Point {
+	return lp.insurersList
+}
+
+// Returns the certificates of the insurers for each policy.
+func (lp *LifePolicy) GetPolicyProof() *list.List {
+	return lp.proofList
+}
+
 
 /* This function selects a set of servers to serve as insurers.
  * This is an extremely rudimentary version that selects the first
@@ -58,20 +98,6 @@ func selectInsurersBasic(serverList []abstract.Point, n int) ([]abstract.Point, 
 	return serverList[:n], true
 }
 
-// Returns the private key that is being insured.
-func (lp *LifePolicy) GetPrivateKey() abstract.Secret {
-	return lp.privateKey
-}
-
-// Returns the list of insurers for the policy.
-func (lp *LifePolicy) GetInsurers() []abstract.Point {
-	return lp.insurersList
-}
-
-// Returns the certificates of the insurers for each policy.
-func (lp *LifePolicy) GetPolicyProof() *list.List {
-	return lp.proofList
-}
 
 /* This method is responsible for "taking out" the insurance policy. The
  * function takes the server's private key, divides it up into
@@ -104,7 +130,7 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair *config.KeyPair, serverList []abstra
 
 	// Initialize the policy.
 	ok := true
-	lp.privateKey = keyPair.Secret
+	lp.keyPair = keyPair
 
 	// If we have no selectInsurers function, use the basic algorithm.
 	if selectInsurers == nil {
@@ -133,7 +159,7 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair *config.KeyPair, serverList []abstra
 
 	// Send each share off to the appropriate server.
 	for i := 0; i < n; i++ {
-		requestMsg := new(RequestInsuranceMessage).createMessage(keyPair.Public, prishares.Share(i), pubPoly)
+		requestMsg := new(RequestInsuranceMessage).createMessage(keyPair.Public, i, prishares.Share(i), pubPoly)
 		cman.Put(lp.insurersList[i], new(PolicyMessage).createRIMessage(requestMsg))	
 	}
 
@@ -166,5 +192,45 @@ func (lp *LifePolicy) TakeOutPolicy(keyPair *config.KeyPair, serverList []abstra
 		}
 	}
 
+	lp.hasPolicy = true
 	return lp, ok
 }
+
+
+/*
+func handlePolicyMessage() {
+
+	for true {
+		msg := new(PolicyMessage)
+		cm.Get(keyPairT.Public, msg)
+			
+		// If a RequestInsuranceMessage, send an acceptance message and then
+		// exit.
+		if msg.Type == RequestInsurance {
+			reply := new(PolicyApprovedMessage).createMessage(k, msg.getRIM().PubKey)
+			cm.Put(msg.getRIM().PubKey, new(PolicyMessage).createPAMessage(reply))
+			
+			// Send a duplicate to make sure that our insurance policy doesn't add
+			// the same message from the same source twice.
+			cm.Put(msg.getRIM().PubKey, new(PolicyMessage).createPAMessage(reply))	
+			return
+		}
+	}
+}
+
+/* This method handles RequestInsuranceMessages. If another node requests to be insured,
+ * verify that the share it sent is valid. If so, insure it and send a confirmation
+ * message back.
+ *
+ * Arguments:
+ *   msg = the message requesting insurance
+ *
+ *
+ * Note: If selectInsurers is null, the policy will resort to a default
+ * selection function.
+ * /
+func (lp *LifePolicy) handleRequestInsuranceMessage(msg * RequestInsuranceMessage) {
+	reply := new(PolicyApprovedMessage).createMessage(lp.keyPair, msg.getRIM().PubKey)
+	cm.Put(msg.getRIM().PubKey, new(PolicyMessage).createPAMessage(reply))
+}
+*/

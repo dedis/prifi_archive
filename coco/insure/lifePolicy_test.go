@@ -156,8 +156,8 @@ func TestTakeOutPolicy(t *testing.T) {
 		t.Error("Policy failed to be created.")
 	}
 	
-	if !keyPairT.Secret.Equal(policy.GetPrivateKey()) {
-		t.Error("The secret for the policy not properly set.")
+	if keyPairT != policy.getKeyPair() {
+		t.Error("The key for the policy not properly set.")
 	}
 	
 	resultInsurerList := policy.GetInsurers()
