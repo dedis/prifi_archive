@@ -11,6 +11,7 @@ import (
 
 	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/stamp"
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
@@ -21,13 +22,13 @@ func init() {
 
 func TestTimestampFromConfig(t *testing.T) {
 	nMessages := 10
-	nRounds := 100
+	nRounds := 10
 
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hc.Run()
+	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +92,7 @@ func TestTSSIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hostConfig.Run()
+	err = hostConfig.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
