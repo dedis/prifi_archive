@@ -38,9 +38,10 @@ func produceKeyPair() *config.KeyPair {
 // Verifies that a RequestInsuranceMessage can be created properly.
 func TestRequestInsuranceCreate(t *testing.T) {
 	share := prishares.Share(0)
-	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, share, pubCommit)
+	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, share, pubCommit)
 
-	if !keyPair.Public.Equal(msg.PubKey) || !share.Equal(msg.Share) || !pubCommit.Equal(msg.PubCommit) {
+	if !keyPair.Public.Equal(msg.PubKey) || !share.Equal(msg.Share) || !pubCommit.Equal(msg.PubCommit) ||
+	   0 != msg.ShareNumber.V.Sign() {
 		t.Error("RequestInsuranceMessage was not initialized properly.")
 	}
 }
@@ -48,7 +49,7 @@ func TestRequestInsuranceCreate(t *testing.T) {
 // Verifies that a RequestInsuranceMessage can be marshalled and unmarshalled
 func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
 	share := prishares.Share(0)
-	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, share, pubCommit)
+	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, share, pubCommit)
 	encodedMsg, err := msg.MarshalBinary()
 	if err != nil {
 		t.Error("Marshalling failed!")
@@ -63,7 +64,8 @@ func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
 	if  !keyPair.Public.Equal(msg.PubKey) || !share.Equal(msg.Share) ||
 	    !pubCommit.Equal(msg.PubCommit) ||
 	    !msg.Share.Equal(newMsg.Share) || !keyPair.Public.Equal(newMsg.PubKey) ||
-	    !msg.PubCommit.Equal(newMsg.PubCommit) {
+	    !msg.PubCommit.Equal(newMsg.PubCommit) ||
+	    msg.ShareNumber.V.Sign() != newMsg.ShareNumber.V.Sign() {
 		t.Error("Data was lost during marshalling.")
 	}
 }
@@ -159,7 +161,7 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 // that the signature was properly preserved.
 func TestPolicyMessage(t *testing.T) {
 
-	requestMsg := new(RequestInsuranceMessage).createMessage(keyPair.Public, prishares.Share(0), pubCommit)
+	requestMsg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, prishares.Share(0), pubCommit)
 	approveMsg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
 	
 	PolicyMessageHelper(t, new(PolicyMessage).createRIMessage(requestMsg))

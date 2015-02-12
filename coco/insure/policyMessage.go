@@ -1,11 +1,14 @@
 package insure
 
 import (
+	"math"
+	"math/big"
 	"bytes"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/anon"
 	"github.com/dedis/crypto/config"
+	"github.com/dedis/crypto/nist"
 	"github.com/dedis/crypto/poly"
 	"github.com/dedis/crypto/random"
 	
@@ -109,6 +112,9 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 type RequestInsuranceMessage struct {
 	// The public key of the insured.
 	PubKey abstract.Point
+	
+	// The number of the share being sent.
+	ShareNumber *nist.Int
 
 	// The private share to give to the insurer
 	Share abstract.Secret
@@ -126,9 +132,10 @@ type RequestInsuranceMessage struct {
  * Returns:
  *	A new insurance request message.
  */
-func (msg *RequestInsuranceMessage) createMessage(p abstract.Point, s abstract.Secret,
-	pc *poly.PubPoly) *RequestInsuranceMessage {
+func (msg *RequestInsuranceMessage) createMessage(p abstract.Point, shareNum int,
+	s abstract.Secret, pc *poly.PubPoly) *RequestInsuranceMessage {
 	msg.PubKey = p
+	msg.ShareNumber = nist.NewInt(int64(shareNum), big.NewInt(int64(math.MaxInt64)))
 	msg.Share = s
 	msg.PubCommit = pc
 	return msg
@@ -149,12 +156,26 @@ func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsura
 	msg.PubCommit = new(poly.PubPoly)
 	msg.PubCommit.Init(INSURE_GROUP, TSHARES, nil)
 	msg.PubKey = KEY_SUITE.Point()
+	msg.Share = INSURE_GROUP.Secret().Pick(random.Stream)
+	msg.ShareNumber = nist.NewInt(int64(0), big.NewInt(int64(math.MaxInt64)))
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, msg, INSURE_GROUP)
 	return msg, err
 //	return 	msg, protobuf.Decode(data, msg)
 
 }
+
+// Encodes a policy message for sending over the Internet
+//func (msg *PolicyApprovedMessage) MarshalBinary() ([]byte, error) {
+//	return protobuf.Encode(msg);
+//}
+
+// Decodes a policy message for sending over the Internet
+//func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) (*PolicyApprovedMessage, error) {
+//	msg.PubKey = KEY_SUITE.Point()
+//	return msg, protobuf.Decode(data, msg);
+//}
+
 
 type PolicyApprovedMessage struct {
 	// The public key of the insurer.
