@@ -61,6 +61,10 @@ type SigningNode struct {
 
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc
+
+	// public keys of children servers that did not respond to
+	// annoucement from root
+	ExceptionList []abstract.Point
 }
 
 func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -84,6 +88,7 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 	sn.X_hat = suite.Point().Null()
 	sn.peerKeys = make(map[string]abstract.Point)
+	sn.ExceptionList = make([]abstract.Point, 0)
 
 	return sn
 }
@@ -94,6 +99,7 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 	sn.X_hat = suite.Point().Null()
 	sn.peerKeys = make(map[string]abstract.Point)
+	sn.ExceptionList = make([]abstract.Point, 0)
 
 	return sn
 }

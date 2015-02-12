@@ -79,6 +79,21 @@ func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	// wait for all children to commit
 	var err error
 	if err = sn.GetDown(messgs); err != nil {
+		children := sn.Host.Children()
+		nChildren := len(children)
+
+		// check capacity >= current length
+		if cap(sn.ExceptionList) >= nChildren {
+			sn.ExceptionList = sn.ExceptionList[:0]
+		} else {
+			sn.ExceptionList = make([]abstract.Point, 0, nChildren)
+		}
+
+		for i := range messgs {
+			if messgs[i] == nil {
+				sn.ExceptionList = append(sn.ExceptionList, sn.peerKeys[children[i].Name()])
+			}
+		}
 		return nil, err
 	}
 	return messgs, nil
@@ -165,6 +180,7 @@ func (sn *SigningNode) Commit() error {
 		case Commitment:
 			sn.Leaves = append(sn.Leaves, sm.Com.MTRoot)
 			sn.Log.V_hat.Add(sn.Log.V_hat, sm.Com.V_hat)
+			sn.ExceptionList = append(sn.ExceptionList, sm.Com.ExceptionList...)
 		}
 	}
 
@@ -187,9 +203,10 @@ func (sn *SigningNode) actOnCommits() (err error) {
 	} else {
 		// create and putup own commit message
 		com := &CommitmentMessage{
-			V:      sn.Log.V,
-			V_hat:  sn.Log.V_hat,
-			MTRoot: sn.MTRoot}
+			V:             sn.Log.V,
+			V_hat:         sn.Log.V_hat,
+			MTRoot:        sn.MTRoot,
+			ExceptionList: sn.ExceptionList}
 		err = sn.PutUp(SigningMessage{
 			Type: Commitment,
 			Com:  com})
@@ -245,7 +262,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 		messg = SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
-		if err := child.Put(messg); err != nil {
+		if err := <-child.Put(messg); err != nil {
 			return err
 		}
 	}
@@ -260,7 +277,7 @@ func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
 		messg = SigningMessage{Type: Challenge, Chm: chm}
 
 		// send challenge message to child
-		if err := child.Put(messg); err != nil {
+		if err := <-child.Put(messg); err != nil {
 			return err
 		}
 	}
@@ -339,9 +356,18 @@ func (sn *SigningNode) Respond() error {
 	return err
 }
 
+func (sn *SigningNode) cleanVHat() {
+	for _, pubKey := range sn.ExceptionList {
+		sn.Log.V_hat.Sub(sn.Log.V_hat, pubKey)
+	}
+}
+
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits() error {
-	// challenge = Hash(Merkle Tree Root, sn.Log.V_hat)
+	// remove nodes on exception list form VHat
+	sn.cleanVHat()
+
+	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
 		sn.c = hashElGamal(sn.suite, sn.LogTest, sn.Log.V_hat)
 	} else {

@@ -60,6 +60,10 @@ type CommitmentMessage struct {
 	V_hat abstract.Point // product of children's commitment points
 
 	MTRoot hashid.HashId // root of Merkle (sub)Tree
+
+	// public keys of children servers that did not respond to
+	// annoucement from root
+	ExceptionList []abstract.Point
 }
 
 type ChallengeMessage struct {

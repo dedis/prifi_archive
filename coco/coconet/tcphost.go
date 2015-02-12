@@ -9,12 +9,17 @@ import (
 	"time"
 )
 
+// Default timeout for any network operation
+const DefaultTCPTimeout time.Duration = 500 * time.Millisecond
+
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
 	name     string // the hostname
 	parent   Conn   // the Peer representing parent, nil if root
 	children []Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
+
+	timeout time.Duration // general timeout for any network operation
 }
 
 // NewTCPHost creates a new TCPHost with a given hostname.
@@ -22,6 +27,8 @@ func NewTCPHost(hostname string) *TCPHost {
 	h := &TCPHost{name: hostname,
 		children: make([]Conn, 0),
 		peers:    make(map[string]Conn)}
+
+	h.timeout = DefaultTCPTimeout
 	return h
 }
 
@@ -163,13 +170,13 @@ func (h TCPHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) PutUp(data BinaryMarshaler) error {
-	return h.parent.Put(data)
+	return <-h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
-	return h.parent.Get(data)
+	return <-h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -183,7 +190,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := c.Put(data[i]); e != nil {
+		if e := <-c.Put(data[i]); e != nil {
 			err = e
 		}
 		i++
@@ -198,17 +205,30 @@ func (h *TCPHost) GetDown(data []BinaryUnmarshaler) error {
 	var wg sync.WaitGroup
 	var err error
 	i := 0
+
 	for _, c := range h.children {
 		wg.Add(1)
+
 		go func(i int, c Conn) {
+			var e error
 			defer wg.Done()
-			e := c.Get(data[i])
+
+			select {
+			case e = <-c.Get(data[i]):
+				if e != nil {
+					setError(&mu, &err, e)
+				}
+				break
+			case <-time.After(h.timeout):
+				setError(&mu, &err, TimeoutError)
+
+			}
+
 			if e != nil {
-				mu.Lock()
-				err = e
-				mu.Unlock()
+				data[i] = nil
 			}
 		}(i, c)
+
 		i++
 	}
 	wg.Wait()

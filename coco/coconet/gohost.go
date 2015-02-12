@@ -1,9 +1,15 @@
 package coconet
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
+
+// Default timeout for any network operation
+const DefaultGoTimeout time.Duration = 500 * time.Millisecond
+
+var TimeoutError error = errors.New("Network timeout error")
 
 // HostNode is a simple implementation of Host that does not specify the
 // communication medium (goroutines/channels, network nodes/tcp, ...).
@@ -13,6 +19,8 @@ type GoHost struct {
 	children []Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
 	dir      *GoDirectory
+
+	timeout time.Duration // general timeout for any network operation
 }
 
 func (h *GoHost) GetDirectory() *GoDirectory {
@@ -25,6 +33,8 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 		children: make([]Conn, 0),
 		peers:    make(map[string]Conn),
 		dir:      dir}
+
+	h.timeout = DefaultGoTimeout
 	return h
 }
 
@@ -100,13 +110,13 @@ func (h GoHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
-	return h.parent.Put(data)
+	return <-h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
-	return h.parent.Get(data)
+	return <-h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -120,12 +130,18 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := c.Put(data[i]); e != nil {
+		if e := <-c.Put(data[i]); e != nil {
 			err = e
 		}
 		i++
 	}
 	return err
+}
+
+func setError(mu *sync.Mutex, err *error, e error) {
+	mu.Lock()
+	*err = e
+	mu.Unlock()
 }
 
 // GetDown gets a message (an interface{} value) from all children through
@@ -137,15 +153,28 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
 	i := 0
 	for _, c := range h.children {
 		wg.Add(1)
+
 		go func(i int, c Conn) {
+			var e error
 			defer wg.Done()
-			e := c.Get(data[i])
-			if e != nil {
-				mu.Lock()
-				err = e
-				mu.Unlock()
+
+			select {
+			case e = <-c.Get(data[i]):
+				if e != nil {
+					setError(&mu, &err, e)
+				}
+				break
+			case <-time.After(h.timeout):
+				setError(&mu, &err, TimeoutError)
+
 			}
+
+			if e != nil {
+				data[i] = nil
+			}
+
 		}(i, c)
+
 		i++
 	}
 	wg.Wait()
