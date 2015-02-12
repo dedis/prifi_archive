@@ -165,17 +165,13 @@ func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsura
 
 }
 
-// Encodes a policy message for sending over the Internet
-//func (msg *PolicyApprovedMessage) MarshalBinary() ([]byte, error) {
-//	return protobuf.Encode(msg);
-//}
-
-// Decodes a policy message for sending over the Internet
-//func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) (*PolicyApprovedMessage, error) {
-//	msg.PubKey = KEY_SUITE.Point()
-//	return msg, protobuf.Decode(data, msg);
-//}
-
+// Compares two messages to see if they are equal
+func (msg *RequestInsuranceMessage) Equal(otherMsg *RequestInsuranceMessage) bool {
+	return msg.PubKey.Equal(otherMsg.PubKey)  &&
+	       msg.ShareNumber.V.Sign() == otherMsg.ShareNumber.V.Sign() &&
+	       msg.Share.Equal(otherMsg.Share) &&
+	       msg.PubCommit.Equal(otherMsg.PubCommit)
+}
 
 type PolicyApprovedMessage struct {
 	// The public key of the insurer.
@@ -245,3 +241,11 @@ func (msg *PolicyApprovedMessage) verifyCertificate(su abstract.Suite,
 	correctMsg := msg.PubKey.String() + " insures " + insuredKey.String()
 	return err == nil && correctMsg == string(msg.Message)
 }
+
+// Compares two messages to see if they are equal
+func (msg *PolicyApprovedMessage) Equal(otherMsg *PolicyApprovedMessage) bool {
+	return msg.PubKey.Equal(otherMsg.PubKey)  &&
+	       string(msg.Message) == string(otherMsg.Message) &&
+	       string(msg.Signature) == string(otherMsg.Signature)
+}
+

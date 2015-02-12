@@ -46,6 +46,46 @@ func TestRequestInsuranceCreate(t *testing.T) {
 	}
 }
 
+// Verifies that the Equal method works.
+func TestRequestInsuranceEqual(t *testing.T) {
+	share := prishares.Share(0)
+	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, share, pubCommit)
+	msgCopy := msg
+
+	if !msg.Equal(msgCopy) {
+		t.Error("Messages should be equal.")
+	}
+	
+	// Fails if only the public keys are different.
+	msg2 := new(RequestInsuranceMessage).createMessage(keyPair2.Public, 0, share, pubCommit)
+	if msg.Equal(msg2) {
+		t.Error("Messages should not be equal.")
+	}
+	
+	// Fails if only the share number is different.
+	msg2 = new(RequestInsuranceMessage).createMessage(keyPair.Public, 1, share, pubCommit)
+	if msg.Equal(msg2) {
+		t.Error("Messages should not be equal.")
+	}
+
+	// Fails if only the shares are different.
+	msg2 = new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, prishares.Share(1), pubCommit)
+	if msg.Equal(msg2) {
+		t.Error("Messages should not be equal.")
+	}
+
+	pripoly2 := new(poly.PriPoly).Pick(INSURE_GROUP, TSHARES, secret, random.Stream)
+	otherPoly := new(poly.PubPoly)
+	otherPoly.Init(INSURE_GROUP, TSHARES, nil)
+	otherPoly.Commit(pripoly2, nil)
+
+	// Fails if only the public polynomial is different
+	msg2 = new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, share, otherPoly)
+	if msg.Equal(msg2) {
+		t.Error("Messages should not be equal.")
+	}
+}
+
 // Verifies that a RequestInsuranceMessage can be marshalled and unmarshalled
 func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
 	share := prishares.Share(0)
@@ -80,6 +120,29 @@ func TestPolicyApprovedCreate(t *testing.T) {
 	if !keyPair.Public.Equal(msg.PubKey) ||
 	   expectedMessage != (string(msg.Message)) {
 		t.Error("RequestInsuranceMessage was not initialized properly.")
+	}
+}
+
+// Verifies that the Equal method works.
+func TestPolicyApprovedEqual(t *testing.T) {
+	msg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
+	msgCopy := msg
+
+	if !msg.Equal(msgCopy) {
+		t.Error("Messages should be equal.")
+	}
+	
+	// Fails if the public key pair is different.
+	// A different key will generate a different message and signature.
+	msg2 := new(PolicyApprovedMessage).createMessage(keyPair2, keyPair2.Public)
+	if msg.Equal(msg2) {
+		t.Error("Messages should not be equal.")
+	}
+
+	// Fails if the public key is different
+	msg2 = new(PolicyApprovedMessage).createMessage(keyPair, keyPair.Public)
+	if msg.Equal(msg2) {
+		t.Error("Messages should not be equal.")
 	}
 }
 
