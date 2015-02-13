@@ -28,7 +28,16 @@ func TestStaticPubKey(t *testing.T) {
 	}
 }
 
-func runStaticTest(signType sign.Type) error {
+// func TestStaticFaulty(t *testing.T) {
+// 	faultyNodes := make([]int, 0)
+// 	faultyNodes = append(faultyNodes, 1)
+
+// 	if err := runStaticTest(sign.PubKey, faultyNodes...); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
+
+func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	// Crypto setup
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
@@ -38,10 +47,22 @@ func runStaticTest(signType sign.Type) error {
 	// create new directory for communication between peers
 	dir := coconet.NewGoDirectory()
 	// Create Hosts and Peers
-	h := make([]*coconet.GoHost, nNodes)
+	h := make([]coconet.Host, nNodes)
+
 	for i := 0; i < nNodes; i++ {
 		hostName := "host" + strconv.Itoa(i)
-		h[i] = coconet.NewGoHost(hostName, dir)
+
+		if len(faultyNodes) > 0 {
+			h[i] = &coconet.FaultyHost{}
+			gohost := coconet.NewGoHost(hostName, dir)
+			h[i] = coconet.NewFaultyHost(gohost)
+		} else {
+			h[i] = coconet.NewGoHost(hostName, dir)
+		}
+	}
+
+	for _, fh := range faultyNodes {
+		h[fh].(*coconet.FaultyHost).SetDeadFor("commit", true)
 	}
 
 	// Add edges to children
@@ -62,7 +83,12 @@ func runStaticTest(signType sign.Type) error {
 		// PrivKey := suite.Secret().Pick(rand)
 		// nodes[i] = NewKeyedSigningNode(h[i], suite, PrivKey)
 	}
+
 	for i := 0; i < nNodes; i++ {
+		if len(faultyNodes) > 0 {
+			nodes[i].TestingFailures = true
+		}
+
 		go func(i int) {
 			// start listening for messages from within the tree
 			nodes[i].Listen()

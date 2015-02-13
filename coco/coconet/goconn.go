@@ -76,24 +76,30 @@ func (c GoConn) Connect() error {
 func (c GoConn) Close() {}
 
 // Put sends data to the goConn through the channel.
-func (c *GoConn) Put(data BinaryMarshaler) error {
+func (c *GoConn) Put(data BinaryMarshaler) chan string {
+	errchan := make(chan string, 1)
 	fromto := c.FromTo()
+
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
 	// the directory must be unlocked before sending data. otherwise the
 	// receiver would not be able to access this channel from the directory
 	// either.
 	c.dir.Unlock()
+
 	b, err := data.MarshalBinary()
 	if err != nil {
-		return err
+		errchan <- err.Error()
+		return errchan
 	}
 	ch <- b
-	return nil
+
+	errchan <- ""
+	return errchan
 }
 
 // Get receives data from the sender.
-func (c *GoConn) Get(bum BinaryUnmarshaler) error {
+func (c *GoConn) Get(bum BinaryUnmarshaler) chan string {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
@@ -103,7 +109,14 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	// as in Put directory must be unlocked to allow other goroutines to reach
 	// their send lines.
 	c.dir.Unlock()
-
 	data := <-ch
-	return bum.UnmarshalBinary(data)
+
+	errchan := make(chan string, 1)
+	err := bum.UnmarshalBinary(data)
+	if err != nil {
+		errchan <- err.Error()
+	} else {
+		errchan <- ""
+	}
+	return errchan
 }

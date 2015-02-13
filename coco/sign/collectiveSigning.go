@@ -3,6 +3,7 @@ package sign
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"strconv"
@@ -77,11 +78,17 @@ func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	}
 
 	// wait for all children to commit
-	var err error
-	if err = sn.GetDown(messgs); err != nil {
-		return nil, err
+	err := sn.GetDown(messgs)
+	if err != nil {
+		fmt.Println(sn.Name(), "getDown error\t\t\t", err)
 	}
-	return messgs, nil
+
+	// log rather than propagate network TimeoutOut errors
+	if err == coconet.TimeoutError {
+		log.Println(sn.Name() + err.Error())
+		err = nil
+	}
+	return messgs, err
 }
 
 // Create round lasting secret and commit point v and V
@@ -148,23 +155,33 @@ func (sn *SigningNode) Commit() error {
 	sn.initCommitCrypto()
 
 	// get commits from kids
+	// note: messages are received in strict ordered: 1st message = from first kid
 	messgs, err := sn.getDownMessgs()
 	if err != nil {
 		return err
 	}
 
+	// prepare to handle exceptions
+	sn.ExceptionList = make([]abstract.Point, 0)
+	sn.ChildVs = make([]abstract.Point, len(sn.Children()))
+	nullPoint := sn.suite.Point().Null()
+
 	// Commits from children are the first Merkle Tree leaves for the round
 	sn.Leaves = make([]hashid.HashId, 0)
-	for _, messg := range messgs {
+
+	for i, messg := range messgs {
 		sm := messg.(*SigningMessage)
 		switch sm.Type {
 		default:
-			// Not possible in current system where little randomness is allowed
-			// In real system failing is required
-			panic("Reply to announcement is not a commit")
+			sn.ExceptionList = append(sn.ExceptionList, sn.ChildVs[i])
+			sn.ChildVs[i] = nullPoint
+			fmt.Println(sn.Name(), "rejected commit from", i)
+			continue // ignore ill-formated messages
 		case Commitment:
 			sn.Leaves = append(sn.Leaves, sm.Com.MTRoot)
 			sn.Log.V_hat.Add(sn.Log.V_hat, sm.Com.V_hat)
+			sn.ChildVs[i] = sm.Com.V_hat
+			sn.ExceptionList = append(sn.ExceptionList, sm.Com.ExceptionList...)
 		}
 	}
 
@@ -187,9 +204,18 @@ func (sn *SigningNode) actOnCommits() (err error) {
 	} else {
 		// create and putup own commit message
 		com := &CommitmentMessage{
-			V:      sn.Log.V,
-			V_hat:  sn.Log.V_hat,
-			MTRoot: sn.MTRoot}
+			V:             sn.Log.V,
+			V_hat:         sn.Log.V_hat,
+			MTRoot:        sn.MTRoot,
+			ExceptionList: sn.ExceptionList}
+
+		if sn.TestingFailures == true &&
+			(sn.Host.(*coconet.FaultyHost).IsDead() ||
+				sn.Host.(*coconet.FaultyHost).IsDeadFor("commit")) {
+			fmt.Println(sn.Name(), "dead for commits")
+			return
+		}
+
 		err = sn.PutUp(SigningMessage{
 			Type: Commitment,
 			Com:  com})
@@ -245,7 +271,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 		messg = SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
-		if err := child.Put(messg); err != nil {
+		if err := coconet.ToError(<-child.Put(messg)); err != nil {
 			return err
 		}
 	}
@@ -260,7 +286,7 @@ func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
 		messg = SigningMessage{Type: Challenge, Chm: chm}
 
 		// send challenge message to child
-		if err := child.Put(messg); err != nil {
+		if err := coconet.ToError(<-child.Put(messg)); err != nil {
 			return err
 		}
 	}
@@ -309,21 +335,51 @@ func (sn *SigningNode) Respond() error {
 		return err
 	}
 
-	for _, messg := range messgs {
+	// initialize exception handling
+	sn.ExceptionList = make([]abstract.Point, 0)
+	exceptionV_hat := sn.suite.Point().Null()
+	nullPoint := sn.suite.Point().Null()
+
+	for i, messg := range messgs {
 		sm := messg.(*SigningMessage)
 		switch sm.Type {
 		default:
-			// Not possible in current system where little randomness is allowed
-			// In real system failing is required
-			panic("Reply to challenge is not a response")
+			log.Println(sn.Name(), "received nil response from", i)
+			sn.ExceptionList = append(sn.ExceptionList, sn.ChildVs[i])
+			exceptionV_hat.Add(exceptionV_hat, sn.ChildVs[i])
+			continue // ignore ill-formated messages
 		case Error:
+			if sm.Err == nil {
+				// ignore if no error is actually set
+				continue
+			}
 			return sm.Err.Err
 		case Response:
-			sn.r_hat.Add(sn.r_hat, sm.Rm.R_hat)
+			// disregard response from children that did not commit
+			if sn.ChildVs[i].Equal(nullPoint) {
+				log.Println(sn.Name(), "rejected response from bcs no commit", i)
+			} else {
+				log.Println(sn.Name(), "accepts response from", i)
+				sn.r_hat.Add(sn.r_hat, sm.Rm.R_hat)
+			}
+
+			sn.ExceptionList = append(sn.ExceptionList, sm.Rm.ExceptionList...)
+			if sm.Rm.ExceptionV_hat != nil {
+				exceptionV_hat.Add(exceptionV_hat, sm.Rm.ExceptionV_hat)
+			}
 		}
 	}
 
+	// remove all Vs of nodes from subtree that failed
+	// fmt.Println(sn.Name(), "Removing exception V_hat", exceptionV_hat)
+	sn.Log.V_hat.Sub(sn.Log.V_hat, exceptionV_hat)
 	err = sn.VerifyResponses()
+
+	// for compatibility with encoder
+	if exceptionV_hat.Equal(nullPoint) {
+		exceptionV_hat = nil
+	}
+
 	if !sn.IsRoot() {
 		// report verify response error
 		if err != nil {
@@ -331,17 +387,24 @@ func (sn *SigningNode) Respond() error {
 				Type: Error,
 				Err:  &ErrorMessage{Err: err}})
 		}
+		rm := &ResponseMessage{
+			R_hat:          sn.r_hat,
+			ExceptionList:  sn.ExceptionList,
+			ExceptionV_hat: exceptionV_hat}
 		// create and putup own response message
 		return sn.PutUp(SigningMessage{
 			Type: Response,
-			Rm:   &ResponseMessage{sn.r_hat}})
+			Rm:   rm})
 	}
 	return err
 }
 
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits() error {
-	// challenge = Hash(Merkle Tree Root, sn.Log.V_hat)
+	// NOTE: root has sn.ExceptionList <-- the nodes that
+	// did not reply to its annoucement
+
+	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
 		sn.c = hashElGamal(sn.suite, sn.LogTest, sn.Log.V_hat)
 	} else {
@@ -354,6 +417,14 @@ func (sn *SigningNode) FinalizeCommits() error {
 		MTRoot: sn.MTRoot,
 		Proof:  proof})
 	return err
+}
+
+func (sn *SigningNode) cleanVHat() {
+	for _, pubKey := range sn.ExceptionList {
+		fmt.Println(sn.Log.V_hat)
+		fmt.Println(pubKey)
+		sn.Log.V_hat.Sub(sn.Log.V_hat, pubKey)
+	}
 }
 
 // Called by every node after receiving aggregate responses from descendants
@@ -378,7 +449,7 @@ func (sn *SigningNode) VerifyResponses() error {
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(sn.Log.V_hat) || (sn.IsRoot() && !sn.c.Equal(c2)) {
 		log.Println(sn.Name(), "reports ElGamal Collective Signature failed")
-		return errors.New("Veryfing ElGamal Collective Signature failed in" + sn.Name())
+		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name())
 	}
 
 	log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
