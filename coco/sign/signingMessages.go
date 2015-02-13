@@ -57,12 +57,12 @@ type AnnouncementMessage struct {
 
 type CommitmentMessage struct {
 	V     abstract.Point // commitment Point
-	V_hat abstract.Point // product of children's commitment points
+	V_hat abstract.Point // product of subtree participating nodes' commitment points
+	X_hat abstract.Point // product of subtree participating nodes' public keys
 
 	MTRoot hashid.HashId // root of Merkle (sub)Tree
 
-	// TODO: this has to be changed to Public Keys
-	// point commits of children servers that did not respond to
+	// public keys of children servers that did not respond to
 	// annoucement from root
 	ExceptionList []abstract.Point
 }
@@ -73,18 +73,18 @@ type ChallengeMessage struct {
 	// Depth  byte
 	MTRoot hashid.HashId // the very root of the big Merkle Tree
 	Proof  proof.Proof   // Merkle Path of Proofs from root to us
-	// LevelProof stamp.LevelProof // parent's LevelProof
 }
 
 type ResponseMessage struct {
 	R_hat abstract.Secret // response
 
-	// TODO: this has to be changed to Public Keys
-	// point commits of children servers that did not respond to
+	// public keys of children servers that did not respond to
 	// challenge from root
 	ExceptionList []abstract.Point
 	// cummulative point commits of nodes that failed after commit
 	ExceptionV_hat abstract.Point
+	// cummulative public keys of nodes that failed after commit
+	ExceptionX_hat abstract.Point
 }
 
 type ErrorMessage struct {

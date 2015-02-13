@@ -1,5 +1,11 @@
 package coconet
 
+import (
+	"time"
+
+	"github.com/dedis/crypto/abstract"
+)
+
 // Host is an abstract node on the Host tree. The Host has a Name and can send
 // and receive data from its parent. It can also send and receive from its
 // children. All gets are blocking. For this reason, when starting up a Host,
@@ -56,4 +62,10 @@ type Host interface {
 
 	Close() // connections need to be cleaned up
 
+	SetTimeout(time.Duration)
+	GetTimeout() time.Duration
+	GetDefaultTimeout() time.Duration
+
+	PubKey() abstract.Point
+	SetPubKey(abstract.Point)
 }

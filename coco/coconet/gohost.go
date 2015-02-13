@@ -3,12 +3,16 @@ package coconet
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
+
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/nist"
 )
 
 // Default timeout for any network operation
-const DefaultGoTimeout time.Duration = 200500 * time.Millisecond
+const DefaultGoTimeout time.Duration = 500 * time.Millisecond
 
 var TimeoutError error = errors.New("Network timeout error")
 
@@ -21,11 +25,24 @@ type GoHost struct {
 	peers    map[string]Conn
 	dir      *GoDirectory
 
-	timeout time.Duration // general timeout for any network operation
+	Pubkey  abstract.Point // own public key
+	timeout time.Duration  // general timeout for any network operation
 }
 
 func (h *GoHost) GetDirectory() *GoDirectory {
 	return h.dir
+}
+
+func (h *GoHost) GetDefaultTimeout() time.Duration {
+	return DefaultGoTimeout
+}
+
+func (h *GoHost) SetTimeout(t time.Duration) {
+	h.timeout = t
+}
+
+func (h *GoHost) GetTimeout() time.Duration {
+	return h.timeout
 }
 
 // NewHostNode creates a new HostNode with a given hostname.
@@ -39,10 +56,31 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	return h
 }
 
+func (h *GoHost) PubKey() abstract.Point {
+	return h.Pubkey
+}
+
+func (h *GoHost) SetPubKey(pk abstract.Point) {
+	h.Pubkey = pk
+}
+
 func (h *GoHost) Connect() error {
 	return nil
 }
+
 func (h *GoHost) Listen() error {
+	suite := nist.NewAES128SHA256P256()
+
+	for _, c := range h.children {
+		go func(c Conn) {
+			pubkey := suite.Point()
+			e := <-c.Get(pubkey)
+			if e != nil {
+				log.Fatal("unable to get pubkey from child")
+			}
+			c.SetPubKey(pubkey)
+		}(c)
+	}
 	return nil
 }
 
@@ -52,6 +90,7 @@ func (h *GoHost) AddParent(c string) {
 		h.peers[c] = nil
 	}
 	h.parent, _ = NewGoConn(h.dir, h.name, c)
+	<-h.parent.Put(h.Pubkey)
 }
 
 // AddChildren variadically adds multiple Peers as children to the HostNode.
@@ -111,13 +150,13 @@ func (h GoHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
-	return ToError(<-h.parent.Put(data))
+	return <-h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
-	return ToError(<-h.parent.Get(data))
+	return <-h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -131,7 +170,7 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := ToError(<-c.Put(data[i])); e != nil {
+		if e := <-c.Put(data[i]); e != nil {
 			err = e
 		}
 		i++
@@ -159,15 +198,9 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
 			var e error
 			defer wg.Done()
 
-			errchan := make(chan error, 1)
-			go func(i int, c Conn) {
-				e := ToError(<-c.Get(data[i]))
-				errchan <- e
-
-			}(i, c)
-
 			select {
-			case e = <-errchan:
+			case e = <-c.Get(data[i]):
+				fmt.Println(h.Name(), "got")
 				if e != nil {
 					fmt.Println("set error to ", e)
 					setError(&mu, &err, e)

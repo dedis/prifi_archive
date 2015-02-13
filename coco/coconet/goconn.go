@@ -3,6 +3,8 @@ package coconet
 import (
 	"errors"
 	"sync"
+
+	"github.com/dedis/crypto/abstract"
 )
 
 // directory is a testing structure for the goConn. It allows us to simulate
@@ -33,6 +35,8 @@ type GoConn struct {
 	to     string
 	fromto string
 	tofrom string
+
+	pubkey abstract.Point
 }
 
 // PeerExists is an ignorable error that says that this peer has already been
@@ -43,16 +47,22 @@ var PeerExists error = errors.New("peer already exists in given directory")
 // hostname. It returns an ignorable PeerExists error if this peer already
 // exists.
 func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
-	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from}
+	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from, nil}
 	dir.Lock()
 	fromto := gc.FromTo()
+	tofrom := gc.ToFrom()
 	defer dir.Unlock()
 	if c, ok := dir.nameToPeer[fromto]; ok {
 		// return the already existant peer\
 		return c, PeerExists
 	}
 	dir.nameToPeer[fromto] = gc
-	dir.channel[fromto] = make(chan []byte)
+	if _, ok := dir.channel[fromto]; !ok {
+		dir.channel[fromto] = make(chan []byte, 0)
+	}
+	if _, ok := dir.channel[tofrom]; !ok {
+		dir.channel[tofrom] = make(chan []byte, 0)
+	}
 	return gc, nil
 }
 
@@ -75,9 +85,17 @@ func (c GoConn) Connect() error {
 
 func (c GoConn) Close() {}
 
+func (c *GoConn) SetPubKey(pk abstract.Point) {
+	c.pubkey = pk
+}
+
+func (c GoConn) PubKey() abstract.Point {
+	return c.pubkey
+}
+
 // Put sends data to the goConn through the channel.
-func (c *GoConn) Put(data BinaryMarshaler) chan string {
-	errchan := make(chan string, 1)
+func (c *GoConn) Put(data BinaryMarshaler) chan error {
+	errchan := make(chan error, 1)
 	fromto := c.FromTo()
 
 	c.dir.Lock()
@@ -89,17 +107,16 @@ func (c *GoConn) Put(data BinaryMarshaler) chan string {
 
 	b, err := data.MarshalBinary()
 	if err != nil {
-		errchan <- err.Error()
+		errchan <- err
 		return errchan
 	}
 	ch <- b
-
-	errchan <- ""
+	errchan <- nil
 	return errchan
 }
 
 // Get receives data from the sender.
-func (c *GoConn) Get(bum BinaryUnmarshaler) chan string {
+func (c *GoConn) Get(bum BinaryUnmarshaler) chan error {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
@@ -109,14 +126,13 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) chan string {
 	// as in Put directory must be unlocked to allow other goroutines to reach
 	// their send lines.
 	c.dir.Unlock()
-	data := <-ch
 
-	errchan := make(chan string, 1)
-	err := bum.UnmarshalBinary(data)
-	if err != nil {
-		errchan <- err.Error()
-	} else {
-		errchan <- ""
-	}
+	errchan := make(chan error, 1)
+	go func() {
+		data := <-ch
+		err := bum.UnmarshalBinary(data)
+		errchan <- err
+	}()
+
 	return errchan
 }

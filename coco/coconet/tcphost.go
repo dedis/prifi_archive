@@ -5,8 +5,13 @@ import (
 	"errors"
 	"log"
 	"net"
+	"reflect"
 	"sync"
 	"time"
+
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/nist"
+	"github.com/dedis/protobuf"
 )
 
 // Default timeout for any network operation
@@ -19,7 +24,20 @@ type TCPHost struct {
 	children []Conn // a list of unique peers for each hostname
 	peers    map[string]Conn
 
-	timeout time.Duration // general timeout for any network operation
+	timeout time.Duration  // general timeout for any network operation
+	Pubkey  abstract.Point // own public key
+}
+
+func (h *TCPHost) GetDefaultTimeout() time.Duration {
+	return DefaultTCPTimeout
+}
+
+func (h *TCPHost) SetTimeout(t time.Duration) {
+	h.timeout = t
+}
+
+func (h *TCPHost) GetTimeout() time.Duration {
+	return h.timeout
 }
 
 // NewTCPHost creates a new TCPHost with a given hostname.
@@ -30,6 +48,14 @@ func NewTCPHost(hostname string) *TCPHost {
 
 	h.timeout = DefaultTCPTimeout
 	return h
+}
+
+func (h *TCPHost) PubKey() abstract.Point {
+	return h.Pubkey
+}
+
+func (h *TCPHost) SetPubKey(pk abstract.Point) {
+	h.Pubkey = pk
 }
 
 func (h *TCPHost) Listen() error {
@@ -54,11 +80,23 @@ func (h *TCPHost) Listen() error {
 		bs := make([]byte, 300)
 		n, err := conn.Read(bs)
 		if err != nil {
-			log.Println(err)
+			log.Println("ERROR ERROR ERROR: TCP HOST FAILED:", err)
 			conn.Close()
 			continue
 		}
 		name := string(bs[:n])
+		bs = make([]byte, h.Pubkey.MarshalSize()*2)
+		n, err = conn.Read(bs)
+		if err != nil {
+			log.Println("ERROR ERROR ERROR: TCP HOST FAILED TO READ PUBKEY:", err)
+			conn.Close()
+			continue
+		}
+		var cons = make(protobuf.Constructors)
+		var point abstract.Point
+		var suite = nist.NewAES128SHA256P256()
+		cons[reflect.TypeOf(&point).Elem()] = func() interface{} { return suite.Point() }
+		protobuf.DecodeWithConstructors(bs[:n], &point, cons)
 		// accept children connections but no one else
 		found := false
 		for i, c := range h.children {
@@ -70,6 +108,7 @@ func (h *TCPHost) Listen() error {
 				h.children[i].(*TCPConn).dec = tp.dec
 				found = true
 			}
+			c.SetPubKey(point)
 			c.(*TCPConn).Unlock()
 		}
 		if !found {
@@ -97,6 +136,18 @@ func (h *TCPHost) Connect() error {
 	if n != len(bs) {
 		return errors.New("tcp connect failed did not write full name")
 	}
+	bs, err = protobuf.Encode(&h.Pubkey)
+	if err != nil {
+		return errors.New("failed to encode public key")
+	}
+	n, err = conn.Write(bs)
+	if err != nil {
+		return err
+	}
+	if n != len(bs) {
+		return errors.New("tcp connect failed did not write full pubkey")
+	}
+	log.Println("CONNECTING TO PARENT")
 	h.parent = NewTCPConnFromNet(conn)
 	return nil
 }
@@ -170,13 +221,13 @@ func (h TCPHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) PutUp(data BinaryMarshaler) error {
-	return ToError(<-h.parent.Put(data))
+	return <-h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
-	return ToError(<-h.parent.Get(data))
+	return <-h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -190,7 +241,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := ToError(<-c.Put(data[i])); e != nil {
+		if e := <-c.Put(data[i]); e != nil {
 			err = e
 		}
 		i++
@@ -213,15 +264,15 @@ func (h *TCPHost) GetDown(data []BinaryUnmarshaler) error {
 			var e error
 			defer wg.Done()
 
-			errchan := make(chan error, 1)
-			go func(i int, c Conn) {
-				e := ToError(<-c.Get(data[i]))
-				errchan <- e
+			// errchan := make(chan error, 1)
+			// go func(i int, c Conn) {
+			// 	e := ToError(<-c.Get(data[i]))
+			// 	errchan <- e
 
-			}(i, c)
+			// }(i, c)
 
 			select {
-			case e = <-errchan:
+			case e = <-c.Get(data[i]):
 				if e != nil {
 					setError(&mu, &err, e)
 				}

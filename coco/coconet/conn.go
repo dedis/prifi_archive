@@ -1,17 +1,21 @@
 package coconet
 
-import "errors"
+import (
+	"github.com/dedis/crypto/abstract"
+)
 
 // Conn is an abstract bidirectonal connection. It abstracts away the network
 // layer as well as the data-format for communication.
 type Conn interface {
 	Name() string // the "to" of the connection
+	PubKey() abstract.Point
+	SetPubKey(abstract.Point)
 
 	Connect() error // connect with the "to"
 	Close()         // clean up the connection
 
-	Put(BinaryMarshaler) chan string   // sends data through the connection
-	Get(BinaryUnmarshaler) chan string // gets data from connection (blocking)
+	Put(BinaryMarshaler) chan error   // sends data through the connection
+	Get(BinaryUnmarshaler) chan error // gets data from connection (blocking)
 }
 
 /* Alternative Bytes Based Conn
@@ -32,16 +36,4 @@ type BinaryMarshaler interface {
 // All messages passing through our conn must implement their own BinaryUnmarshaler
 type BinaryUnmarshaler interface {
 	UnmarshalBinary(data []byte) error
-}
-
-func ToError(errString string) error {
-	var err error
-
-	if errString == "" {
-		err = nil
-	} else {
-		err = errors.New(errString)
-	}
-
-	return err
 }

@@ -62,16 +62,17 @@ type SigningNode struct {
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc
 
-	// round-lasting point commits of children servers that did not
-	// respond to challenge from root
+	// round-lasting public keys of children servers that did not
+	// respond to latest commit or respond phase
 	ExceptionList []abstract.Point
-	ChildVs       []abstract.Point
+	// combined point commits of children servers
+	ChildV_hat []abstract.Point
 
 	// Set to true if FaultyHosts are used instead of Hosts
 	// Signing Node must test this field to know if it must simulate failure
 	TestingFailures bool // false by default
 
-	Depth int
+	Height int
 }
 
 func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -137,4 +138,8 @@ func (sn *SigningNode) Read(data []byte) (interface{}, error) {
 		return nil, err
 	}
 	return messg, nil
+}
+
+func (sn *SigningNode) UpdateTimeout() {
+	sn.SetTimeout(time.Duration(sn.Height) * sn.GetDefaultTimeout())
 }

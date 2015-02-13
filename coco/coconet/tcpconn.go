@@ -2,10 +2,12 @@ package coconet
 
 import (
 	"encoding/gob"
-	"log"
+	"errors"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/dedis/crypto/abstract"
 )
 
 // TcpConn is a prototype TCP connection with gob encoding.
@@ -16,6 +18,8 @@ type TCPConn struct {
 	conn net.Conn
 	enc  *gob.Encoder
 	dec  *gob.Decoder
+
+	pubkey abstract.Point
 }
 
 func NewTCPConnFromNet(conn net.Conn) *TCPConn {
@@ -33,12 +37,11 @@ func NewTCPConn(hostname string) *TCPConn {
 	return tp
 }
 
-func (tc TCPConn) Connect() error {
-	log.Println("tcpconn establishing new connection")
+func (tc *TCPConn) Connect() error {
+	// log.Println("tcpconn establishing new connection:", tc.name)
 	// establish the connection
 	conn, err := net.Dial("tcp", tc.name)
 	if err != nil {
-		log.Println("connection failed")
 		return err
 	}
 	tc.conn = conn
@@ -56,33 +59,47 @@ func (tc TCPConn) Name() string {
 	return tc.name
 }
 
+func (c *TCPConn) SetPubKey(pk abstract.Point) {
+	c.pubkey = pk
+}
+
+func (c TCPConn) PubKey() abstract.Point {
+	return c.pubkey
+}
+
 // blocks until the put is availible
-func (tc *TCPConn) Put(bm BinaryMarshaler) chan string {
+func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
+	errchan := make(chan error, 2)
 	tc.RLock()
 	for tc.enc == nil {
 		tc.RUnlock()
 		time.Sleep(time.Second)
 		tc.RLock()
-		//return errors.New(" connection not established")
+		errchan <- errors.New(" connection not established")
+		return errchan
 	}
 	tc.RUnlock()
-
-	errchan := make(chan string, 1)
 	err := tc.enc.Encode(bm)
-	errchan <- err.Error()
+	errchan <- err
 	return errchan
 }
 
 // blocks until we get something
-func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan string {
+func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
+	errchan := make(chan error, 2)
 	for tc.dec == nil {
 		time.Sleep(time.Second)
-		//return errors.New(" connection not established")
+		// panic("no decoder yet")
+		// log.Fatal("no decoder yet")
+		errchan <- errors.New("connection not established")
+		return errchan
 	}
 
-	errchan := make(chan string, 1)
-	err := tc.dec.Decode(bum)
-	errchan <- err.Error()
+	// errchan := make(chan string, 1)
+	go func(bum BinaryUnmarshaler) {
+		err := tc.dec.Decode(bum)
+		errchan <- err
+	}(bum)
 	return errchan
 }
 

@@ -46,7 +46,7 @@ func TestPubKeysOneNode(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = hc.Run(host)
+			err = hc.Run(sign.MerkleTree, host)
 			if err != nil {
 				done <- true
 				t.Fatal(err)
