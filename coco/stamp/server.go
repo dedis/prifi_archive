@@ -99,9 +99,10 @@ func (s *Server) Listen() error {
 					for {
 						tsm := TimeStampMessage{}
 						// log.Println("GETTING:", c.Name(), c)
-						err := c.Get(&tsm)
+						err := <-c.Get(&tsm)
 						// log.Println("GOT:", c.Name(), c)
 						if err != nil {
+							log.Println(err, err.Error())
 							log.Fatal("ERROR GETTING:", err)
 						}
 						switch tsm.Type {
