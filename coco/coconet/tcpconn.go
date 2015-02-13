@@ -3,7 +3,6 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -39,7 +38,6 @@ func (tc *TCPConn) Connect() error {
 	// establish the connection
 	conn, err := net.Dial("tcp", tc.name)
 	if err != nil {
-		log.Println("FAILED TO MAKE CONNECTION")
 		return err
 	}
 	tc.conn = conn

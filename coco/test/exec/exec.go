@@ -73,7 +73,7 @@ func main() {
 
 	// run this specific host
 	log.Println("RUNNING HOST CONFIG")
-	err = hc.Run(hostname)
+	err = hc.Run(sign.MerkleTree, hostname)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -116,9 +116,9 @@ func main() {
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
 				if s.IsRoot() {
-					s.ListenToClients("root", nrounds)
+					s.Run("root", nrounds)
 				} else {
-					s.ListenToClients("regular", nrounds)
+					s.Run("regular", nrounds)
 				}
 			}
 		}
