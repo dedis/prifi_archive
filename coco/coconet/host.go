@@ -55,4 +55,5 @@ type Host interface {
 	Listen() error  // listen for incoming connections
 
 	Close() // connections need to be cleaned up
+
 }

@@ -61,7 +61,8 @@ type CommitmentMessage struct {
 
 	MTRoot hashid.HashId // root of Merkle (sub)Tree
 
-	// public keys of children servers that did not respond to
+	// TODO: this has to be changed to Public Keys
+	// point commits of children servers that did not respond to
 	// annoucement from root
 	ExceptionList []abstract.Point
 }
@@ -77,6 +78,13 @@ type ChallengeMessage struct {
 
 type ResponseMessage struct {
 	R_hat abstract.Secret // response
+
+	// TODO: this has to be changed to Public Keys
+	// point commits of children servers that did not respond to
+	// challenge from root
+	ExceptionList []abstract.Point
+	// cummulative point commits of nodes that failed after commit
+	ExceptionV_hat abstract.Point
 }
 
 type ErrorMessage struct {

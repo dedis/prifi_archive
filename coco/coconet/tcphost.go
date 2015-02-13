@@ -10,7 +10,7 @@ import (
 )
 
 // Default timeout for any network operation
-const DefaultTCPTimeout time.Duration = 500 * time.Millisecond
+const DefaultTCPTimeout time.Duration = 200500 * time.Millisecond
 
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
@@ -90,7 +90,7 @@ func (h *TCPHost) Connect() error {
 		return err
 	}
 	bs := []byte(h.Name())
-	n, err := conn.Write(bs)
+	n, err := conn.Write(bs) // TODO: pass up Public Key as well
 	if err != nil {
 		return err
 	}
@@ -170,13 +170,13 @@ func (h TCPHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) PutUp(data BinaryMarshaler) error {
-	return <-h.parent.Put(data)
+	return ToError(<-h.parent.Put(data))
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
-	return <-h.parent.Get(data)
+	return ToError(<-h.parent.Get(data))
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -190,7 +190,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := <-c.Put(data[i]); e != nil {
+		if e := ToError(<-c.Put(data[i])); e != nil {
 			err = e
 		}
 		i++
@@ -213,8 +213,15 @@ func (h *TCPHost) GetDown(data []BinaryUnmarshaler) error {
 			var e error
 			defer wg.Done()
 
+			errchan := make(chan error, 1)
+			go func(i int, c Conn) {
+				e := ToError(<-c.Get(data[i]))
+				errchan <- e
+
+			}(i, c)
+
 			select {
-			case e = <-c.Get(data[i]):
+			case e = <-errchan:
 				if e != nil {
 					setError(&mu, &err, e)
 				}

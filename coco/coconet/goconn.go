@@ -76,8 +76,8 @@ func (c GoConn) Connect() error {
 func (c GoConn) Close() {}
 
 // Put sends data to the goConn through the channel.
-func (c *GoConn) Put(data BinaryMarshaler) chan error {
-	errchan := make(chan error, 1)
+func (c *GoConn) Put(data BinaryMarshaler) chan string {
+	errchan := make(chan string, 1)
 	fromto := c.FromTo()
 
 	c.dir.Lock()
@@ -89,17 +89,17 @@ func (c *GoConn) Put(data BinaryMarshaler) chan error {
 
 	b, err := data.MarshalBinary()
 	if err != nil {
-		errchan <- err
+		errchan <- err.Error()
 		return errchan
 	}
 	ch <- b
 
-	errchan <- nil
+	errchan <- ""
 	return errchan
 }
 
 // Get receives data from the sender.
-func (c *GoConn) Get(bum BinaryUnmarshaler) chan error {
+func (c *GoConn) Get(bum BinaryUnmarshaler) chan string {
 	// since the channel is owned by the sender, we flip around the ordering of
 	// the fromto key to indicate that we want to receive from this instead of
 	// send.
@@ -111,8 +111,12 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) chan error {
 	c.dir.Unlock()
 	data := <-ch
 
-	errchan := make(chan error, 1)
+	errchan := make(chan string, 1)
 	err := bum.UnmarshalBinary(data)
-	errchan <- err
+	if err != nil {
+		errchan <- err.Error()
+	} else {
+		errchan <- ""
+	}
 	return errchan
 }

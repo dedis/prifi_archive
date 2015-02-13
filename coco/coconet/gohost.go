@@ -2,12 +2,13 @@ package coconet
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
 
 // Default timeout for any network operation
-const DefaultGoTimeout time.Duration = 500 * time.Millisecond
+const DefaultGoTimeout time.Duration = 200500 * time.Millisecond
 
 var TimeoutError error = errors.New("Network timeout error")
 
@@ -110,13 +111,13 @@ func (h GoHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
-	return <-h.parent.Put(data)
+	return ToError(<-h.parent.Put(data))
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
-	return <-h.parent.Get(data)
+	return ToError(<-h.parent.Get(data))
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -130,7 +131,7 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := <-c.Put(data[i]); e != nil {
+		if e := ToError(<-c.Put(data[i])); e != nil {
 			err = e
 		}
 		i++
@@ -139,9 +140,9 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 }
 
 func setError(mu *sync.Mutex, err *error, e error) {
-	mu.Lock()
+	(*mu).Lock()
 	*err = e
-	mu.Unlock()
+	(*mu).Unlock()
 }
 
 // GetDown gets a message (an interface{} value) from all children through
@@ -158,15 +159,23 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
 			var e error
 			defer wg.Done()
 
+			errchan := make(chan error, 1)
+			go func(i int, c Conn) {
+				e := ToError(<-c.Get(data[i]))
+				errchan <- e
+
+			}(i, c)
+
 			select {
-			case e = <-c.Get(data[i]):
+			case e = <-errchan:
 				if e != nil {
+					fmt.Println("set error to ", e)
 					setError(&mu, &err, e)
 				}
 				break
 			case <-time.After(h.timeout):
+				fmt.Println(h.Name(), "timeout error set")
 				setError(&mu, &err, TimeoutError)
-
 			}
 
 			if e != nil {
@@ -177,6 +186,7 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
 
 		i++
 	}
+
 	wg.Wait()
 	return err
 }
