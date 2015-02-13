@@ -69,6 +69,7 @@ func (c *Client) Close() {
 func (c *Client) handleServer(s coconet.Conn) error {
 	for {
 		tsm := &TimeStampMessage{}
+		log.Println("connection:", s)
 		err := s.Get(tsm)
 		if err != nil {
 			return err
@@ -103,7 +104,9 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 	c.Servers[name] = conn
 	go func(conn coconet.Conn) {
 		for {
+			log.Println("Conn Before Connection:", conn)
 			err := conn.Connect()
+			log.Println("Conn After Connection:", conn, err)
 			if err != nil {
 				log.Println("FAILURE: failed to connect to server:", err)
 				time.Sleep(1 * time.Second)

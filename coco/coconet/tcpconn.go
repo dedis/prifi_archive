@@ -33,12 +33,12 @@ func NewTCPConn(hostname string) *TCPConn {
 	return tp
 }
 
-func (tc TCPConn) Connect() error {
+func (tc *TCPConn) Connect() error {
 	log.Println("tcpconn establishing new connection:", tc.name)
 	// establish the connection
 	conn, err := net.Dial("tcp", tc.name)
 	if err != nil {
-		log.Println("connection failed")
+		log.Println("FAILED TO MAKE CONNECTION")
 		return err
 	}
 	tc.conn = conn
@@ -73,6 +73,7 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 	for tc.dec == nil {
 		time.Sleep(time.Second)
+		panic("no decoder yet")
 		log.Fatal("no decoder yet")
 		//return errors.New(" connection not established")
 	}

@@ -90,8 +90,10 @@ func (s *Server) Listen() error {
 
 			c := coconet.NewTCPConnFromNet(conn)
 			log.Println("CLIENT TCP CONNECTION SUCCESSFULLY ESTABLISHED:", c)
+
 			// name := "client" + strconv.Itoa(clientNumber)
 			if _, ok := s.Clients[c.Name()]; !ok {
+				s.Clients[c.Name()] = c
 				//s.Clients[c.Name()] = c
 				go func(c coconet.Conn) {
 					for {

@@ -147,7 +147,7 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 	oldconfig.StartConfigPort += 2010
 	nMessages := 1
 	nClients := 1
-	nRounds := 1
+	nRounds := 3
 
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
@@ -169,9 +169,9 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 	// 	// go c.Connect()
 	// }
 	for _, s := range stampers[1:] {
-		go s.Run("regular", nRounds)
+		go s.Run("regular", nRounds+2)
 	}
-	go stampers[0].Run("root", nRounds)
+	go stampers[0].Run("root", nRounds+2)
 	log.Println("About to start sending client messages")
 	// time.Sleep(1 * time.Second)
 	for r := 0; r < nRounds; r++ {
