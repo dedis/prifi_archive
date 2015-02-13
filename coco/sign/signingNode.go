@@ -70,6 +70,8 @@ type SigningNode struct {
 	// Set to true if FaultyHosts are used instead of Hosts
 	// Signing Node must test this field to know if it must simulate failure
 	TestingFailures bool // false by default
+
+	Depth int
 }
 
 func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {

@@ -190,7 +190,8 @@ func ConstructTree(
 	rand cipher.Stream,
 	hosts map[string]coconet.Host,
 	nameToAddr map[string]string,
-	opts ConfigOptions) (abstract.Point, error) {
+	opts ConfigOptions,
+	depth int) (abstract.Point, error) {
 	// passes up its X_hat, and/or an error
 
 	// get the name associated with this address
@@ -253,6 +254,7 @@ func ConstructTree(
 		}
 		sn = hc.SNodes[len(hc.SNodes)-1]
 		hc.Hosts[name] = sn
+		sn.Depth = depth
 		if prikey == nil {
 			prikey = sn.PrivKey
 			pubkey = sn.PubKey
@@ -284,7 +286,7 @@ func ConstructTree(
 
 		// recursively construct the children
 		// log.Print("ConstructTree:", h, suite, rand, hosts, nameToAddr, opts)
-		cpubkey, err := ConstructTree(c, hc, name, suite, rand, hosts, nameToAddr, opts)
+		cpubkey, err := ConstructTree(c, hc, name, suite, rand, hosts, nameToAddr, opts, depth+1)
 		if err != nil {
 			return nil, err
 		}
@@ -431,7 +433,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	}
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
-	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)
+	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts, 0)
 	return hc, err
 }
 
