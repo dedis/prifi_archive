@@ -240,7 +240,7 @@ func clientsTalk(clients []*stamp.Client, nRounds, nMessages int, s *stamp.Serve
 				go func(client *stamp.Client, messg []byte, s *stamp.Server, i int) {
 					defer wg.Done()
 					client.TimeStamp(messg, s.Name())
-					log.Println("timestamped")
+					// log.Println("timestamped")
 				}(client, messg, s, r)
 			}
 		}

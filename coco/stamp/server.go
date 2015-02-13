@@ -77,7 +77,7 @@ func (s *Server) Listen() error {
 
 	go func() {
 		for {
-			log.Println("LISTENING TO CLIENTS, ", s.name)
+			// log.Println("LISTENING TO CLIENTS, ", s.name)
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
@@ -89,7 +89,7 @@ func (s *Server) Listen() error {
 			}
 
 			c := coconet.NewTCPConnFromNet(conn)
-			log.Println("CLIENT TCP CONNECTION SUCCESSFULLY ESTABLISHED:", c)
+			// log.Println("CLIENT TCP CONNECTION SUCCESSFULLY ESTABLISHED:", c)
 
 			// name := "client" + strconv.Itoa(clientNumber)
 			if _, ok := s.Clients[c.Name()]; !ok {
@@ -98,9 +98,9 @@ func (s *Server) Listen() error {
 				go func(c coconet.Conn) {
 					for {
 						tsm := TimeStampMessage{}
-						log.Println("GETTING:", c.Name(), c)
+						// log.Println("GETTING:", c.Name(), c)
 						err := c.Get(&tsm)
-						log.Println("GOT:", c.Name(), c)
+						// log.Println("GOT:", c.Name(), c)
 						if err != nil {
 							log.Fatal("ERROR GETTING:", err)
 						}
@@ -108,7 +108,7 @@ func (s *Server) Listen() error {
 						default:
 							log.Printf("Message of unknown type: %v\n", tsm.Type)
 						case StampRequestType:
-							log.Println("RECEIVED STAMP REQUEST")
+							// log.Println("RECEIVED STAMP REQUEST")
 							s.mux.Lock()
 							READING := s.READING
 							s.Queue[READING] = append(s.Queue[READING],
@@ -135,7 +135,7 @@ func (s *Server) ListenToClients() {
 				default:
 					log.Println("Message of unknown type")
 				case StampRequestType:
-					log.Println("STAMP REQUEST")
+					// log.Println("STAMP REQUEST")
 					s.mux.Lock()
 					READING := s.READING
 					s.Queue[READING] = append(s.Queue[READING],
@@ -185,7 +185,7 @@ func (s *Server) OnAnnounce() coco.CommitFunc {
 
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
-		log.Println("DONE")
+		// log.Println("DONE")
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -211,7 +211,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 }
 
 func (s *Server) AggregateCommits() []byte {
-	log.Println("Aggregateing Commits")
+	// log.Println("Aggregateing Commits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
 	Queue := s.Queue

@@ -2,6 +2,7 @@ package coconet
 
 import (
 	"encoding/gob"
+	"errors"
 	"log"
 	"net"
 	"sync"
@@ -34,7 +35,7 @@ func NewTCPConn(hostname string) *TCPConn {
 }
 
 func (tc *TCPConn) Connect() error {
-	log.Println("tcpconn establishing new connection:", tc.name)
+	// log.Println("tcpconn establishing new connection:", tc.name)
 	// establish the connection
 	conn, err := net.Dial("tcp", tc.name)
 	if err != nil {
@@ -73,9 +74,9 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 	for tc.dec == nil {
 		time.Sleep(time.Second)
-		panic("no decoder yet")
-		log.Fatal("no decoder yet")
-		//return errors.New(" connection not established")
+		// panic("no decoder yet")
+		// log.Fatal("no decoder yet")
+		return errors.New(" connection not established")
 	}
 	return tc.dec.Decode(bum)
 }

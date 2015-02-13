@@ -69,7 +69,7 @@ func (c *Client) Close() {
 func (c *Client) handleServer(s coconet.Conn) error {
 	for {
 		tsm := &TimeStampMessage{}
-		log.Println("connection:", s)
+		// log.Println("connection:", s)
 		err := s.Get(tsm)
 		if err != nil {
 			return err
@@ -104,11 +104,11 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 	c.Servers[name] = conn
 	go func(conn coconet.Conn) {
 		for {
-			log.Println("Conn Before Connection:", conn)
+			// log.Println("Conn Before Connection:", conn)
 			err := conn.Connect()
-			log.Println("Conn After Connection:", conn, err)
+			// log.Println("Conn After Connection:", conn, err)
 			if err != nil {
-				log.Println("FAILURE: failed to connect to server:", err)
+				// log.Println("FAILURE: failed to connect to server:", err)
 				time.Sleep(1 * time.Second)
 				continue
 			} else {
@@ -130,7 +130,7 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 	if conn == nil {
 		return errors.New("INVALID SERVER")
 	}
-	log.Println("MYCONN: ", conn)
+	// log.Println("MYCONN: ", conn)
 	return conn.Put(data)
 }
 
@@ -144,7 +144,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	c.Mux.Unlock()
 
 	// send request to TSServer
-	log.Println("SENDING TIME STAMP REQUEST TO: ", TSServerName)
+	// log.Println("SENDING TIME STAMP REQUEST TO: ", TSServerName)
 	err := c.PutToServer(TSServerName,
 		&TimeStampMessage{
 			Type:  StampRequestType,
