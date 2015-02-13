@@ -342,7 +342,11 @@ func (sn *SigningNode) Respond() error {
 // Called *only* by root node after receiving all commits
 func (sn *SigningNode) FinalizeCommits() error {
 	// challenge = Hash(Merkle Tree Root, sn.Log.V_hat)
-	sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
+	if sn.Type == PubKey {
+		sn.c = hashElGamal(sn.suite, sn.LogTest, sn.Log.V_hat)
+	} else {
+		sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
+	}
 
 	proof := make([]hashid.HashId, 0)
 	err := sn.Challenge(&ChallengeMessage{
@@ -363,7 +367,11 @@ func (sn *SigningNode) VerifyResponses() error {
 
 	var c2 abstract.Secret
 	if sn.IsRoot() {
-		c2 = hashElGamal(sn.suite, sn.MTRoot, T)
+		if sn.Type == PubKey {
+			c2 = hashElGamal(sn.suite, sn.LogTest, T)
+		} else {
+			c2 = hashElGamal(sn.suite, sn.MTRoot, T)
+		}
 	}
 
 	// intermediary nodes check partial responses aginst their partial keys

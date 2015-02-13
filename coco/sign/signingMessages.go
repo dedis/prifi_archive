@@ -52,7 +52,7 @@ func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
 
 // Broadcasted message initiated and signed by proposer
 type AnnouncementMessage struct {
-	LogTest []byte
+	LogTest []byte // TODO: change LogTest to Messg
 }
 
 type CommitmentMessage struct {

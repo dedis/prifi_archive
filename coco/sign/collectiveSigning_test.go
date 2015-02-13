@@ -17,7 +17,6 @@ import (
 //    / \
 //   2   3
 func TestStaticMerkle(t *testing.T) {
-
 	if err := runStaticTest(sign.MerkleTree); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +103,7 @@ func TestTreeFromStaticConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hostConfig.Run()
+	err = hostConfig.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +118,7 @@ func TestTreeBigConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal()
 	}
-	err = hc.Run()
+	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +139,7 @@ func TestMultipleRounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	N := 5
-	err = hostConfig.Run()
+	err = hostConfig.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +159,7 @@ func TestTCPStaticConfig(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	err = hc.Run()
+	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +181,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	err = hc.Run()
+	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +206,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 // 	if err != nil {
 // 		t.Error()
 // 	}
-// 	err = hc.Run()
+// 	err = hc.Run(sign.MerkleTree)
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}

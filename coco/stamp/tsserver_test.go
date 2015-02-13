@@ -10,6 +10,7 @@ import (
 
 	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/stamp"
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
@@ -26,7 +27,6 @@ func init() {
 //    / \   \
 //   2   3   5
 func TestTSSIntegration(t *testing.T) {
-
 	nMessages := 4 // per round
 	nRounds := 3
 
@@ -34,7 +34,7 @@ func TestTSSIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hostConfig.Run()
+	err = hostConfig.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hc.Run()
+	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hc.Run()
+	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}

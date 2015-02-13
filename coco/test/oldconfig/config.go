@@ -439,7 +439,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 }
 
 // run the given hostnames
-func (hc *HostConfig) Run(hostnameSlice ...string) error {
+func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	hostnames := make(map[string]*sign.SigningNode)
 	if hostnameSlice == nil {
 		hostnames = hc.Hosts
@@ -454,6 +454,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 		}
 	}
 	for _, sn := range hostnames {
+		sn.Type = signType
 		go func(sn *sign.SigningNode) {
 			// start listening for messages from within the tree
 			sn.Host.Listen()
