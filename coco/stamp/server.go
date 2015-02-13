@@ -44,6 +44,9 @@ func NewServer(signer coco.Signer) *Server {
 	s.Signer = signer
 	s.Signer.RegisterAnnounceFunc(s.OnAnnounce())
 	s.Signer.RegisterDoneFunc(s.OnDone())
+
+	// listen for client requests at one port higher
+	// than the signing node
 	h, p, err := net.SplitHostPort(s.Signer.Name())
 	if err == nil {
 		i, err := strconv.Atoi(p)
@@ -52,21 +55,29 @@ func NewServer(signer coco.Signer) *Server {
 		}
 		s.name = net.JoinHostPort(h, strconv.Itoa(i+1))
 	}
+	s.Queue[s.READING] = make([]MustReplyMessage, 0)
+	s.Queue[s.PROCESSING] = make([]MustReplyMessage, 0)
+
 	return s
 }
+
+var clientNumber int = 0
 
 // listen for clients connections
 // this server needs to be running on a different port
 // than the Signer that is beneath it
-func (s *Server) ListenForClients() error {
+func (s *Server) Listen() error {
+	log.Println("Listening @ ", s.name)
 	ln, err := net.Listen("tcp", s.name)
 	if err != nil {
 		log.Println("failed to listen:", err)
+		panic(err)
 		return err
 	}
 
 	go func() {
 		for {
+			log.Println("LISTENING TO CLIENTS, ", s.name)
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
@@ -76,30 +87,43 @@ func (s *Server) ListenForClients() error {
 			if conn == nil {
 				log.Println("!!!nil connection!!!")
 			}
-			bs := make([]byte, 300)
-			n, err := conn.Read(bs)
-			if err != nil {
-				log.Println(err)
-				conn.Close()
-				continue
+
+			c := coconet.NewTCPConnFromNet(conn)
+			log.Println("CLIENT TCP CONNECTION SUCCESSFULLY ESTABLISHED:", c)
+			// name := "client" + strconv.Itoa(clientNumber)
+			if _, ok := s.Clients[c.Name()]; !ok {
+				//s.Clients[c.Name()] = c
+				go func(c coconet.Conn) {
+					for {
+						tsm := TimeStampMessage{}
+						log.Println("GETTING:", c.Name(), c)
+						err := c.Get(&tsm)
+						log.Println("GOT:", c.Name(), c)
+						if err != nil {
+							log.Fatal("ERROR GETTING:", err)
+						}
+						switch tsm.Type {
+						default:
+							log.Printf("Message of unknown type: %v\n", tsm.Type)
+						case StampRequestType:
+							log.Println("RECEIVED STAMP REQUEST")
+							s.mux.Lock()
+							READING := s.READING
+							s.Queue[READING] = append(s.Queue[READING],
+								MustReplyMessage{Tsm: tsm, To: c.Name()})
+							s.mux.Unlock()
+						}
+					}
+				}(c)
 			}
-			name := string(bs[:n])
-			s.Clients[name] = coconet.NewTCPConnFromNet(conn)
+
 		}
 	}()
 	return nil
 }
 
-// Listen on client connections. If role is root also send annoucement
-// for all of the nRounds
-func (s *Server) ListenToClients(role string, nRounds int) {
-	s.mux.Lock()
-	Queue := s.Queue
-	READING := s.READING
-	PROCESSING := s.PROCESSING
-	Queue[READING] = make([]MustReplyMessage, 0)
-	Queue[PROCESSING] = make([]MustReplyMessage, 0)
-	s.mux.Unlock()
+// should only be used if clients are created in batch
+func (s *Server) ListenToClients() {
 	for _, c := range s.Clients {
 		go func(c coconet.Conn) {
 			for {
@@ -109,21 +133,27 @@ func (s *Server) ListenToClients(role string, nRounds int) {
 				default:
 					log.Println("Message of unknown type")
 				case StampRequestType:
-					// fmt.Println(s.Name(), " getting message")
+					log.Println("STAMP REQUEST")
 					s.mux.Lock()
 					READING := s.READING
-					Queue[READING] = append(Queue[READING],
+					s.Queue[READING] = append(s.Queue[READING],
 						MustReplyMessage{Tsm: tsm, To: c.Name()})
 					s.mux.Unlock()
 				}
 			}
 		}(c)
 	}
+}
+
+// Listen on client connections. If role is root also send annoucement
+// for all of the nRounds
+func (s *Server) Run(role string, nRounds int) {
+
 	switch role {
 
 	case "root":
 		// count only productive rounds
-		ticker := time.Tick(250 * time.Millisecond)
+		ticker := time.Tick(1000 * time.Millisecond)
 		for _ = range ticker {
 			s.nRounds++
 			if s.nRounds > nRounds {
@@ -133,13 +163,13 @@ func (s *Server) ListenToClients(role string, nRounds int) {
 		}
 
 	case "test":
-		ticker := time.Tick(250 * time.Millisecond)
+		ticker := time.Tick(1000 * time.Millisecond)
 		for _ = range ticker {
 			s.AggregateCommits()
 		}
 	case "regular":
 		for {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(1000 * time.Millisecond)
 		}
 	}
 
@@ -153,7 +183,7 @@ func (s *Server) OnAnnounce() coco.CommitFunc {
 
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
-
+		log.Println("DONE")
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -179,6 +209,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 }
 
 func (s *Server) AggregateCommits() []byte {
+	log.Println("Aggregateing Commits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
 	Queue := s.Queue

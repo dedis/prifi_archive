@@ -65,9 +65,12 @@ func main() {
 			if host == hostname {
 				return
 			}
-			output, err := exec.Command("ping", host, "-c", "20").Output()
+
+			ping := exec.Command("ping", host, "-c", "20")
+			ping.Env = os.Environ()
+			output, err := ping.CombinedOutput()
 			if err != nil {
-				log.Println("error pinging: ", err)
+				log.Println("error pinging: ", hostname, host, string(output), err)
 				return
 			}
 			//output := string(boutput)

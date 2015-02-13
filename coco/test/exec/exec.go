@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"os"
 	"time"
@@ -25,16 +26,21 @@ import (
 var hostname string
 var configFile string
 var logger string
+var app string
+var nrounds int
 
 func init() {
 	flag.StringVar(&hostname, "hostname", "", "the hostname of this node")
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
 	flag.StringVar(&logger, "logger", "", "remote logging interface")
+	flag.StringVar(&app, "app", "sign", "application to run [sign|time]")
+	flag.IntVar(&nrounds, "nrounds", math.MaxInt32, "number of rounds to run")
 }
 
 func main() {
 	flag.Parse()
 	log.SetPrefix(hostname + ":")
+	log.SetFlags(log.Lshortfile)
 	fmt.Println("Execing")
 	// open connection with remote logging interface if there is one
 	if false && logger != "" {
@@ -66,38 +72,56 @@ func main() {
 	}
 
 	// run this specific host
-	fmt.Println("STARTING TO RUN")
+	log.Println("RUNNING HOST CONFIG")
 	err = hc.Run(hostname)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("RUNNING")
 	defer hc.SNodes[0].Close()
 
-	// if I am root do the announcement message
-	if hc.SNodes[0].IsRoot() {
-		time.Sleep(3 * time.Second)
-		start := time.Now()
-		iters := 10
+	if app == "sign" {
+		log.Println("RUNNING SIGNINGNODE")
+		// if I am root do the announcement message
+		if hc.SNodes[0].IsRoot() {
+			time.Sleep(3 * time.Second)
+			start := time.Now()
+			iters := 10
 
-		for i := 0; i < iters; i++ {
-			if i == 1 {
-				start = time.Now()
+			for i := 0; i < iters; i++ {
+				if i == 1 {
+					start = time.Now()
+				}
+				fmt.Println("ANNOUNCING")
+				hc.SNodes[0].LogTest = []byte("Hello World")
+				err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
+				if err != nil {
+					log.Println(err)
+				}
 			}
-			fmt.Println("ANNOUNCING")
-			hc.SNodes[0].LogTest = []byte("Hello World")
-			err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
-			if err != nil {
-				log.Println(err)
+
+			elapsed := time.Since(start)
+			log.Printf("took %d ns/op\n", elapsed.Nanoseconds()/int64(iters-1))
+		} else {
+			// otherwise wait a little bit (hopefully it finishes by the end of this)
+			time.Sleep(480 * time.Second)
+		}
+	} else if app == "time" {
+		log.Println("RUNNING TIMESTAMPER")
+		stampers, _, err := hc.RunTimestamper(0, hostname)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, s := range stampers {
+			// only listen if this is the hostname specified
+			if s.Name() == hostname {
+				if s.IsRoot() {
+					s.ListenToClients("root", nrounds)
+				} else {
+					s.ListenToClients("regular", nrounds)
+				}
 			}
 		}
-
-		elapsed := time.Since(start)
-		log.Printf("took %d ns/op\n", elapsed.Nanoseconds()/int64(iters-1))
-	} else {
-		// otherwise wait a little bit (hopefully it finishes by the end of this)
-		time.Sleep(480 * time.Second)
 	}
 	fmt.Println("DONE")
 }

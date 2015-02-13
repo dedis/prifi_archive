@@ -337,7 +337,7 @@ func GetAddress() (string, error) {
 	return ipv4host, nil
 }
 
-var startConfigPort = 10000
+var StartConfigPort = 9000
 
 type ConfigOptions struct {
 	ConnType  string   // "go", tcp"
@@ -400,10 +400,10 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 
 			addr := h
 			if opts.GenHosts {
-				p := strconv.Itoa(startConfigPort)
+				p := strconv.Itoa(StartConfigPort)
 				addr = localAddr + ":" + p
 				//log.Println("created new host address: ", addr)
-				startConfigPort++
+				StartConfigPort += 10
 			} else if opts.Port != "" {
 				log.Println("attempting to rewrite port: ", opts.Port)
 				// if the port has been specified change the port
@@ -432,6 +432,9 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
 	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)
+	if connT != GoC {
+		hc.Dir = nil
+	}
 	return hc, err
 }
 
@@ -495,6 +498,7 @@ func (hc *HostConfig) Run(hostnameSlice ...string) error {
 
 // run each host in hostnameSlice with the number of clients given
 func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*stamp.Server, []*stamp.Client, error) {
+	log.Println("RunTimestamper")
 	hostnames := make(map[string]*sign.SigningNode)
 	// make a list of hostnames we want to run
 	if hostnameSlice == nil {
@@ -520,43 +524,54 @@ func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*
 		stampers = append(stampers, stamp.NewServer(sn))
 		if hc.Dir == nil {
 			log.Println("listening for clients")
-			stampers[len(stampers)-1].ListenForClients()
+			stampers[len(stampers)-1].Listen()
 		}
 	}
-
+	log.Println("stampers:", stampers)
 	clientsLists := make([][]*stamp.Client, len(hc.SNodes[1:]))
 	for i, s := range stampers[1:] {
 		// cant assume the type of connection
 		clients := make([]*stamp.Client, nclients)
+
+		h, p, err := net.SplitHostPort(s.Name())
+		if hc.Dir != nil {
+			h = s.Name()
+		} else if err != nil {
+			log.Fatal("RunTimestamper: bad Tcp host")
+		}
+		pn, err := strconv.Atoi(p)
+		if hc.Dir != nil {
+			pn = 0
+		} else if err != nil {
+			log.Fatal("port is not valid integer")
+		}
+		hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
+		log.Println("client connecting to:", hp)
+
 		for j := range clients {
-			clients[j] = stamp.NewClient("client" + strconv.Itoa((i-1)*len(clients)+j))
+			clients[j] = stamp.NewClient("client" + strconv.Itoa((i-1)*len(stampers)+j))
 			var c coconet.Conn
 
 			// if we are using tcp connections
 			if hc.Dir == nil {
 				// the timestamp server serves at the old port + 1
-				h, p, err := net.SplitHostPort(s.Name())
-				if err != nil {
-					log.Fatal("RunTimestamper: bad Tcp host")
-				}
-				pn, err := strconv.Atoi(p)
-				if err != nil {
-					log.Fatal("port is not valid integer")
-				}
-				hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
+				log.Println("new tcp conn")
 				c = coconet.NewTCPConn(hp)
 			} else {
+				log.Println("new go conn")
 				c, _ = coconet.NewGoConn(hc.Dir, clients[j].Name(), s.Name())
 				stoc, _ := coconet.NewGoConn(hc.Dir, s.Name(), clients[j].Name())
 				s.Clients[clients[j].Name()] = stoc
 			}
 			// connect to the server from the client
-			clients[j].Sns[s.Name()] = c
-			clients[j].Connect()
+			clients[j].AddServer(s.Name(), c)
+			//clients[j].Sns[s.Name()] = c
+			//clients[j].Connect()
 		}
 		Clients = append(Clients, clients...)
 		clientsLists[i] = clients
 	}
+
 	return stampers, Clients, nil
 }
 

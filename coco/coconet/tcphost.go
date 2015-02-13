@@ -47,7 +47,7 @@ func (h *TCPHost) Listen() error {
 		bs := make([]byte, 300)
 		n, err := conn.Read(bs)
 		if err != nil {
-			log.Println(err)
+			log.Println("ERROR ERROR ERROR: TCP HOST FAILED:", err)
 			conn.Close()
 			continue
 		}
@@ -90,6 +90,7 @@ func (h *TCPHost) Connect() error {
 	if n != len(bs) {
 		return errors.New("tcp connect failed did not write full name")
 	}
+	log.Println("CONNECTING TO PARENT")
 	h.parent = NewTCPConnFromNet(conn)
 	return nil
 }
