@@ -171,13 +171,13 @@ func (h TCPHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) PutUp(data BinaryMarshaler) error {
-	return ToError(<-h.parent.Put(data))
+	return <-h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
-	return ToError(<-h.parent.Get(data))
+	return <-h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -191,7 +191,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := ToError(<-c.Put(data[i])); e != nil {
+		if e := <-c.Put(data[i]); e != nil {
 			err = e
 		}
 		i++
@@ -214,15 +214,15 @@ func (h *TCPHost) GetDown(data []BinaryUnmarshaler) error {
 			var e error
 			defer wg.Done()
 
-			errchan := make(chan error, 1)
-			go func(i int, c Conn) {
-				e := ToError(<-c.Get(data[i]))
-				errchan <- e
+			// errchan := make(chan error, 1)
+			// go func(i int, c Conn) {
+			// 	e := ToError(<-c.Get(data[i]))
+			// 	errchan <- e
 
-			}(i, c)
+			// }(i, c)
 
 			select {
-			case e = <-errchan:
+			case e = <-c.Get(data[i]):
 				if e != nil {
 					setError(&mu, &err, e)
 				}

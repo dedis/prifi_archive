@@ -10,8 +10,8 @@ type Conn interface {
 	Connect() error // connect with the "to"
 	Close()         // clean up the connection
 
-	Put(BinaryMarshaler) chan string   // sends data through the connection
-	Get(BinaryUnmarshaler) chan string // gets data from connection (blocking)
+	Put(BinaryMarshaler) chan error   // sends data through the connection
+	Get(BinaryUnmarshaler) chan error // gets data from connection (blocking)
 }
 
 /* Alternative Bytes Based Conn

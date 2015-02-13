@@ -70,7 +70,7 @@ func (c *Client) handleServer(s coconet.Conn) error {
 	for {
 		tsm := &TimeStampMessage{}
 		// log.Println("connection:", s)
-		err := s.Get(tsm)
+		err := <-s.Get(tsm)
 		if err != nil {
 			return err
 		}
@@ -131,7 +131,7 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 		return errors.New("INVALID SERVER")
 	}
 	// log.Println("MYCONN: ", conn)
-	return conn.Put(data)
+	return <-conn.Put(data)
 }
 
 // When client asks for val to be timestamped

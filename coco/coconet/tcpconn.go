@@ -56,34 +56,38 @@ func (tc TCPConn) Name() string {
 }
 
 // blocks until the put is availible
-func (tc *TCPConn) Put(bm BinaryMarshaler) chan string {
+func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
+	errchan := make(chan error, 2)
 	tc.RLock()
 	for tc.enc == nil {
 		tc.RUnlock()
 		time.Sleep(time.Second)
 		tc.RLock()
-		//return errors.New(" connection not established")
+		errchan <- errors.New(" connection not established")
+		return errchan
 	}
 	tc.RUnlock()
-
-	errchan := make(chan string, 1)
 	err := tc.enc.Encode(bm)
-	errchan <- err.Error()
+	errchan <- err
 	return errchan
 }
 
 // blocks until we get something
-func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan string {
+func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
+	errchan := make(chan error, 2)
 	for tc.dec == nil {
 		time.Sleep(time.Second)
 		// panic("no decoder yet")
 		// log.Fatal("no decoder yet")
-		return errors.New(" connection not established")
+		errchan <- errors.New("connection not established")
+		return errchan
 	}
 
-	errchan := make(chan string, 1)
-	err := tc.dec.Decode(bum)
-	errchan <- err.Error()
+	// errchan := make(chan string, 1)
+	go func(bum BinaryUnmarshaler) {
+		err := tc.dec.Decode(bum)
+		errchan <- err
+	}(bum)
 	return errchan
 }
 

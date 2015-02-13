@@ -271,7 +271,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 		messg = SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
-		if err := coconet.ToError(<-child.Put(messg)); err != nil {
+		if err := <-child.Put(messg); err != nil {
 			return err
 		}
 	}
@@ -286,7 +286,7 @@ func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
 		messg = SigningMessage{Type: Challenge, Chm: chm}
 
 		// send challenge message to child
-		if err := coconet.ToError(<-child.Put(messg)); err != nil {
+		if err := <-child.Put(messg); err != nil {
 			return err
 		}
 	}
