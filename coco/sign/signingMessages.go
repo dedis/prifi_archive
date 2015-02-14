@@ -18,11 +18,12 @@ import (
 type MessageType int
 
 const (
-	Error MessageType = iota
+	Unset MessageType = iota
 	Announcement
 	Commitment
 	Challenge
 	Response
+	Error
 )
 
 // Signing Messages are used for all comunications between servers

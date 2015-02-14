@@ -70,6 +70,8 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 
 // Used in Commit and Respond to get commits and responses from all
 // children before creating own commit and response
+// Messages from children are returns in STRICT order
+// ith message = message from ith child
 func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	// grab space for children messages
 	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
@@ -80,7 +82,6 @@ func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	// update waiting time based on current depth
 	// and wait for all children to commit
 	sn.UpdateTimeout()
-	// fmt.Println(sn.Name(), "timeout", sn.GetTimeout())
 	err := sn.GetDown(messgs)
 	if err != nil {
 		log.Println(sn.Name(), "getDown error\t\t\t", err)
@@ -159,11 +160,9 @@ func (sn *SigningNode) initCommitCrypto() {
 }
 
 func (sn *SigningNode) Commit() error {
-	// fmt.Println(sn.Name(), "height", sn.Height)
 	sn.initCommitCrypto()
 
 	// get commits from kids
-	// note: messages are received in strict order: 1st message = from first kid
 	messgs, err := sn.getDownMessgs()
 	if err != nil {
 		return err
@@ -172,7 +171,7 @@ func (sn *SigningNode) Commit() error {
 	// prepare to handle exceptions
 	sn.ExceptionList = make([]abstract.Point, 0)
 	sn.ChildV_hat = make([]abstract.Point, len(sn.Children()))
-	nullPoint := sn.suite.Point().Null()
+	sn.ChildX_hat = make([]abstract.Point, len(sn.Children()))
 	children := sn.Children()
 
 	// Commits from children are the first Merkle Tree leaves for the round
@@ -181,21 +180,22 @@ func (sn *SigningNode) Commit() error {
 	for i, messg := range messgs {
 		sm := messg.(*SigningMessage)
 		switch sm.Type {
-		default:
-			// remove pub key
-			sn.ExceptionList = append(sn.ExceptionList, children[i].PubKey())
-			// take note of lack of commit points from i
-			sn.ChildV_hat[i] = nullPoint
+		default: // default == no response from i
 			// fmt.Println(sn.Name(), "no commit from", i)
+			sn.ExceptionList = append(sn.ExceptionList, children[i].PubKey())
+			// take note of lack of pub keys and commit points from i
+			sn.ChildX_hat[i] = sn.suite.Point().Null()
+			sn.ChildV_hat[i] = sn.suite.Point().Null()
 			continue
 		case Commitment:
 			sn.Leaves = append(sn.Leaves, sm.Com.MTRoot)
-			sn.Log.V_hat.Add(sn.Log.V_hat, sm.Com.V_hat)
 			sn.ChildV_hat[i] = sm.Com.V_hat
+			sn.ChildX_hat[i] = sm.Com.X_hat
 			sn.ExceptionList = append(sn.ExceptionList, sm.Com.ExceptionList...)
 
-			// add good child server to combined public key
+			// add good child server to combined public key, and point commit
 			sn.add(sn.X_hat, sm.Com.X_hat)
+			sn.add(sn.Log.V_hat, sm.Com.V_hat)
 		}
 	}
 
@@ -383,12 +383,13 @@ func (sn *SigningNode) Respond() error {
 		sm := messg.(*SigningMessage)
 		switch sm.Type {
 		default:
+			// default == no response from child
 			// log.Println(sn.Name(), "received nil response from", i)
 			sn.ExceptionList = append(sn.ExceptionList, children[i].PubKey())
-			sn.add(exceptionV_hat, sn.ChildV_hat[i])
 
-			// remove public key of faild child form combined pub key
-			sn.X_hat.Sub(sn.X_hat, children[i].PubKey())
+			// remove public keys and point commits from subtree of faild child
+			sn.add(exceptionX_hat, sn.ChildX_hat[i])
+			sn.add(exceptionV_hat, sn.ChildV_hat[i])
 			continue
 		case Response:
 			// disregard response from children that did not commit
@@ -405,7 +406,7 @@ func (sn *SigningNode) Respond() error {
 
 		// Report errors that are not networking errors
 		case Error:
-			log.Println("Error in respond for child", i, err)
+			log.Println(sn.Name(), "Error in respond for child", i, sm)
 			if sm.Err == nil {
 				log.Println("Error but no error set in respond for child", i, err)
 				// ignore if no error is actually set
@@ -417,8 +418,8 @@ func (sn *SigningNode) Respond() error {
 
 	// remove all Vs of nodes from subtree that failed
 	// fmt.Println(sn.Name(), "Removing exception V_hat", exceptionV_hat)
-	// sn.sub(sn.Log.V_hat, exceptionV_hat)
-	// sn.sub(sn.X_hat, exceptionX_hat)
+	sn.sub(sn.Log.V_hat, exceptionV_hat)
+	sn.sub(sn.X_hat, exceptionX_hat)
 	err = sn.VerifyResponses()
 
 	if !sn.IsRoot() {
@@ -450,11 +451,6 @@ func (sn *SigningNode) FinalizeCommits() error {
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
 		sn.c = hashElGamal(sn.suite, sn.LogTest, sn.Log.V_hat)
-		// if sn.Name() == "host0" {
-		// 	fmt.Println("Finalize Commits c", sn.c)
-		// 	fmt.Println("Finalize Commits V_hat", sn.Log.V_hat)
-		// 	fmt.Println("Finalize Commits V", sn.Log.V)
-		// }
 	} else {
 		sn.c = hashElGamal(sn.suite, sn.MTRoot, sn.Log.V_hat)
 	}
@@ -486,10 +482,6 @@ func (sn *SigningNode) VerifyResponses() error {
 	if sn.IsRoot() {
 		if sn.Type == PubKey {
 			c2 = hashElGamal(sn.suite, sn.LogTest, T)
-			// if sn.Name() == "host0" {
-			// 	fmt.Println("Verify Response c2", c2)
-			// 	fmt.Println("Verify Response T", T)
-			// }
 		} else {
 			c2 = hashElGamal(sn.suite, sn.MTRoot, T)
 		}

@@ -63,10 +63,12 @@ type SigningNode struct {
 	DoneFunc   coco.DoneFunc
 
 	// round-lasting public keys of children servers that did not
-	// respond to latest commit or respond phase
+	// respond to latest commit or respond phase, in subtree
 	ExceptionList []abstract.Point
-	// combined point commits of children servers
+	// combined point commits of children servers in subtree
 	ChildV_hat []abstract.Point
+	// combined public keys of children servers in subtree
+	ChildX_hat []abstract.Point
 
 	// Set to true if FaultyHosts are used instead of Hosts
 	// Signing Node must test this field to know if it must simulate failure
