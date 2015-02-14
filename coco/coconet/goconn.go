@@ -139,7 +139,6 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) chan error {
 		if err != nil {
 			fmt.Println("failed to unmarshal binary: ", ch, data)
 			fmt.Printf("\tinto: %#v\n", bum)
-			panic("ERROR")
 		}
 		errchan <- err
 	}()

@@ -1,6 +1,7 @@
 package sign_test
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -193,19 +194,23 @@ func TestMultipleRounds(t *testing.T) {
 }
 
 func TestTCPStaticConfig(t *testing.T) {
+	fmt.Println("1")
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}
+	fmt.Println("2")
 	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Println("3")
 	hc.SNodes[0].LogTest = []byte("hello world")
 	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 	if err != nil {
 		t.Error(err)
 	}
+	fmt.Println("4")
 	for _, n := range hc.SNodes {
 		n.Close()
 	}

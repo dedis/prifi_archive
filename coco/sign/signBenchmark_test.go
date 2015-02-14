@@ -1,8 +1,6 @@
 package sign_test
 
 import (
-	"io/ioutil"
-	"log"
 	"strconv"
 	"testing"
 
@@ -10,9 +8,9 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func init() {
-	log.SetOutput(ioutil.Discard)
-}
+// func init() {
+// 	log.SetOutput(ioutil.Discard)
+// }
 
 // one after the other by the root (one signature per message created)
 func SimpleRoundsThroughput(N int, b *testing.B) {

@@ -100,13 +100,11 @@ func (h *GoHost) Listen() error {
 			if e != nil {
 				log.Fatal("unable to get pubkey from child")
 			}
-			fmt.Println("setting pub key")
 			c.SetPubKey(pubkey)
-			fmt.Println("set pub key")
 			h.rlock.Lock()
 			h.ready[c] = true
 			h.rlock.Unlock()
-			fmt.Println("connection with child established")
+			// fmt.Println("connection with child established")
 		}(c)
 	}
 	return nil
@@ -118,7 +116,6 @@ func (h *GoHost) AddParent(c string) {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
 	h.plock.Lock()
-	fmt.Println("putting up publick key:")
 	h.peers[c].Put(h.PubKey()) // publick key should be put here first
 	// only after putting pub key allow it to be accessed like parent
 	h.parent, _ = h.peers[c]
@@ -185,21 +182,21 @@ func (h *GoHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
-	fmt.Printf("PUTTING UP up:%#v", data)
+	// fmt.Printf("PUTTING UP up:%#v", data)
 	return <-h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
-	fmt.Println("GETTING UP from up")
+	// fmt.Println("GETTING UP from up")
 	return <-h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
 func (h *GoHost) PutDown(data []BinaryMarshaler) error {
-	fmt.Println("PUTTING DOWN")
+	// fmt.Println("PUTTING DOWN")
 	if len(data) != len(h.children) {
 		panic("number of messages passed down != number of children")
 	}
@@ -222,15 +219,30 @@ func setError(mu *sync.Mutex, err *error, e error) {
 	(*mu).Unlock()
 }
 
+func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) chan error {
+	for {
+		h.rlock.Lock()
+		isReady := h.ready[c]
+		h.rlock.Unlock()
+
+		if isReady {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return c.Get(data)
+}
+
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
 func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
-	fmt.Println("GETTING DOWN")
+	// fmt.Println("GETTING DOWN")
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var err error
-	i := 0
-	for _, c := range h.children {
+
+	for i, c := range h.children {
 		wg.Add(1)
 		//fmt.Println("GETTING FROM CHILD: ", c, h.children)
 		go func(i int, c Conn) {
@@ -238,21 +250,8 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
 			defer wg.Done()
 			timeout := h.GetTimeout()
 
-			rg := func(c Conn, data BinaryUnmarshaler) chan error {
-				for {
-					h.rlock.Lock()
-					if h.ready[c] {
-						h.rlock.Unlock()
-						break
-					}
-					h.rlock.Unlock()
-					time.Sleep(100 * time.Millisecond)
-				}
-				return c.Get(data)
-			}(c, data[i])
-
 			select {
-			case e = <-rg:
+			case e = <-h.whenReadyGet(c, data[i]):
 				// fmt.Println(h.Name(), "got")
 				if e != nil {
 					fmt.Println(h.Name(), "set error to ", e)
@@ -271,8 +270,6 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
 			}
 
 		}(i, c)
-
-		i++
 	}
 
 	wg.Wait()

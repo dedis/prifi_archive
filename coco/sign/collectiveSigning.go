@@ -83,7 +83,7 @@ func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
 	// fmt.Println(sn.Name(), "timeout", sn.GetTimeout())
 	err := sn.GetDown(messgs)
 	if err != nil {
-		fmt.Println(sn.Name(), "getDown error\t\t\t", err)
+		log.Println(sn.Name(), "getDown error\t\t\t", err)
 	}
 
 	// log rather than propagate network TimeoutOut errors
@@ -423,7 +423,7 @@ func (sn *SigningNode) Respond() error {
 
 	if !sn.IsRoot() {
 		// report verify response error
-		fmt.Println(sn.Name(), "put up response", err)
+		// fmt.Println(sn.Name(), "put up response", err)
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
