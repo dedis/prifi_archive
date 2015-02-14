@@ -187,7 +187,7 @@ func max(a, b int) int {
 }
 
 // ConstructTree does a depth-first construction of the tree specified in the
-// config file. ConstructTree must be call AFTER populating the HostConfig with
+// config file. ConstructTree must be called AFTER populating the HostConfig with
 // ALL the possible hosts.
 func ConstructTree(
 	n *Node,
@@ -254,9 +254,12 @@ func ConstructTree(
 		if prikey != nil {
 			// if we have been given a private key load that
 			hc.SNodes = append(hc.SNodes, sign.NewKeyedSigningNode(h, suite, prikey))
+			h.SetPubKey(pubkey)
 		} else {
 			// otherwise generate a random new one
-			hc.SNodes = append(hc.SNodes, sign.NewSigningNode(h, suite, rand))
+			sn := sign.NewSigningNode(h, suite, rand)
+			hc.SNodes = append(hc.SNodes, sn)
+			h.SetPubKey(sn.PubKey)
 		}
 		sn = hc.SNodes[len(hc.SNodes)-1]
 		hc.Hosts[name] = sn
@@ -464,10 +467,10 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	}
 	for _, sn := range hostnames {
 		sn.Type = signType
-		go func(sn *sign.SigningNode) {
-			// start listening for messages from within the tree
-			sn.Host.Listen()
-		}(sn)
+		//go func(sn *sign.SigningNode) {
+		// start listening for messages from within the tree
+		sn.Host.Listen()
+		//}(sn)
 	}
 
 	for _, sn := range hostnames {

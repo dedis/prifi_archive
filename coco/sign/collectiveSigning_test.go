@@ -28,14 +28,14 @@ func TestStaticPubKey(t *testing.T) {
 	}
 }
 
-func TestStaticFaulty(t *testing.T) {
-	faultyNodes := make([]int, 0)
-	faultyNodes = append(faultyNodes, 1)
+// func TestStaticFaulty(t *testing.T) {
+// 	faultyNodes := make([]int, 0)
+// 	faultyNodes = append(faultyNodes, 1)
 
-	if err := runStaticTest(sign.PubKey, faultyNodes...); err != nil {
-		t.Fatal(err)
-	}
-}
+// 	if err := runStaticTest(sign.PubKey, faultyNodes...); err != nil {
+// 		t.Fatal(err)
+// 	}
+// }
 
 func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	// Crypto setup
@@ -80,14 +80,16 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 
 	// Add edges to children, listen to children
 	h[0].AddChildren(h[1].Name())
-	go h[0].Listen()
+	h[0].Listen()
 	h[1].AddChildren(h[2].Name(), h[3].Name())
-	go h[1].Listen()
+	h[1].Listen()
 
 	// Add edges to parents
 	h[1].AddParent(h[0].Name())
 	h[2].AddParent(h[1].Name())
 	h[3].AddParent(h[1].Name())
+	// h[2].Listen()
+	// h[3].Listen()
 
 	for i := 0; i < nNodes; i++ {
 		if len(faultyNodes) > 0 {

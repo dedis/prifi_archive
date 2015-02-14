@@ -2,6 +2,7 @@ package coconet
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/dedis/crypto/abstract"
@@ -36,6 +37,7 @@ type GoConn struct {
 	fromto string
 	tofrom string
 
+	mupk   sync.RWMutex
 	pubkey abstract.Point
 }
 
@@ -47,7 +49,7 @@ var PeerExists error = errors.New("peer already exists in given directory")
 // hostname. It returns an ignorable PeerExists error if this peer already
 // exists.
 func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
-	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from, nil}
+	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from, sync.RWMutex{}, nil}
 	dir.Lock()
 	fromto := gc.FromTo()
 	tofrom := gc.ToFrom()
@@ -58,53 +60,56 @@ func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
 	}
 	dir.nameToPeer[fromto] = gc
 	if _, ok := dir.channel[fromto]; !ok {
-		dir.channel[fromto] = make(chan []byte, 0)
+		dir.channel[fromto] = make(chan []byte, 1)
 	}
 	if _, ok := dir.channel[tofrom]; !ok {
-		dir.channel[tofrom] = make(chan []byte, 0)
+		dir.channel[tofrom] = make(chan []byte, 1)
 	}
 	return gc, nil
 }
 
 // Name returns the from+to identifier of the goConn.
-func (c GoConn) Name() string {
+func (c *GoConn) Name() string {
 	return c.to
 }
 
-func (c GoConn) FromTo() string {
+func (c *GoConn) FromTo() string {
 	return c.fromto
 }
 
-func (c GoConn) ToFrom() string {
+func (c *GoConn) ToFrom() string {
 	return c.tofrom
 }
 
-func (c GoConn) Connect() error {
+func (c *GoConn) Connect() error {
 	return nil
 }
 
-func (c GoConn) Close() {}
+func (c *GoConn) Close() {}
 
 func (c *GoConn) SetPubKey(pk abstract.Point) {
+	c.mupk.Lock()
 	c.pubkey = pk
+	c.mupk.Unlock()
 }
 
-func (c GoConn) PubKey() abstract.Point {
-	return c.pubkey
+func (c *GoConn) PubKey() abstract.Point {
+	c.mupk.Lock()
+	pl := c.pubkey
+	c.mupk.Unlock()
+	return pl
 }
 
 // Put sends data to the goConn through the channel.
 func (c *GoConn) Put(data BinaryMarshaler) chan error {
 	errchan := make(chan error, 1)
 	fromto := c.FromTo()
-
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
 	// the directory must be unlocked before sending data. otherwise the
 	// receiver would not be able to access this channel from the directory
 	// either.
 	c.dir.Unlock()
-
 	b, err := data.MarshalBinary()
 	if err != nil {
 		errchan <- err
@@ -131,6 +136,11 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) chan error {
 	go func() {
 		data := <-ch
 		err := bum.UnmarshalBinary(data)
+		if err != nil {
+			fmt.Println("failed to unmarshal binary: ", ch, data)
+			fmt.Printf("\tinto: %#v\n", bum)
+			panic("ERROR")
+		}
 		errchan <- err
 	}()
 

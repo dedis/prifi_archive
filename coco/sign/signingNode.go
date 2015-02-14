@@ -141,5 +141,5 @@ func (sn *SigningNode) Read(data []byte) (interface{}, error) {
 }
 
 func (sn *SigningNode) UpdateTimeout() {
-	sn.SetTimeout(time.Duration(sn.Height) * sn.GetDefaultTimeout())
+	sn.SetTimeout(time.Duration(sn.Height)*sn.GetDefaultTimeout() + 1000*time.Millisecond)
 }
