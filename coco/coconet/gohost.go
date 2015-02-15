@@ -182,7 +182,8 @@ func (h *GoHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
-	// fmt.Printf("PUTTING UP up:%#v", data)
+	defer fmt.Println(h.Name(), "done put up", h.parent)
+	// fmt.Printf(h.Name(), "PUTTING UP up:%#v", data)
 	return <-h.parent.Put(data)
 }
 
@@ -220,12 +221,14 @@ func setError(mu *sync.Mutex, err *error, e error) {
 }
 
 func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) chan error {
+	defer fmt.Println(h.Name(), "returned ready channel for", c.Name(), c)
 	for {
 		h.rlock.Lock()
 		isReady := h.ready[c]
 		h.rlock.Unlock()
 
 		if isReady {
+			fmt.Println(h.Name(), "is ready")
 			break
 		}
 		time.Sleep(100 * time.Millisecond)

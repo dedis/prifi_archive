@@ -357,6 +357,7 @@ type ConfigOptions struct {
 	GenHosts  bool     // if true generate random hostnames (all tcp)
 	Host      string   // hostname to load into memory: "" for all
 	Port      string   // if specified rewrites all ports to be this
+	Faulty    bool     // if true, use FaultyHost wrapper around Hosts
 }
 
 // TODO: if in tcp mode associate each hostname in the file with a different
@@ -394,7 +395,13 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 			if _, ok := hc.Hosts[h]; !ok {
 				nameToAddr[h] = h
 				// it doesn't make sense to only make 1 go host
-				hosts[h] = coconet.NewGoHost(h, dir)
+				if opts.Faulty == true {
+					hosts[h] = &coconet.FaultyHost{}
+					gohost := coconet.NewGoHost(h, dir)
+					hosts[h] = coconet.NewFaultyHost(gohost)
+				} else {
+					hosts[h] = coconet.NewGoHost(h, dir)
+				}
 			}
 		}
 

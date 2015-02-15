@@ -1,6 +1,7 @@
 package sign_test
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -10,6 +11,13 @@ import (
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
+
+// Testing suite for signing
+// NOTE: when testing if we can gracefully accommodate failures we must:
+// 1. Wrap our hosts in FaultyHosts (ex: via field passed in LoadConfig)
+// 2. Set out SigningNodes TesingFailures field to true
+// 3. We can Choose at which stage our nodes fail by using SetDeadFor
+//    or we can choose to take them off completely via SetDead
 
 //       0
 //      /
@@ -88,8 +96,6 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	h[1].AddParent(h[0].Name())
 	h[2].AddParent(h[1].Name())
 	h[3].AddParent(h[1].Name())
-	// h[2].Listen()
-	// h[3].Listen()
 
 	for i := 0; i < nNodes; i++ {
 		if len(faultyNodes) > 0 {
@@ -136,22 +142,55 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 //     1   4
 //    / \   \
 //   2   3   5
-func TestTreeFromStaticConfig(t *testing.T) {
-	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
-	if err != nil {
+func TestTreeSmallConfig(t *testing.T) {
+	if err := runTreeSmallConfig(sign.MerkleTree); err != nil {
 		t.Fatal(err)
 	}
-	err = hostConfig.Run(sign.MerkleTree)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Have root node initiate the signing protocol
-	// via a simple annoucement
-	hostConfig.SNodes[0].LogTest = []byte("Hello World")
-	hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{hostConfig.SNodes[0].LogTest})
 }
 
-func TestTreeBigConfig(t *testing.T) {
+func TestTreeSmallConfigFaulty(t *testing.T) {
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 2, 5)
+	if err := runTreeSmallConfig(sign.MerkleTree, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runTreeSmallConfig(signType sign.Type, faultyNodes ...int) error {
+	var hostConfig *oldconfig.HostConfig
+	var err error
+	if len(faultyNodes) > 0 {
+		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", oldconfig.ConfigOptions{Faulty: true})
+	} else {
+		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json")
+	}
+	if err != nil {
+		return err
+	}
+
+	for _, fh := range faultyNodes {
+		fmt.Println("Setting", hostConfig.SNodes[fh].Name(), "as faulty")
+		hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("commit", true)
+	}
+
+	if len(faultyNodes) > 0 {
+		for i := range hostConfig.SNodes {
+			hostConfig.SNodes[i].TestingFailures = true
+		}
+	}
+
+	err = hostConfig.Run(signType)
+	if err != nil {
+		return err
+	}
+	// Have root node initiate the signing protocol via a simple annoucement
+	hostConfig.SNodes[0].LogTest = []byte("Hello World")
+	hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{hostConfig.SNodes[0].LogTest})
+
+	return nil
+}
+
+func TestTreeFromBigConfig(t *testing.T) {
 	hc, err := oldconfig.LoadConfig("../test/data/exwax.json")
 	if err != nil {
 		t.Fatal()

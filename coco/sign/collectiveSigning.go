@@ -397,7 +397,7 @@ func (sn *SigningNode) Respond() error {
 				continue
 			}
 
-			// log.Println(sn.Name(), "accepts response from", i)
+			log.Println(sn.Name(), "accepts response from", i)
 			sn.r_hat.Add(sn.r_hat, sm.Rm.R_hat)
 
 			sn.add(exceptionV_hat, sm.Rm.ExceptionV_hat)
@@ -424,7 +424,7 @@ func (sn *SigningNode) Respond() error {
 
 	if !sn.IsRoot() {
 		// report verify response error
-		// fmt.Println(sn.Name(), "put up response", err)
+		fmt.Println(sn.Name(), "put up response with err", err)
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
