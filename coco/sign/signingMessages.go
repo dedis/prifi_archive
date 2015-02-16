@@ -38,6 +38,10 @@ type SigningMessage struct {
 	From string
 }
 
+func NewSigningMessage() interface{} {
+	return &SigningMessage{}
+}
+
 func (sm SigningMessage) MarshalBinary() ([]byte, error) {
 	return protobuf.Encode(&sm)
 }

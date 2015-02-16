@@ -33,6 +33,8 @@ type TCPHost struct {
 
 	mupk   sync.RWMutex
 	Pubkey abstract.Point // own public key
+
+	pool sync.Pool
 }
 
 func (h *TCPHost) GetDefaultTimeout() time.Duration {
@@ -354,7 +356,7 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
-func (h *TCPHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan error) {
+func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 	var chmu sync.Mutex
 	ch := make(chan NetworkMessg, 1)
 	errch := make(chan error, 1)
@@ -372,13 +374,11 @@ func (h *TCPHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan err
 
 				for {
 
-					e := <-h.whenReadyGet(c, data[i])
-					if e != nil {
-						data[i] = nil
-					}
+					data := h.pool.Get().(BinaryUnmarshaler)
+					e := <-h.whenReadyGet(c, data)
 
 					chmu.Lock()
-					ch <- NetworkMessg{Data: data[i], From: c} // this should be copy of data[i]
+					ch <- NetworkMessg{Data: data, From: c} // this should be copy of data[i]
 					errch <- e
 					chmu.Unlock()
 
@@ -388,4 +388,12 @@ func (h *TCPHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan err
 	}()
 
 	return ch, errch
+}
+
+func (h *TCPHost) Pool() sync.Pool {
+	return h.pool
+}
+
+func (h *TCPHost) SetPool(p sync.Pool) {
+	h.pool = p
 }

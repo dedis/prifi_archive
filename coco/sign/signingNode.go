@@ -33,6 +33,8 @@ type SigningNode struct {
 	PubKey  abstract.Point  // long lasting public key
 	PrivKey abstract.Secret // long lasting private key
 
+	peerKeys map[string]abstract.Point // map of all peer public keys
+
 	c abstract.Secret // round lasting challenge
 	r abstract.Secret // round lasting response
 
@@ -42,8 +44,7 @@ type SigningNode struct {
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
 
-	LogTest  []byte                    // for testing purposes
-	peerKeys map[string]abstract.Point // map of all peer public keys
+	LogTest []byte // for testing purposes
 
 	nRounds int
 

@@ -1,6 +1,7 @@
 package coconet
 
 import (
+	"sync"
 	"time"
 
 	"github.com/dedis/crypto/abstract"
@@ -48,10 +49,10 @@ type Host interface {
 	IsRoot() bool // true if this host is the root of the tree
 
 	// blocking network calls over the tree
-	PutUp(BinaryMarshaler) error                                 // send data to parent in host tree
-	GetUp(BinaryUnmarshaler) error                               // get data from parent in host tree (blocking)
-	PutDown([]BinaryMarshaler) error                             // send data to children in host tree
-	GetDown([]BinaryUnmarshaler) (chan NetworkMessg, chan error) // get data from children in host tree
+	PutUp(BinaryMarshaler) error              // send data to parent in host tree
+	GetUp(BinaryUnmarshaler) error            // get data from parent in host tree (blocking)
+	PutDown([]BinaryMarshaler) error          // send data to children in host tree
+	GetDown() (chan NetworkMessg, chan error) // get data from children in host tree
 
 	// ??? Could be replaced by listeners (condition variables) that wait for a
 	// change to the root status to the node (i.e. through an add parent call)
@@ -68,4 +69,7 @@ type Host interface {
 
 	PubKey() abstract.Point
 	SetPubKey(abstract.Point)
+
+	Pool() sync.Pool
+	SetPool(sync.Pool)
 }

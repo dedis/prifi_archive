@@ -37,6 +37,8 @@ type GoHost struct {
 
 	mutimeout sync.Mutex
 	timeout   time.Duration // general timeout for any network operation
+
+	pool sync.Pool
 }
 
 func (h *GoHost) GetDirectory() *GoDirectory {
@@ -253,7 +255,7 @@ func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) chan error {
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
-func (h *GoHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan error) {
+func (h *GoHost) GetDown() (chan NetworkMessg, chan error) {
 	// fmt.Println("GETTING DOWN")
 	var chmu sync.Mutex
 	ch := make(chan NetworkMessg, 1)
@@ -268,14 +270,11 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan erro
 				h.rlock.Unlock()
 
 				for {
-					myData := data[i]
-					e := <-h.whenReadyGet(conn, myData)
-					if e != nil {
-						data[i] = nil
-					}
+					data := h.pool.Get().(BinaryUnmarshaler)
+					e := <-h.whenReadyGet(conn, data)
 
 					chmu.Lock()
-					ch <- NetworkMessg{Data: myData, From: c} // this should be copy of data[i]
+					ch <- NetworkMessg{Data: data, From: c} // this should be copy of data[i]
 					errch <- e
 					chmu.Unlock()
 
@@ -285,4 +284,12 @@ func (h *GoHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan erro
 	}()
 
 	return ch, errch
+}
+
+func (h *GoHost) Pool() sync.Pool {
+	return h.pool
+}
+
+func (h *GoHost) SetPool(p sync.Pool) {
+	h.pool = p
 }

@@ -7,6 +7,7 @@ import (
 	"log"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/dedis/crypto/abstract"
@@ -52,15 +53,15 @@ func (sn *SigningNode) getUp() {
 // ith message = message from ith child
 func (sn *SigningNode) getDown() {
 	// grab space for children messages
-	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
-	for i := range messgs {
-		messgs[i] = &SigningMessage{}
-	}
+	// messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
+	// for i := range messgs {
+	// 	messgs[i] = &SigningMessage{}
+	// }
 
 	// update waiting time based on current depth
 	// and wait for all children to commit
 	sn.UpdateTimeout()
-	ch, errch := sn.GetDown(messgs)
+	ch, errch := sn.GetDown()
 
 	var sm *SigningMessage
 	var nm coconet.NetworkMessg
@@ -92,8 +93,16 @@ func (sn *SigningNode) getDown() {
 	}
 }
 
+func (sn *SigningNode) setPool() {
+	var p sync.Pool
+	p.New = NewSigningMessage
+	sn.Host.SetPool(p)
+}
+
 // Start listening for messages coming from parent(up)
 func (sn *SigningNode) Listen() error {
+	sn.setPool()
+
 	if sn.IsRoot() {
 		// Sleep/ Yield until change in network
 		// sn.WaitTick()
@@ -252,6 +261,8 @@ func (sn *SigningNode) Commit(round int) error {
 			sn.add(sn.X_hat, sm.Com.X_hat)
 			sn.add(sn.Log.V_hat, sm.Com.V_hat)
 		}
+
+		// sn.Pool().Put(sm)
 	}
 
 	if sn.Type == PubKey {
