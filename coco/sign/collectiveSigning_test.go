@@ -1,6 +1,7 @@
 package sign_test
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -10,6 +11,15 @@ import (
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
+
+// TODO: when announcing must provide round numbers
+
+// Testing suite for signing
+// NOTE: when testing if we can gracefully accommodate failures we must:
+// 1. Wrap our hosts in FaultyHosts (ex: via field passed in LoadConfig)
+// 2. Set out SigningNodes TesingFailures field to true
+// 3. We can Choose at which stage our nodes fail by using SetDeadFor
+//    or we can choose to take them off completely via SetDead
 
 //       0
 //      /
@@ -59,19 +69,12 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 		} else {
 			h[i] = coconet.NewGoHost(hostName, dir)
 		}
+
 	}
 
 	for _, fh := range faultyNodes {
 		h[fh].(*coconet.FaultyHost).SetDeadFor("commit", true)
 	}
-
-	// Add edges to children
-	h[0].AddChildren(h[1].Name())
-	h[1].AddChildren(h[2].Name(), h[3].Name())
-	// Add edges to parents
-	h[1].AddParent(h[0].Name())
-	h[2].AddParent(h[1].Name())
-	h[3].AddParent(h[1].Name())
 
 	// Create Signing Nodes out of the hosts
 	nodes := make([]*sign.SigningNode, nNodes)
@@ -79,10 +82,20 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 		nodes[i] = sign.NewSigningNode(h[i], suite, rand)
 		nodes[i].Type = signType
 
+		h[i].SetPubKey(nodes[i].PubKey)
 		// To test the already keyed signing node, uncomment
 		// PrivKey := suite.Secret().Pick(rand)
 		// nodes[i] = NewKeyedSigningNode(h[i], suite, PrivKey)
 	}
+	// Add edges to parents
+	h[1].AddParent(h[0].Name())
+	h[2].AddParent(h[1].Name())
+	h[3].AddParent(h[1].Name())
+	// Add edges to children, listen to children
+	h[0].AddChildren(h[1].Name())
+	h[0].Listen()
+	h[1].AddChildren(h[2].Name(), h[3].Name())
+	h[1].Listen()
 
 	for i := 0; i < nNodes; i++ {
 		if len(faultyNodes) > 0 {
@@ -95,27 +108,15 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 		}(i)
 	}
 
-	// initialize all nodes with knowledge of
-	// combined public keys of all its descendents
-	nodes[2].X_hat = nodes[2].PubKey
-	nodes[3].X_hat = nodes[3].PubKey
-	nodes[1].X_hat.Add(nodes[1].PubKey, nodes[2].X_hat)
-	nodes[1].X_hat.Add(nodes[1].X_hat, nodes[3].X_hat)
-	nodes[0].X_hat.Add(nodes[0].PubKey, nodes[1].X_hat)
-
-	// test that X_Hats of non-leaves are != their pub keys
-	firstLeaf := 2
-	for i := 0; i < firstLeaf; i++ {
-		if nodes[i].X_hat.Equal(nodes[i].PubKey) {
-			panic("pub key equal x hat")
-		}
-
-	}
+	nodes[0].Height = 2
+	nodes[1].Height = 1
+	nodes[2].Height = 0
+	nodes[3].Height = 0
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].LogTest = []byte("Hello World")
-	return nodes[0].Announce(&sign.AnnouncementMessage{nodes[0].LogTest})
+	return nodes[0].Announce(&sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 0})
 }
 
 // Configuration file data/exconf.json
@@ -124,22 +125,55 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 //     1   4
 //    / \   \
 //   2   3   5
-func TestTreeFromStaticConfig(t *testing.T) {
-	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
-	if err != nil {
+func TestTreeSmallConfig(t *testing.T) {
+	if err := runTreeSmallConfig(sign.MerkleTree); err != nil {
 		t.Fatal(err)
 	}
-	err = hostConfig.Run(sign.MerkleTree)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Have root node initiate the signing protocol
-	// via a simple annoucement
-	hostConfig.SNodes[0].LogTest = []byte("Hello World")
-	hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{hostConfig.SNodes[0].LogTest})
 }
 
-func TestTreeBigConfig(t *testing.T) {
+func TestTreeSmallConfigFaulty(t *testing.T) {
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 2, 5)
+	if err := runTreeSmallConfig(sign.MerkleTree, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runTreeSmallConfig(signType sign.Type, faultyNodes ...int) error {
+	var hostConfig *oldconfig.HostConfig
+	var err error
+	if len(faultyNodes) > 0 {
+		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", oldconfig.ConfigOptions{Faulty: true})
+	} else {
+		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json")
+	}
+	if err != nil {
+		return err
+	}
+
+	for _, fh := range faultyNodes {
+		fmt.Println("Setting", hostConfig.SNodes[fh].Name(), "as faulty")
+		hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("commit", true)
+	}
+
+	if len(faultyNodes) > 0 {
+		for i := range hostConfig.SNodes {
+			hostConfig.SNodes[i].TestingFailures = true
+		}
+	}
+
+	err = hostConfig.Run(signType)
+	if err != nil {
+		return err
+	}
+	// Have root node initiate the signing protocol via a simple annoucement
+	hostConfig.SNodes[0].LogTest = []byte("Hello World")
+	hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 0})
+
+	return nil
+}
+
+func TestTreeFromBigConfig(t *testing.T) {
 	hc, err := oldconfig.LoadConfig("../test/data/exwax.json")
 	if err != nil {
 		t.Fatal()
@@ -149,7 +183,7 @@ func TestTreeBigConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
+	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	if err != nil {
 		t.Error(err)
 	}
@@ -173,7 +207,7 @@ func TestMultipleRounds(t *testing.T) {
 	// via a simple annoucement
 	for i := 0; i < N; i++ {
 		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
-		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{hostConfig.SNodes[0].LogTest})
+		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 0})
 		if err != nil {
 			t.Error(err)
 		}
@@ -190,7 +224,7 @@ func TestTCPStaticConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
+	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	if err != nil {
 		t.Error(err)
 	}
@@ -214,7 +248,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	N := 5
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
-		err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
+		err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 		if err != nil {
 			t.Error(err)
 		}

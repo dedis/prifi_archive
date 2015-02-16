@@ -26,14 +26,7 @@ const (
 	PubKey
 )
 
-type SigningNode struct {
-	Type Type
-
-	coconet.Host
-	suite   abstract.Suite
-	PubKey  abstract.Point  // long lasting public key
-	PrivKey abstract.Secret // long lasting private key
-
+type Round struct {
 	c abstract.Secret // round lasting challenge
 	r abstract.Secret // round lasting response
 
@@ -43,34 +36,61 @@ type SigningNode struct {
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
 
-	LogTest  []byte                    // for testing purposes
-	peerKeys map[string]abstract.Point // map of all peer public keys
-
-	nRounds int
-
 	// own big merkle subtree
-	MTRoot hashid.HashId   // mt root for subtree, passed upwards
-	Leaves []hashid.HashId // leaves used to build the merkle subtre
+	MTRoot     hashid.HashId   // mt root for subtree, passed upwards
+	Leaves     []hashid.HashId // leaves used to build the merkle subtre
+	LeavesFrom []string        // child names for leaves
 
 	// mtRoot before adding HashedLog
-	LocalMTRoot      hashid.HashId
-	LocalMTRootIndex int
+	LocalMTRoot hashid.HashId
 
 	// merkle tree roots of children in strict order
-	CMTRoots []hashid.HashId
-	Proofs   []proof.Proof
+	CMTRoots     []hashid.HashId
+	CMTRootNames []string
+	Proofs       map[string]proof.Proof
 
-	CommitFunc coco.CommitFunc
-	DoneFunc   coco.DoneFunc
-
-	// round-lasting point commits of children servers that did not
-	// respond to challenge from root
+	// round-lasting public keys of children servers that did not
+	// respond to latest commit or respond phase, in subtree
 	ExceptionList []abstract.Point
-	ChildVs       []abstract.Point
+	// combined point commits of children servers in subtree
+	ChildV_hat map[string]abstract.Point
+	// combined public keys of children servers in subtree
+	ChildX_hat map[string]abstract.Point
+}
+
+func NewRound() *Round {
+	round := &Round{}
+	round.ExceptionList = make([]abstract.Point, 0)
+
+	return round
+}
+
+type SigningNode struct {
+	coconet.Host
 
 	// Set to true if FaultyHosts are used instead of Hosts
 	// Signing Node must test this field to know if it must simulate failure
 	TestingFailures bool // false by default
+
+	Type   Type
+	Height int
+
+	suite   abstract.Suite
+	PubKey  abstract.Point  // long lasting public key
+	PrivKey abstract.Secret // long lasting private key
+
+	nRounds int
+	Rounds  map[int]*Round
+	Round   int // *only* used by Root( by annoucer)
+
+	CommitFunc coco.CommitFunc
+	DoneFunc   coco.DoneFunc
+
+	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
+	ComCh    map[int]chan *SigningMessage // a channel for each round's commits
+	RmCh     map[int]chan *SigningMessage // a channel for each round's responses
+	LogTest  []byte                       // for testing purposes
+	peerKeys map[string]abstract.Point    // map of all peer public keys
 }
 
 func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -92,11 +112,13 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 	sn := &SigningNode{Host: hn, suite: suite}
 	sn.PrivKey = suite.Secret().Pick(random)
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
-	sn.X_hat = suite.Point().Null()
-	sn.peerKeys = make(map[string]abstract.Point)
-	sn.ExceptionList = make([]abstract.Point, 0)
-	sn.TestingFailures = false
 
+	sn.peerKeys = make(map[string]abstract.Point)
+	sn.ComCh = make(map[int]chan *SigningMessage, 0)
+	sn.RmCh = make(map[int]chan *SigningMessage, 0)
+	sn.Rounds = make(map[int]*Round)
+
+	sn.TestingFailures = false
 	return sn
 }
 
@@ -104,11 +126,13 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret) *SigningNode {
 	sn := &SigningNode{Host: hn, suite: suite, PrivKey: PrivKey}
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
-	sn.X_hat = suite.Point().Null()
-	sn.peerKeys = make(map[string]abstract.Point)
-	sn.ExceptionList = make([]abstract.Point, 0)
-	sn.TestingFailures = false
 
+	sn.peerKeys = make(map[string]abstract.Point)
+	sn.ComCh = make(map[int]chan *SigningMessage, 0)
+	sn.RmCh = make(map[int]chan *SigningMessage, 0)
+	sn.Rounds = make(map[int]*Round)
+
+	sn.TestingFailures = false
 	return sn
 }
 
@@ -136,4 +160,12 @@ func (sn *SigningNode) Read(data []byte) (interface{}, error) {
 		return nil, err
 	}
 	return messg, nil
+}
+
+func (sn *SigningNode) UpdateTimeout(t ...time.Duration) {
+	if len(t) > 0 {
+		sn.SetTimeout(t[0])
+	} else {
+		sn.SetTimeout(time.Duration(sn.Height)*sn.GetDefaultTimeout() + 1000*time.Millisecond)
+	}
 }

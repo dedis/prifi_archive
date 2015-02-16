@@ -3,9 +3,12 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
+	"fmt"
+	"log"
 	"net"
 	"sync"
-	"time"
+
+	"github.com/dedis/crypto/abstract"
 )
 
 // TcpConn is a prototype TCP connection with gob encoding.
@@ -16,6 +19,9 @@ type TCPConn struct {
 	conn net.Conn
 	enc  *gob.Encoder
 	dec  *gob.Decoder
+
+	mupk   sync.Mutex
+	pubkey abstract.Point
 }
 
 func NewTCPConnFromNet(conn net.Conn) *TCPConn {
@@ -51,24 +57,42 @@ func (tc *TCPConn) Connect() error {
 	return nil
 }
 
-func (tc TCPConn) Name() string {
+func (tc *TCPConn) SetName(n string) {
+	tc.name = n
+}
+
+func (tc *TCPConn) Name() string {
 	return tc.name
 }
 
-var ConnectionNotEstablished error = errors.New(" connection not established")
+func (c *TCPConn) SetPubKey(pk abstract.Point) {
+	c.mupk.Lock()
+	c.pubkey = pk
+	c.mupk.Unlock()
+}
+
+func (c *TCPConn) PubKey() abstract.Point {
+	c.mupk.Lock()
+	pl := c.pubkey
+	c.mupk.Unlock()
+	return pl
+}
+
+var ConnectionNotEstablished error = errors.New("connection not established")
 
 // blocks until the put is availible
 func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
 	errchan := make(chan error, 1)
-	tc.RLock()
+	// tc.RLock()
 	for tc.enc == nil {
-		tc.RUnlock()
-		time.Sleep(time.Second)
-		tc.RLock()
+		// tc.RUnlock()
+		// time.Sleep(time.Second)
+		// tc.RLock()
+		log.Println("Conn not established")
 		errchan <- ConnectionNotEstablished
 		return errchan
 	}
-	tc.RUnlock()
+	// tc.RUnlock()
 	err := tc.enc.Encode(bm)
 	errchan <- err
 	return errchan
@@ -78,18 +102,23 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
 	errchan := make(chan error, 1)
 	for tc.dec == nil {
-		//time.Sleep(time.Second)
 		// panic("no decoder yet")
 		// log.Fatal("no decoder yet")
 		errchan <- ConnectionNotEstablished
 		return errchan
 	}
 
-	// errchan := make(chan string, 1)
 	go func(bum BinaryUnmarshaler) {
+		// log.Println("decoding from", tc.Name())
 		err := tc.dec.Decode(bum)
+		if err != nil {
+			fmt.Println("failed to unmarshal binary: ", tc.conn)
+			fmt.Printf("\tinto: %#v\n", bum)
+		}
+		// log.Println("decoded", err)
 		errchan <- err
 	}(bum)
+
 	return errchan
 }
 

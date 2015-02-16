@@ -70,21 +70,9 @@ type HostConfig struct {
 }
 
 func (hc *HostConfig) Verify() error {
-	root := hc.SNodes[0]
-	traverseTree(root, hc, publicKeyCheck)
+	// root := hc.SNodes[0]
+	// traverseTree(root, hc, publicKeyCheck)
 	fmt.Println("tree verified")
-	return nil
-}
-
-func publicKeyCheck(n *sign.SigningNode, hc *HostConfig) error {
-	x_hat := n.PubKey
-	for _, cn := range n.Children() {
-		c := hc.Hosts[cn.Name()]
-		x_hat.Add(x_hat, c.X_hat)
-	}
-	/*if x_hat != n.X_hat {
-		return errors.New("parent X_hat != Sum(child.X_hat)+PubKey")
-	}*/
 	return nil
 }
 
@@ -180,8 +168,15 @@ const (
 	TcpC
 )
 
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 // ConstructTree does a depth-first construction of the tree specified in the
-// config file. ConstructTree must be call AFTER populating the HostConfig with
+// config file. ConstructTree must be called AFTER populating the HostConfig with
 // ALL the possible hosts.
 func ConstructTree(
 	n *Node,
@@ -191,14 +186,14 @@ func ConstructTree(
 	rand cipher.Stream,
 	hosts map[string]coconet.Host,
 	nameToAddr map[string]string,
-	opts ConfigOptions) (abstract.Point, error) {
+	opts ConfigOptions) (int, error) {
 	// passes up its X_hat, and/or an error
 
 	// get the name associated with this address
 	name, ok := nameToAddr[n.Name]
 	if !ok {
 		fmt.Println("unknown name in address book:", n.Name)
-		return nil, errors.New("unknown name in address book")
+		return 0, errors.New("unknown name in address book")
 	}
 
 	// generate indicates whether we should generate the signing
@@ -210,7 +205,7 @@ func ConstructTree(
 	h, ok := hosts[name]
 	if !ok {
 		fmt.Println("unknown host in tree:", name)
-		return nil, errors.New("unknown host in tree")
+		return 0, errors.New("unknown host in tree")
 	}
 
 	var prikey abstract.Secret
@@ -223,34 +218,37 @@ func ConstructTree(
 		encoded, err := hex.DecodeString(string(n.PubKey))
 		if err != nil {
 			log.Print("failed to decode hex from encoded")
-			return nil, err
+			return 0, err
 		}
 		pubkey = suite.Point()
 		err = pubkey.UnmarshalBinary(encoded)
 		if err != nil {
 			log.Print("failed to decode point from hex")
-			return nil, err
+			return 0, err
 		}
 		// log.Println("decoding point")
 		encoded, err = hex.DecodeString(string(n.PriKey))
 		if err != nil {
 			log.Print("failed to decode hex from encoded")
-			return nil, err
+			return 0, err
 		}
 		prikey = suite.Secret()
 		err = prikey.UnmarshalBinary(encoded)
 		if err != nil {
 			log.Print("failed to decode point from hex")
-			return nil, err
+			return 0, err
 		}
 	}
 	if generate {
 		if prikey != nil {
 			// if we have been given a private key load that
 			hc.SNodes = append(hc.SNodes, sign.NewKeyedSigningNode(h, suite, prikey))
+			h.SetPubKey(pubkey)
 		} else {
 			// otherwise generate a random new one
-			hc.SNodes = append(hc.SNodes, sign.NewSigningNode(h, suite, rand))
+			sn := sign.NewSigningNode(h, suite, rand)
+			hc.SNodes = append(hc.SNodes, sn)
+			h.SetPubKey(sn.PubKey)
 		}
 		sn = hc.SNodes[len(hc.SNodes)-1]
 		hc.Hosts[name] = sn
@@ -268,15 +266,13 @@ func ConstructTree(
 	// log.Println("name: ", n.Name)
 	// log.Println("prikey: ", prikey)
 	// log.Println("pubkey: ", pubkey)
-	x_hat := suite.Point().Null()
-	x_hat.Add(x_hat, pubkey)
-	// log.Println("x_hat: ", x_hat)
+	height := 0
 	for _, c := range n.Children {
 		// connect this node to its children
 		cname, ok := nameToAddr[c.Name]
 		if !ok {
 			fmt.Println("unknown name in address book:", n.Name)
-			return nil, errors.New("unknown name in address book")
+			return 0, errors.New("unknown name in address book")
 		}
 
 		if generate {
@@ -285,22 +281,20 @@ func ConstructTree(
 
 		// recursively construct the children
 		// log.Print("ConstructTree:", h, suite, rand, hosts, nameToAddr, opts)
-		cpubkey, err := ConstructTree(c, hc, name, suite, rand, hosts, nameToAddr, opts)
+		h, err := ConstructTree(c, hc, name, suite, rand, hosts, nameToAddr, opts)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-
+		height = max(h+1, height)
 		// if generating all csn will be availible
-		// log.Print("adding from child: ", x_hat, cpubkey)
-		x_hat.Add(x_hat, cpubkey)
 	}
 	if generate {
-		sn.X_hat = x_hat
+		sn.Height = height
 	}
 	// log.Println("name: ", n.Name)
 	// log.Println("final x_hat: ", x_hat)
 	// log.Println("final pubkey: ", pubkey)
-	return x_hat, nil
+	return height, nil
 }
 
 var ipv4Reg = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
@@ -346,6 +340,7 @@ type ConfigOptions struct {
 	GenHosts  bool     // if true generate random hostnames (all tcp)
 	Host      string   // hostname to load into memory: "" for all
 	Port      string   // if specified rewrites all ports to be this
+	Faulty    bool     // if true, use FaultyHost wrapper around Hosts
 }
 
 // TODO: if in tcp mode associate each hostname in the file with a different
@@ -383,7 +378,13 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 			if _, ok := hc.Hosts[h]; !ok {
 				nameToAddr[h] = h
 				// it doesn't make sense to only make 1 go host
-				hosts[h] = coconet.NewGoHost(h, dir)
+				if opts.Faulty == true {
+					hosts[h] = &coconet.FaultyHost{}
+					gohost := coconet.NewGoHost(h, dir)
+					hosts[h] = coconet.NewFaultyHost(gohost)
+				} else {
+					hosts[h] = coconet.NewGoHost(h, dir)
+				}
 			}
 		}
 
@@ -456,10 +457,10 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	}
 	for _, sn := range hostnames {
 		sn.Type = signType
-		go func(sn *sign.SigningNode) {
-			// start listening for messages from within the tree
-			sn.Host.Listen()
-		}(sn)
+		//go func(sn *sign.SigningNode) {
+		// start listening for messages from within the tree
+		sn.Host.Listen()
+		//}(sn)
 	}
 
 	for _, sn := range hostnames {

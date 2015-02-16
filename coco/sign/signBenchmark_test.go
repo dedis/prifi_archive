@@ -1,8 +1,6 @@
 package sign_test
 
 import (
-	"io/ioutil"
-	"log"
 	"strconv"
 	"testing"
 
@@ -10,9 +8,9 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func init() {
-	log.SetOutput(ioutil.Discard)
-}
+// func init() {
+// 	log.SetOutput(ioutil.Discard)
+// }
 
 // one after the other by the root (one signature per message created)
 func SimpleRoundsThroughput(N int, b *testing.B) {
@@ -22,7 +20,7 @@ func SimpleRoundsThroughput(N int, b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < N; i++ {
 			hc.SNodes[0].LogTest = []byte("hello world" + strconv.Itoa(i))
-			hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
+			hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 
 		}
 		for _, sn := range hc.SNodes {
