@@ -37,7 +37,7 @@ func (sn *SigningNode) getUp() {
 		}
 		switch sm.Type {
 		default:
-			log.Println(ErrUnknownMessageType)
+			log.Println("in get up", ErrUnknownMessageType, sm)
 			// return ErrUnknownMessageType
 		case Announcement:
 			sn.Announce(sm.Am)
@@ -79,7 +79,7 @@ func (sn *SigningNode) getDown() {
 		sm.From = nm.From
 		switch sm.Type {
 		default:
-			log.Println(ErrUnknownMessageType)
+			log.Println(sn.Name(), "getDown", ErrUnknownMessageType, sm)
 			// return ErrUnknownMessageType
 		case Commitment:
 			// shove message on commit channel for its round
@@ -89,6 +89,8 @@ func (sn *SigningNode) getDown() {
 			// shove message on response channel for its round
 			round := sm.Rm.Round
 			sn.RmCh[round] <- sm
+		case Error:
+			log.Println(sn.Name(), "error", ErrUnknownMessageType, sm, sm.Err)
 		}
 	}
 }
@@ -220,15 +222,20 @@ func (sn *SigningNode) waitOn(ch chan *SigningMessage, timeout time.Duration) []
 	messgs := make([]*SigningMessage, 0)
 	received := 0
 	if nChildren > 0 {
-		select {
-		case sm := <-ch:
-			messgs = append(messgs, sm)
-			received += 1
-			if received == nChildren {
-				break
+	forloop:
+		for {
+
+			select {
+			case sm := <-ch:
+				messgs = append(messgs, sm)
+				received += 1
+				if received == nChildren {
+					break forloop
+				}
+			case <-time.After(timeout):
+				log.Println(sn.Name(), "timeouted", timeout)
+				break forloop
 			}
-		case <-time.After(timeout):
-			break
 		}
 	}
 
@@ -467,7 +474,7 @@ func (sn *SigningNode) Respond(Round int) error {
 		switch sm.Type {
 		default:
 			// default == no response from child
-			// log.Println(sn.Name(), "received nil response from", i)
+			// log.Println(sn.Name(), "default in respose for child", from, sm)
 			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
 
 			// remove public keys and point commits from subtree of faild child
@@ -481,7 +488,7 @@ func (sn *SigningNode) Respond(Round int) error {
 				continue
 			}
 
-			log.Println(sn.Name(), "accepts response from", from)
+			// log.Println(sn.Name(), "accepts response from", from)
 			round.r_hat.Add(round.r_hat, sm.Rm.R_hat)
 
 			sn.add(exceptionV_hat, sm.Rm.ExceptionV_hat)
@@ -490,7 +497,7 @@ func (sn *SigningNode) Respond(Round int) error {
 
 		// Report errors that are not networking errors
 		case Error:
-			log.Println(sn.Name(), "Error in respond for child", from, sm)
+			log.Println(sn.Name(), "Error in respose for child", from, sm)
 			if sm.Err == nil {
 				log.Println("Error but no error set in respond for child", from, err)
 				// ignore if no error is actually set
@@ -504,11 +511,12 @@ func (sn *SigningNode) Respond(Round int) error {
 	// fmt.Println(sn.Name(), "Removing exception V_hat", exceptionV_hat)
 	sn.sub(round.Log.V_hat, exceptionV_hat)
 	sn.sub(round.X_hat, exceptionX_hat)
+	log.Println(sn.Name(), "Verify responses ", len(messgs), "messgs")
 	err = sn.VerifyResponses(Round)
 
 	if !sn.IsRoot() {
 		// report verify response error
-		// fmt.Println(sn.Name(), "put up response with err", err)
+		// log.Println(sn.Name(), "put up response with err", err)
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
@@ -580,11 +588,11 @@ func (sn *SigningNode) VerifyResponses(Round int) error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(round.Log.V_hat) || (sn.IsRoot() && !round.c.Equal(c2)) {
-		log.Println(sn.Name(), "reports ElGamal Collective Signature failed")
-		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name())
+		log.Println(sn.Name(), "reports ElGamal Collective Signature failed for Round", Round)
+		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
 	}
 
-	log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded")
+	log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
 	return nil
 }
 
