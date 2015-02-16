@@ -3,6 +3,7 @@ package sign
 import (
 	"bytes"
 	"crypto/cipher"
+	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -87,10 +88,11 @@ type SigningNode struct {
 	DoneFunc   coco.DoneFunc
 
 	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
-	ComCh    map[int]chan *SigningMessage // a channel for each round's commits
-	RmCh     map[int]chan *SigningMessage // a channel for each round's responses
-	LogTest  []byte                       // for testing purposes
-	peerKeys map[string]abstract.Point    // map of all peer public keys
+	roundLock sync.Mutex
+	ComCh     map[int]chan *SigningMessage // a channel for each round's commits
+	RmCh      map[int]chan *SigningMessage // a channel for each round's responses
+	LogTest   []byte                       // for testing purposes
+	peerKeys  map[string]abstract.Point    // map of all peer public keys
 }
 
 func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {

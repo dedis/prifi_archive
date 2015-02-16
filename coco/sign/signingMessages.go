@@ -42,8 +42,8 @@ func NewSigningMessage() interface{} {
 	return &SigningMessage{}
 }
 
-func (sm SigningMessage) MarshalBinary() ([]byte, error) {
-	return protobuf.Encode(&sm)
+func (sm *SigningMessage) MarshalBinary() ([]byte, error) {
+	return protobuf.Encode(sm)
 }
 
 func (sm *SigningMessage) UnmarshalBinary(data []byte) error {

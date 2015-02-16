@@ -87,6 +87,10 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 		// PrivKey := suite.Secret().Pick(rand)
 		// nodes[i] = NewKeyedSigningNode(h[i], suite, PrivKey)
 	}
+	nodes[0].Height = 2
+	nodes[1].Height = 1
+	nodes[2].Height = 0
+	nodes[3].Height = 0
 	// Add edges to parents
 	h[1].AddParent(h[0].Name())
 	h[2].AddParent(h[1].Name())
@@ -107,11 +111,6 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 			nodes[i].Listen()
 		}(i)
 	}
-
-	nodes[0].Height = 2
-	nodes[1].Height = 1
-	nodes[2].Height = 0
-	nodes[3].Height = 0
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement

@@ -77,6 +77,7 @@ func (sn *SigningNode) getDown() {
 		}
 
 		sm = nm.Data.(*SigningMessage)
+
 		sm.From = nm.From
 		switch sm.Type {
 		default:
@@ -85,11 +86,17 @@ func (sn *SigningNode) getDown() {
 		case Commitment:
 			// shove message on commit channel for its round
 			round := sm.Com.Round
-			sn.ComCh[round] <- sm
+			sn.roundLock.Lock()
+			comch := sn.ComCh[round]
+			sn.roundLock.Unlock()
+			comch <- sm
 		case Response:
 			// shove message on response channel for its round
 			round := sm.Rm.Round
-			sn.RmCh[round] <- sm
+			sn.roundLock.Lock()
+			rmch := sn.RmCh[round]
+			sn.roundLock.Unlock()
+			rmch <- sm
 		}
 	}
 }
@@ -121,16 +128,18 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	if sn.IsRoot() {
 		sn.Round = am.Round
 	}
+	sn.roundLock.Lock()
 	sn.Rounds[am.Round] = NewRound()
 	sn.ComCh[am.Round] = make(chan *SigningMessage, 1)
 	sn.RmCh[am.Round] = make(chan *SigningMessage, 1)
+	sn.roundLock.Unlock()
 
 	// Inform all children of announcement
 	// PutDown requires each child to have his own message
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
 		sm := SigningMessage{Type: Announcement, Am: am}
-		messgs[i] = sm
+		messgs[i] = &sm
 	}
 	if err := sn.PutDown(messgs); err != nil {
 		return err
@@ -312,7 +321,7 @@ func (sn *SigningNode) actOnCommits(Round int) (err error) {
 			return
 		}
 
-		err = sn.PutUp(SigningMessage{
+		err = sn.PutUp(&SigningMessage{
 			Type: Commitment,
 			Com:  com})
 	}
@@ -367,9 +376,10 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 		newChm.Proof = append(baseProof, round.Proofs[name]...)
 
 		var messg coconet.BinaryMarshaler
-		messg = SigningMessage{Type: Challenge, Chm: &newChm}
+		messg = &SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
+		log.Errorln("connection: sending children challenge proofs:", name, conn)
 		if err := <-conn.Put(messg); err != nil {
 			return err
 		}
@@ -382,7 +392,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
 	for _, child := range sn.Children() {
 		var messg coconet.BinaryMarshaler
-		messg = SigningMessage{Type: Challenge, Chm: chm}
+		messg = &SigningMessage{Type: Challenge, Chm: chm}
 
 		// send challenge message to child
 		if err := <-child.Put(messg); err != nil {
@@ -511,7 +521,7 @@ func (sn *SigningNode) Respond(Round int) error {
 		// report verify response error
 		// fmt.Println(sn.Name(), "put up response with err", err)
 		if err != nil {
-			return sn.PutUp(SigningMessage{
+			return sn.PutUp(&SigningMessage{
 				Type: Error,
 				Err:  &ErrorMessage{Err: err.Error()}})
 		}
@@ -522,7 +532,7 @@ func (sn *SigningNode) Respond(Round int) error {
 			ExceptionX_hat: exceptionX_hat,
 			Round:          Round}
 		// create and putup own response message
-		return sn.PutUp(SigningMessage{
+		return sn.PutUp(&SigningMessage{
 			Type: Response,
 			Rm:   rm})
 	}

@@ -20,9 +20,9 @@ type TCPHost struct {
 	name   string // the hostname
 	parent Conn   // the Peer representing parent, nil if root
 
-	childLock   sync.Mutex
-	children    []string // a list of unique peers for each hostname
-	childrenMap map[string]Conn
+	childLock sync.Mutex
+	children  []string // a list of unique peers for each hostname
+	// childrenMap map[string]Conn
 
 	rlock sync.Mutex
 	ready map[string]bool
@@ -59,10 +59,10 @@ func (h *TCPHost) GetTimeout() time.Duration {
 func NewTCPHost(hostname string) *TCPHost {
 	h := &TCPHost{name: hostname,
 		children: make([]string, 0),
-		peers:    make(map[string]Conn)}
+		peers:    make(map[string]Conn),
+		timeout:  DefaultTCPTimeout,
+		ready:    make(map[string]bool)}
 
-	h.timeout = DefaultTCPTimeout
-	h.ready = make(map[string]bool)
 	return h
 }
 
@@ -121,6 +121,7 @@ func (h *TCPHost) Listen() error {
 				continue
 			}
 			name := string(mname)
+			log.Infoln("successfully received name:", name)
 
 			// create connection
 			tp.SetName(name)
@@ -133,19 +134,19 @@ func (h *TCPHost) Listen() error {
 				log.Fatal("unable to get pubkey from child")
 			}
 			tp.SetPubKey(pubkey)
-
+			log.Infoln("successfully received public key:", pubkey)
 			// accept children connections but no one else
 			found := false
 			h.childLock.Lock()
-			for i, c := range h.children {
+			for _, c := range h.children {
 				if c == name {
-					h.children[i] = tp.Name()
 					found = true
+					break
 				}
 			}
 			h.childLock.Unlock()
 			if !found {
-				log.Println("connection request not from child:", name)
+				log.Errorln("connection request not from child:", name)
 				tp.Close()
 				continue
 			}
@@ -180,26 +181,27 @@ func (h *TCPHost) Connect() error {
 
 	err = <-tp.Put(h.Pubkey)
 	if err != nil {
-		log.Println("failed to enc p key")
+		log.Errorln("failed to enc p key")
 		return errors.New("failed to encode public key")
 	}
 	// log.Println("CONNECTING TO PARENT")
 
-	h.parent = tp
-
 	h.rlock.Lock()
+	h.parent = tp
 	h.ready[tp.Name()] = true
 	h.peers[tp.Name()] = tp
 	h.rlock.Unlock()
 
-	// log.Println("Successfully CONNECTED TO PARENT")
+	log.Infoln("Successfully CONNECTED TO PARENT")
 	return nil
 }
 
 func (h *TCPHost) Close() {
+	h.rlock.Lock()
 	for _, p := range h.peers {
 		p.Close()
 	}
+	h.rlock.Unlock()
 }
 
 // AddParent adds a parent node to the TCPHost.
@@ -225,7 +227,7 @@ func (h *TCPHost) AddChildren(cs ...string) {
 		h.rlock.Unlock()
 		h.childLock.Lock()
 		h.children = append(h.children, c)
-		h.childrenMap[c] = h.peers[c]
+		// h.childrenMap[c] = h.peers[c]
 		h.childLock.Unlock()
 	}
 }
@@ -258,8 +260,11 @@ func (h *TCPHost) Children() map[string]Conn {
 	h.rlock.Lock()
 
 	childrenMap := make(map[string]Conn, 0)
-	for k, v := range h.childrenMap {
-		childrenMap[k] = v
+	for _, c := range h.children {
+		if !h.ready[c] {
+			continue
+		}
+		childrenMap[c] = h.peers[c]
 	}
 	h.rlock.Unlock()
 	h.childLock.Unlock()
@@ -276,14 +281,10 @@ func (h *TCPHost) AddPeers(cs ...string) {
 }
 
 // WaitTick waits for a random amount of time.
-// XXX should it wait for a network change
+// XXX should it wait for a network configuration change
 func (h *TCPHost) WaitTick() {
 	time.Sleep(1 * time.Second)
 }
-
-// TODO(dyv): following methods will have to be rethought with network failures and
-// latency in mind. What happens during GetDown if one node serves up old
-// responses after a certain timeout?
 
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
