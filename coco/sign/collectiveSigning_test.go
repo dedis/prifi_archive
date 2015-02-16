@@ -39,14 +39,14 @@ func TestStaticPubKey(t *testing.T) {
 	}
 }
 
-// func TestStaticFaulty(t *testing.T) {
-// 	faultyNodes := make([]int, 0)
-// 	faultyNodes = append(faultyNodes, 1)
+func TestStaticFaulty(t *testing.T) {
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 1)
 
-// 	if err := runStaticTest(sign.PubKey, faultyNodes...); err != nil {
-// 		t.Fatal(err)
-// 	}
-// }
+	if err := runStaticTest(sign.PubKey, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	// Crypto setup
@@ -125,13 +125,13 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 //     1   4
 //    / \   \
 //   2   3   5
-func TestTreeSmallConfig(t *testing.T) {
+func TestSmallConfigHealthy(t *testing.T) {
 	if err := runTreeSmallConfig(sign.MerkleTree); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestTreeSmallConfigFaulty(t *testing.T) {
+func TestSmallConfigFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
 	if err := runTreeSmallConfig(sign.MerkleTree, faultyNodes...); err != nil {

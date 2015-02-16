@@ -168,6 +168,7 @@ func (sn *SigningNode) UpdateTimeout(t ...time.Duration) {
 	if len(t) > 0 {
 		sn.SetTimeout(t[0])
 	} else {
-		sn.SetTimeout(time.Duration(sn.Height)*sn.GetDefaultTimeout() + 1000*time.Millisecond)
+		tt := time.Duration(sn.Height)*sn.GetDefaultTimeout() + 1000*time.Millisecond
+		sn.SetTimeout(tt)
 	}
 }
