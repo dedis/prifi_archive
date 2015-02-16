@@ -138,7 +138,12 @@ func (s *Server) ListenToClients() {
 		go func(c coconet.Conn) {
 			for {
 				tsm := TimeStampMessage{}
-				c.Get(&tsm)
+				err := <-c.Get(&tsm)
+				if err != nil {
+					log.WithFields(log.Fields{
+						"file": logutils.File(),
+					}).Errorln("Failed To Get Message:", err)
+				}
 				switch tsm.Type {
 				default:
 					log.Println("Message of unknown type")

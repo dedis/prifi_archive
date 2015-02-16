@@ -124,10 +124,12 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 				go func(c *stamp.Client, messg []byte, i int) {
 					defer wg.Done()
 					server := "NO VALID SERVER"
+					c.Mux.Lock()
 					for k := range c.Servers {
 						server = k
 						break
 					}
+					c.Mux.Unlock()
 					c.TimeStamp(messg, server)
 				}(c, messg, r)
 			}
