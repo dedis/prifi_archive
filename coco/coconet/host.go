@@ -38,7 +38,7 @@ type Host interface {
 	// Returns the internal data structure
 	// Invarient: children are always in the same order
 	Peers() map[string]Conn // returns the peers list: all connected nodes
-	Children() []Conn
+	Children() map[string]Conn
 
 	AddPeers(hostnames ...string)   // add a node but don't make it child or parent
 	AddParent(hostname string)      // ad a parent connection
@@ -48,10 +48,10 @@ type Host interface {
 	IsRoot() bool // true if this host is the root of the tree
 
 	// blocking network calls over the tree
-	PutUp(BinaryMarshaler) error       // send data to parent in host tree
-	GetUp(BinaryUnmarshaler) error     // get data from parent in host tree (blocking)
-	PutDown([]BinaryMarshaler) error   // send data to children in host tree
-	GetDown([]BinaryUnmarshaler) error // get data from children in host tree (blocking)
+	PutUp(BinaryMarshaler) error                                 // send data to parent in host tree
+	GetUp(BinaryUnmarshaler) error                               // get data from parent in host tree (blocking)
+	PutDown([]BinaryMarshaler) error                             // send data to children in host tree
+	GetDown([]BinaryUnmarshaler) (chan NetworkMessg, chan error) // get data from children in host tree
 
 	// ??? Could be replaced by listeners (condition variables) that wait for a
 	// change to the root status to the node (i.e. through an add parent call)

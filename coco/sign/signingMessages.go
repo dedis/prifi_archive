@@ -35,6 +35,7 @@ type SigningMessage struct {
 	Chm  *ChallengeMessage
 	Rm   *ResponseMessage
 	Err  *ErrorMessage
+	From string
 }
 
 func (sm SigningMessage) MarshalBinary() ([]byte, error) {
@@ -54,6 +55,7 @@ func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
 // Broadcasted message initiated and signed by proposer
 type AnnouncementMessage struct {
 	LogTest []byte // TODO: change LogTest to Messg
+	Round   int
 }
 
 type CommitmentMessage struct {
@@ -66,6 +68,8 @@ type CommitmentMessage struct {
 	// public keys of children servers that did not respond to
 	// annoucement from root
 	ExceptionList []abstract.Point
+
+	Round int
 }
 
 type ChallengeMessage struct {
@@ -74,6 +78,8 @@ type ChallengeMessage struct {
 	// Depth  byte
 	MTRoot hashid.HashId // the very root of the big Merkle Tree
 	Proof  proof.Proof   // Merkle Path of Proofs from root to us
+
+	Round int
 }
 
 type ResponseMessage struct {
@@ -86,6 +92,8 @@ type ResponseMessage struct {
 	ExceptionV_hat abstract.Point
 	// cummulative public keys of nodes that failed after commit
 	ExceptionX_hat abstract.Point
+
+	Round int
 }
 
 type ErrorMessage struct {

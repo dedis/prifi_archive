@@ -2,7 +2,6 @@ package coconet
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -21,11 +20,14 @@ var TimeoutError error = errors.New("Network timeout error")
 type GoHost struct {
 	name string // the hostname
 
-	plock    sync.Mutex
-	parent   Conn   // the Peer representing parent, nil if root
-	children []Conn // a list of unique peers for each hostname
-	peers    map[string]Conn
-	dir      *GoDirectory
+	plock  sync.Mutex
+	parent Conn // the Peer representing parent, nil if root
+
+	childLock   sync.Mutex
+	children    []string // a list of unique peers for each hostname
+	childrenMap map[string]Conn
+	peers       map[string]Conn
+	dir         *GoDirectory
 
 	rlock sync.Mutex
 	ready map[Conn]bool
@@ -42,7 +44,10 @@ func (h *GoHost) GetDirectory() *GoDirectory {
 }
 
 func (h *GoHost) GetDefaultTimeout() time.Duration {
-	return DefaultGoTimeout
+	h.mutimeout.Lock()
+	t := DefaultGoTimeout
+	h.mutimeout.Unlock()
+	return t
 }
 
 func (h *GoHost) SetTimeout(t time.Duration) {
@@ -62,9 +67,10 @@ func (h *GoHost) GetTimeout() time.Duration {
 // NewHostNode creates a new HostNode with a given hostname.
 func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
-		children: make([]Conn, 0),
-		peers:    make(map[string]Conn),
-		dir:      dir}
+		children:    make([]string, 0),
+		childrenMap: make(map[string]Conn),
+		peers:       make(map[string]Conn),
+		dir:         dir}
 	h.mutimeout.Lock()
 	h.timeout = DefaultGoTimeout
 	h.mutimeout.Unlock()
@@ -91,18 +97,28 @@ func (h *GoHost) Connect() error {
 }
 
 func (h *GoHost) Listen() error {
+	h.childLock.Lock()
+	children := make([]string, len(h.children))
+	copy(children, h.children)
+	h.childLock.Unlock()
+
 	suite := nist.NewAES128SHA256P256()
 	// each conn should have a Ready() bool, SetReady(bool)
-	for _, c := range h.children {
-		go func(c Conn) {
+	for _, c := range children {
+		go func(c string) {
 			pubkey := suite.Point()
-			e := <-c.Get(pubkey)
+
+			h.rlock.Lock()
+			conn := h.peers[c]
+			h.rlock.Unlock()
+
+			e := <-conn.Get(pubkey)
 			if e != nil {
 				log.Fatal("unable to get pubkey from child")
 			}
-			c.SetPubKey(pubkey)
+			conn.SetPubKey(pubkey)
 			h.rlock.Lock()
-			h.ready[c] = true
+			h.ready[conn] = true
 			h.rlock.Unlock()
 			// fmt.Println("connection with child established")
 		}(c)
@@ -130,7 +146,8 @@ func (h *GoHost) AddChildren(cs ...string) {
 			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 		}
 		// don't allow children to be accessed before adding them
-		h.children = append(h.children, h.peers[c])
+		h.children = append(h.children, c)
+		h.childrenMap[c] = h.peers[c]
 	}
 }
 
@@ -158,8 +175,8 @@ func (h *GoHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h *GoHost) Children() []Conn {
-	return h.children
+func (h *GoHost) Children() map[string]Conn {
+	return h.childrenMap
 }
 
 // AddPeers adds the list of peers
@@ -182,7 +199,7 @@ func (h *GoHost) WaitTick() {
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
-	defer fmt.Println(h.Name(), "done put up", h.parent)
+	// defer fmt.Println(h.Name(), "done put up", h.parent)
 	// fmt.Printf(h.Name(), "PUTTING UP up:%#v", data)
 	return <-h.parent.Put(data)
 }
@@ -206,7 +223,10 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	var err error
 	i := 0
 	for _, c := range h.children {
-		if e := <-c.Put(data[i]); e != nil {
+		h.rlock.Lock()
+		conn := h.peers[c]
+		h.rlock.Unlock()
+		if e := <-conn.Put(data[i]); e != nil {
 			err = e
 		}
 		i++
@@ -214,21 +234,15 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	return err
 }
 
-func setError(mu *sync.Mutex, err *error, e error) {
-	(*mu).Lock()
-	*err = e
-	(*mu).Unlock()
-}
-
 func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) chan error {
-	defer fmt.Println(h.Name(), "returned ready channel for", c.Name(), c)
+	// defer fmt.Println(h.Name(), "returned ready channel for", c.Name(), c)
 	for {
 		h.rlock.Lock()
 		isReady := h.ready[c]
 		h.rlock.Unlock()
 
 		if isReady {
-			fmt.Println(h.Name(), "is ready")
+			// fmt.Println(h.Name(), "is ready")
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -239,42 +253,36 @@ func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) chan error {
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
-func (h *GoHost) GetDown(data []BinaryUnmarshaler) error {
+func (h *GoHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan error) {
 	// fmt.Println("GETTING DOWN")
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var err error
+	var chmu sync.Mutex
+	ch := make(chan NetworkMessg, 1)
+	errch := make(chan error, 1)
 
-	for i, c := range h.children {
-		wg.Add(1)
-		//fmt.Println("GETTING FROM CHILD: ", c, h.children)
-		go func(i int, c Conn) {
-			var e error
-			defer wg.Done()
-			timeout := h.GetTimeout()
+	// start children threads
+	go func() {
+		for i, c := range h.children {
+			go func(i int, c string) {
+				h.rlock.Lock()
+				conn := h.peers[c]
+				h.rlock.Unlock()
 
-			select {
-			case e = <-h.whenReadyGet(c, data[i]):
-				// fmt.Println(h.Name(), "got")
-				if e != nil {
-					fmt.Println(h.Name(), "set error to ", e)
-					panic(e)
-					setError(&mu, &err, e)
+				for {
+					myData := data[i]
+					e := <-h.whenReadyGet(conn, myData)
+					if e != nil {
+						data[i] = nil
+					}
+
+					chmu.Lock()
+					ch <- NetworkMessg{Data: myData, From: c} // this should be copy of data[i]
+					errch <- e
+					chmu.Unlock()
+
 				}
-				break
-			case <-time.After(timeout):
-				fmt.Println(h.Name(), "timeout error set", h.timeout)
-				// panic("tinouet")
-				setError(&mu, &err, TimeoutError)
-			}
+			}(i, c)
+		}
+	}()
 
-			if e != nil {
-				data[i] = nil
-			}
-
-		}(i, c)
-	}
-
-	wg.Wait()
-	return err
+	return ch, errch
 }

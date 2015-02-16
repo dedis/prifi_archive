@@ -48,33 +48,37 @@ type SigningNode struct {
 	nRounds int
 
 	// own big merkle subtree
-	MTRoot hashid.HashId   // mt root for subtree, passed upwards
-	Leaves []hashid.HashId // leaves used to build the merkle subtre
+	MTRoot     hashid.HashId   // mt root for subtree, passed upwards
+	Leaves     []hashid.HashId // leaves used to build the merkle subtre
+	LeavesFrom []string        // child names for leaves
 
 	// mtRoot before adding HashedLog
-	LocalMTRoot      hashid.HashId
-	LocalMTRootIndex int
+	LocalMTRoot hashid.HashId
 
 	// merkle tree roots of children in strict order
-	CMTRoots []hashid.HashId
-	Proofs   []proof.Proof
+	CMTRoots     []hashid.HashId
+	CMTRootNames []string
+	Proofs       map[string]proof.Proof
 
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc
-
-	// round-lasting public keys of children servers that did not
-	// respond to latest commit or respond phase, in subtree
-	ExceptionList []abstract.Point
-	// combined point commits of children servers in subtree
-	ChildV_hat []abstract.Point
-	// combined public keys of children servers in subtree
-	ChildX_hat []abstract.Point
-
 	// Set to true if FaultyHosts are used instead of Hosts
 	// Signing Node must test this field to know if it must simulate failure
 	TestingFailures bool // false by default
 
 	Height int
+
+	// round-lasting public keys of children servers that did not
+	// respond to latest commit or respond phase, in subtree
+	ExceptionList []abstract.Point
+	// combined point commits of children servers in subtree
+	ChildV_hat map[string]abstract.Point
+	// combined public keys of children servers in subtree
+	ChildX_hat map[string]abstract.Point
+
+	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
+	ComCh map[int]chan *SigningMessage // a channel for each round's commits
+	RmCh  map[int]chan *SigningMessage // a channel for each round's responses
 }
 
 func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -100,6 +104,8 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 	sn.peerKeys = make(map[string]abstract.Point)
 	sn.ExceptionList = make([]abstract.Point, 0)
 	sn.TestingFailures = false
+	sn.ComCh = make(map[int]chan *SigningMessage, 0)
+	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 
 	return sn
 }
@@ -112,6 +118,8 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract
 	sn.peerKeys = make(map[string]abstract.Point)
 	sn.ExceptionList = make([]abstract.Point, 0)
 	sn.TestingFailures = false
+	sn.ComCh = make(map[int]chan *SigningMessage, 0)
+	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 
 	return sn
 }

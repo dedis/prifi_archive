@@ -7,6 +7,7 @@ import (
 	"log"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
@@ -24,36 +25,90 @@ import (
 
 var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
+// Determine type of message coming from the parent
+// Pass the duty of acting on it to another function
+func (sn *SigningNode) getUp() {
+	for {
+		sm := SigningMessage{}
+		if err := sn.GetUp(&sm); err != nil {
+			// TODO: could pass err up via channel
+			log.Println("err")
+		}
+		switch sm.Type {
+		default:
+			log.Println(ErrUnknownMessageType)
+			// return ErrUnknownMessageType
+		case Announcement:
+			sn.Announce(sm.Am)
+		case Challenge:
+			sn.Challenge(sm.Chm)
+		}
+	}
+}
+
+// Used in Commit and Respond to get commits and responses from all
+// children before creating own commit and response
+// Messages from children are returns in STRICT order
+// ith message = message from ith child
+func (sn *SigningNode) getDown() {
+	// grab space for children messages
+	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
+	for i := range messgs {
+		messgs[i] = &SigningMessage{}
+	}
+
+	// update waiting time based on current depth
+	// and wait for all children to commit
+	sn.UpdateTimeout()
+	ch, errch := sn.GetDown(messgs)
+
+	var sm *SigningMessage
+	var nm coconet.NetworkMessg
+	var err error
+	for {
+		nm = <-ch
+		err = <-errch
+
+		if err != nil {
+			// TODO: something else?
+			continue
+		}
+
+		sm = nm.Data.(*SigningMessage)
+		sm.From = nm.From
+		switch sm.Type {
+		default:
+			log.Println(ErrUnknownMessageType)
+			// return ErrUnknownMessageType
+		case Commitment:
+			// shove message on commit channel for its round
+			round := sm.Com.Round
+			sn.ComCh[round] <- sm
+		case Response:
+			// shove message on response channel for its round
+			round := sm.Rm.Round
+			sn.RmCh[round] <- sm
+		}
+	}
+}
+
 // Start listening for messages coming from parent(up)
 func (sn *SigningNode) Listen() error {
-	for {
-		if sn.IsRoot() {
-			// Sleep/ Yield until change in network
-			sn.WaitTick()
-		} else {
-			// Determine type of message coming from the parent
-			// Pass the duty of acting on it to another function
-			sm := SigningMessage{}
-			if err := sn.GetUp(&sm); err != nil {
-				return err
-			}
-			switch sm.Type {
-			default:
-				// Not possible in current system where little randomness is allowed
-				// In real system some action is required
-				return ErrUnknownMessageType
-			case Announcement:
-				sn.Announce(sm.Am)
-			case Challenge:
-				sn.Challenge(sm.Chm)
-			}
-		}
+	if sn.IsRoot() {
+		// Sleep/ Yield until change in network
+		// sn.WaitTick()
+		go sn.getDown()
+	} else {
+		go sn.getUp()
+		go sn.getDown()
 	}
 	return nil
 }
 
 // initiated by root, propagated by all others
 func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
+	sn.ComCh[am.Round] = make(chan *SigningMessage, 1)
+	sn.RmCh[am.Round] = make(chan *SigningMessage, 1)
 	// Inform all children of announcement
 	// PutDown requires each child to have his own message
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
@@ -65,40 +120,19 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 		return err
 	}
 	// initiate commit phase
-	return sn.Commit()
-}
-
-// Used in Commit and Respond to get commits and responses from all
-// children before creating own commit and response
-// Messages from children are returns in STRICT order
-// ith message = message from ith child
-func (sn *SigningNode) getDownMessgs() ([]coconet.BinaryUnmarshaler, error) {
-	// grab space for children messages
-	messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
-	for i := range messgs {
-		messgs[i] = &SigningMessage{}
-	}
-
-	// update waiting time based on current depth
-	// and wait for all children to commit
-	sn.UpdateTimeout()
-	err := sn.GetDown(messgs)
-	if err != nil {
-		log.Println(sn.Name(), "getDown error\t\t\t", err)
-	}
-
-	// log rather than propagate network TimeoutOut errors
-	if err == coconet.TimeoutError {
-		log.Println(sn.Name() + err.Error())
-		err = nil
-	}
-	return messgs, err
+	return sn.Commit(am.Round)
 }
 
 func (sn *SigningNode) GetChildrenMerkleRoots() {
 	// children commit roots
 	sn.CMTRoots = make([]hashid.HashId, len(sn.Leaves))
 	copy(sn.CMTRoots, sn.Leaves)
+	sn.CMTRootNames = make([]string, len(sn.Leaves))
+	copy(sn.CMTRootNames, sn.LeavesFrom)
+
+	if len(sn.Leaves) != len(sn.LeavesFrom) {
+		panic("len leaves != len leaves from")
+	}
 
 	// concatenate children commit roots in one binary blob for easy marshalling
 	sn.Log.CMTRoots = make([]byte, 0)
@@ -115,7 +149,7 @@ func (sn *SigningNode) GetLocalMerkleRoot() {
 		sn.LocalMTRoot = make([]byte, hashid.Size)
 	}
 	sn.Leaves = append(sn.Leaves, sn.LocalMTRoot)
-	sn.LocalMTRootIndex = len(sn.Leaves) - 1
+	// sn.LocalMTRootIndex = len(sn.Leaves) - 1
 
 }
 
@@ -132,11 +166,13 @@ func (sn *SigningNode) ComputeCombinedMerkleRoot() {
 	moreLeaves = append(moreLeaves, left, right)
 	sn.MTRoot, _ = proof.ProofTree(sn.GetSuite().Hash, moreLeaves)
 
-	// Hashed Log has to come first in the proof
-	sn.Proofs = make([]proof.Proof, len(sn.CMTRoots)+1) // +1 for local proof
-	for i := 0; i < len(sn.Proofs); i++ {
-		sn.Proofs[i] = append(sn.Proofs[i], right)
+	// Hashed Log has to come first in the proof; len(sn.CMTRoots)+1 proofs
+	sn.Proofs = make(map[string]proof.Proof, 0)
+	children := sn.Children()
+	for name := range children {
+		sn.Proofs[name] = append(sn.Proofs[name], right)
 	}
+	sn.Proofs["local"] = append(sn.Proofs["local"], right)
 
 	// separate proofs by children (need to send personalized proofs to children)
 	// also separate local proof (need to send it to timestamp server)
@@ -159,38 +195,57 @@ func (sn *SigningNode) initCommitCrypto() {
 	sn.add(sn.X_hat, sn.PubKey)
 }
 
-func (sn *SigningNode) Commit() error {
+func (sn *SigningNode) waitOn(ch chan *SigningMessage, timeout time.Duration) []*SigningMessage {
+	nChildren := len(sn.Children())
+	messgs := make([]*SigningMessage, 0)
+	received := 0
+	if nChildren > 0 {
+		select {
+		case sm := <-ch:
+			messgs = append(messgs, sm)
+			received += 1
+			if received == nChildren {
+				break
+			}
+		case <-time.After(timeout):
+			break
+		}
+	}
+
+	return messgs
+}
+
+func (sn *SigningNode) Commit(round int) error {
 	sn.initCommitCrypto()
 
-	// get commits from kids
-	messgs, err := sn.getDownMessgs()
-	if err != nil {
-		return err
-	}
+	// wait on commits from children
+	messgs := sn.waitOn(sn.ComCh[round], sn.GetTimeout())
 
 	// prepare to handle exceptions
 	sn.ExceptionList = make([]abstract.Point, 0)
-	sn.ChildV_hat = make([]abstract.Point, len(sn.Children()))
-	sn.ChildX_hat = make([]abstract.Point, len(sn.Children()))
+	sn.ChildV_hat = make(map[string]abstract.Point, len(sn.Children()))
+	sn.ChildX_hat = make(map[string]abstract.Point, len(sn.Children()))
 	children := sn.Children()
 
 	// Commits from children are the first Merkle Tree leaves for the round
 	sn.Leaves = make([]hashid.HashId, 0)
+	sn.LeavesFrom = make([]string, 0)
 
-	for i, messg := range messgs {
-		sm := messg.(*SigningMessage)
+	for _, sm := range messgs {
+		from := sm.From
 		switch sm.Type {
 		default: // default == no response from i
 			// fmt.Println(sn.Name(), "no commit from", i)
-			sn.ExceptionList = append(sn.ExceptionList, children[i].PubKey())
+			sn.ExceptionList = append(sn.ExceptionList, children[from].PubKey())
 			// take note of lack of pub keys and commit points from i
-			sn.ChildX_hat[i] = sn.suite.Point().Null()
-			sn.ChildV_hat[i] = sn.suite.Point().Null()
+			sn.ChildX_hat[from] = sn.suite.Point().Null()
+			sn.ChildV_hat[from] = sn.suite.Point().Null()
 			continue
 		case Commitment:
 			sn.Leaves = append(sn.Leaves, sm.Com.MTRoot)
-			sn.ChildV_hat[i] = sm.Com.V_hat
-			sn.ChildX_hat[i] = sm.Com.X_hat
+			sn.LeavesFrom = append(sn.LeavesFrom, from)
+			sn.ChildV_hat[from] = sm.Com.V_hat
+			sn.ChildX_hat[from] = sm.Com.X_hat
 			sn.ExceptionList = append(sn.ExceptionList, sm.Com.ExceptionList...)
 
 			// add good child server to combined public key, and point commit
@@ -200,19 +255,19 @@ func (sn *SigningNode) Commit() error {
 	}
 
 	if sn.Type == PubKey {
-		return sn.actOnCommits()
+		return sn.actOnCommits(round)
 	} else {
 		sn.GetChildrenMerkleRoots()
 		sn.GetLocalMerkleRoot()
 		sn.HashLog()
 		sn.ComputeCombinedMerkleRoot()
-		return sn.actOnCommits()
+		return sn.actOnCommits(round)
 	}
 }
 
 // Finalize commits by initiating the challenge pahse if root
 // Send own commitment message up to parent if non-root
-func (sn *SigningNode) actOnCommits() (err error) {
+func (sn *SigningNode) actOnCommits(round int) (err error) {
 	if sn.IsRoot() {
 		err = sn.FinalizeCommits()
 	} else {
@@ -222,7 +277,8 @@ func (sn *SigningNode) actOnCommits() (err error) {
 			V_hat:         sn.Log.V_hat,
 			X_hat:         sn.X_hat,
 			MTRoot:        sn.MTRoot,
-			ExceptionList: sn.ExceptionList}
+			ExceptionList: sn.ExceptionList,
+			Round:         round}
 
 		if sn.TestingFailures == true &&
 			(sn.Host.(*coconet.FaultyHost).IsDead() ||
@@ -240,7 +296,7 @@ func (sn *SigningNode) actOnCommits() (err error) {
 
 func (sn *SigningNode) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
 	// proof from client to my root
-	proof.CheckProof(sn.GetSuite().Hash, sn.MTRoot, sn.LocalMTRoot, sn.Proofs[sn.LocalMTRootIndex])
+	proof.CheckProof(sn.GetSuite().Hash, sn.MTRoot, sn.LocalMTRoot, sn.Proofs["local"])
 	// proof from my root to big root
 	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, sn.MTRoot, chm.Proof)
 	// proof from client to big root
@@ -256,7 +312,7 @@ func (sn *SigningNode) SendLocalMerkleProof(chm *ChallengeMessage) error {
 
 		// To the proof from our root to big root we must add the separated proof
 		// from the localMKT of the client (timestamp server) to our root
-		proofForClient = append(proofForClient, sn.Proofs[sn.LocalMTRootIndex]...)
+		proofForClient = append(proofForClient, sn.Proofs["local"]...)
 
 		// if want to verify partial and full proofs
 		sn.VerifyAllProofs(chm, proofForClient)
@@ -278,15 +334,15 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 
 	// for each child, create personalized part of proof
 	// embed it in SigningMessage, and send it
-	for i, child := range sn.Children() {
+	for name, conn := range sn.Children() {
 		newChm := *chm
-		newChm.Proof = append(baseProof, sn.Proofs[i]...)
+		newChm.Proof = append(baseProof, sn.Proofs[name]...)
 
 		var messg coconet.BinaryMarshaler
 		messg = SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
-		if err := <-child.Put(messg); err != nil {
+		if err := <-conn.Put(messg); err != nil {
 			return err
 		}
 	}
@@ -318,7 +374,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		if err := sn.SendChildrenChallenges(chm); err != nil {
 			return err
 		}
-		return sn.Respond()
+		return sn.Respond(chm.Round)
 	} else {
 		// messages from clients, proofs computed
 		if err := sn.SendLocalMerkleProof(chm); err != nil {
@@ -327,7 +383,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 		if err := sn.SendChildrenChallengesProofs(chm); err != nil {
 			return err
 		}
-		return sn.Respond()
+		return sn.Respond(chm.Round)
 	}
 
 }
@@ -362,15 +418,12 @@ func (sn *SigningNode) sub(a abstract.Point, b abstract.Point) {
 
 }
 
-func (sn *SigningNode) Respond() error {
+func (sn *SigningNode) Respond(round int) error {
 	var err error
 	sn.initResponseCrypto()
 
-	// get responses from kids
-	messgs, err := sn.getDownMessgs()
-	if err != nil {
-		return err
-	}
+	// wait on responses from children
+	messgs := sn.waitOn(sn.RmCh[round], sn.GetTimeout())
 
 	// initialize exception handling
 	var exceptionV_hat abstract.Point
@@ -379,25 +432,26 @@ func (sn *SigningNode) Respond() error {
 	nullPoint := sn.suite.Point().Null()
 	children := sn.Children()
 
-	for i, messg := range messgs {
-		sm := messg.(*SigningMessage)
+	for _, sm := range messgs {
+		from := sm.From
 		switch sm.Type {
 		default:
 			// default == no response from child
 			// log.Println(sn.Name(), "received nil response from", i)
-			sn.ExceptionList = append(sn.ExceptionList, children[i].PubKey())
+			sn.ExceptionList = append(sn.ExceptionList, children[from].PubKey())
 
 			// remove public keys and point commits from subtree of faild child
-			sn.add(exceptionX_hat, sn.ChildX_hat[i])
-			sn.add(exceptionV_hat, sn.ChildV_hat[i])
+			sn.add(exceptionX_hat, sn.ChildX_hat[from])
+			sn.add(exceptionV_hat, sn.ChildV_hat[from])
 			continue
 		case Response:
 			// disregard response from children that did not commit
-			if sn.ChildV_hat[i].Equal(nullPoint) {
+			_, ok := sn.ChildV_hat[from]
+			if ok == true && sn.ChildV_hat[from].Equal(nullPoint) {
 				continue
 			}
 
-			log.Println(sn.Name(), "accepts response from", i)
+			log.Println(sn.Name(), "accepts response from", from)
 			sn.r_hat.Add(sn.r_hat, sm.Rm.R_hat)
 
 			sn.add(exceptionV_hat, sm.Rm.ExceptionV_hat)
@@ -406,9 +460,9 @@ func (sn *SigningNode) Respond() error {
 
 		// Report errors that are not networking errors
 		case Error:
-			log.Println(sn.Name(), "Error in respond for child", i, sm)
+			log.Println(sn.Name(), "Error in respond for child", from, sm)
 			if sm.Err == nil {
-				log.Println("Error but no error set in respond for child", i, err)
+				log.Println("Error but no error set in respond for child", from, err)
 				// ignore if no error is actually set
 				continue
 			}
@@ -424,7 +478,7 @@ func (sn *SigningNode) Respond() error {
 
 	if !sn.IsRoot() {
 		// report verify response error
-		fmt.Println(sn.Name(), "put up response with err", err)
+		// fmt.Println(sn.Name(), "put up response with err", err)
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
@@ -434,7 +488,8 @@ func (sn *SigningNode) Respond() error {
 			R_hat:          sn.r_hat,
 			ExceptionList:  sn.ExceptionList,
 			ExceptionV_hat: exceptionV_hat,
-			ExceptionX_hat: exceptionX_hat}
+			ExceptionX_hat: exceptionX_hat,
+			Round:          round}
 		// create and putup own response message
 		return sn.PutUp(SigningMessage{
 			Type: Response,
@@ -522,9 +577,11 @@ func (sn *SigningNode) hashLog() ([]byte, error) {
 func (sn *SigningNode) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId) {
 	// separate proofs for children servers mt roots
 	for i := 0; i < len(sn.CMTRoots); i++ {
+		name := sn.CMTRootNames[i]
 		for j := 0; j < len(leaves); j++ {
 			if bytes.Compare(sn.CMTRoots[i], leaves[j]) == 0 {
-				sn.Proofs[i] = append(sn.Proofs[i], proofs[j]...)
+				// sn.Proofs[i] = append(sn.Proofs[i], proofs[j]...)
+				sn.Proofs[name] = append(sn.Proofs[name], proofs[j]...)
 				continue
 			}
 		}
@@ -533,7 +590,7 @@ func (sn *SigningNode) SeparateProofs(proofs []proof.Proof, leaves []hashid.Hash
 	// separate proof for local mt root
 	for j := 0; j < len(leaves); j++ {
 		if bytes.Compare(sn.LocalMTRoot, leaves[j]) == 0 {
-			sn.Proofs[sn.LocalMTRootIndex] = append(sn.Proofs[sn.LocalMTRootIndex], proofs[j]...)
+			sn.Proofs["local"] = append(sn.Proofs["local"], proofs[j]...)
 		}
 	}
 }
@@ -553,7 +610,12 @@ func (sn *SigningNode) checkChildrenProofs() {
 	copy(cmtAndLocal, sn.CMTRoots)
 	cmtAndLocal = append(cmtAndLocal, sn.LocalMTRoot)
 
-	if proof.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, cmtAndLocal, sn.Proofs) == true {
+	proofs := make([]proof.Proof, 0)
+	for _, name := range sn.CMTRootNames {
+		proofs = append(proofs, sn.Proofs[name])
+	}
+
+	if proof.CheckLocalProofs(sn.GetSuite().Hash, sn.MTRoot, cmtAndLocal, proofs) == true {
 		log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
 		panic("Children Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))

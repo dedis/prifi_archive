@@ -20,8 +20,9 @@ type TCPHost struct {
 	name   string // the hostname
 	parent Conn   // the Peer representing parent, nil if root
 
-	childLock sync.Mutex
-	children  []string // a list of unique peers for each hostname
+	childLock   sync.Mutex
+	children    []string // a list of unique peers for each hostname
+	childrenMap map[string]Conn
 
 	rlock sync.Mutex
 	ready map[string]bool
@@ -220,7 +221,10 @@ func (h *TCPHost) AddChildren(cs ...string) {
 			continue
 		}
 		h.rlock.Unlock()
+		h.childLock.Lock()
 		h.children = append(h.children, c)
+		h.childrenMap[c] = h.peers[c]
+		h.childLock.Unlock()
 	}
 }
 
@@ -247,18 +251,18 @@ func (h *TCPHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h *TCPHost) Children() []Conn {
+func (h *TCPHost) Children() map[string]Conn {
 	h.childLock.Lock()
 	h.rlock.Lock()
 
-	children := make([]Conn, len(h.children))
-	for i, name := range h.children {
-		children[i] = h.peers[name]
+	childrenMap := make(map[string]Conn, 0)
+	for k, v := range h.childrenMap {
+		childrenMap[k] = v
 	}
 	h.rlock.Unlock()
 	h.childLock.Unlock()
 
-	return children
+	return childrenMap
 }
 
 // AddPeers adds the list of peers
@@ -350,10 +354,10 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
-func (h *TCPHost) GetDown(data []BinaryUnmarshaler) error {
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var err error
+func (h *TCPHost) GetDown(data []BinaryUnmarshaler) (chan NetworkMessg, chan error) {
+	var chmu sync.Mutex
+	ch := make(chan NetworkMessg, 1)
+	errch := make(chan error, 1)
 
 	// copy children before ranging for thread safety
 	h.childLock.Lock()
@@ -361,31 +365,27 @@ func (h *TCPHost) GetDown(data []BinaryUnmarshaler) error {
 	copy(children, h.children)
 	h.childLock.Unlock()
 
-	for i, c := range children {
+	// start children threads
+	go func() {
+		for i, c := range children {
+			go func(i int, c string) {
 
-		wg.Add(1)
-		go func(i int, c string) {
-			var e error
-			defer wg.Done()
-			timeout := h.GetTimeout()
+				for {
 
-			select {
-			case e = <-h.whenReadyGet(c, data[i]):
-				if e != nil {
-					setError(&mu, &err, e)
+					e := <-h.whenReadyGet(c, data[i])
+					if e != nil {
+						data[i] = nil
+					}
+
+					chmu.Lock()
+					ch <- NetworkMessg{Data: data[i], From: c} // this should be copy of data[i]
+					errch <- e
+					chmu.Unlock()
+
 				}
-				break
-			case <-time.After(timeout):
-				setError(&mu, &err, TimeoutError)
+			}(i, c)
+		}
+	}()
 
-			}
-
-			if e != nil {
-				data[i] = nil
-			}
-		}(i, c)
-	}
-
-	wg.Wait()
-	return err
+	return ch, errch
 }

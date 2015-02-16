@@ -20,7 +20,7 @@ func SimpleRoundsThroughput(N int, b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < N; i++ {
 			hc.SNodes[0].LogTest = []byte("hello world" + strconv.Itoa(i))
-			hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
+			hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 
 		}
 		for _, sn := range hc.SNodes {
