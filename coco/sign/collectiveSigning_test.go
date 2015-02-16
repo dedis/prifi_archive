@@ -113,23 +113,6 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	nodes[2].Height = 0
 	nodes[3].Height = 0
 
-	// initialize all nodes with knowledge of
-	// combined public keys of all its descendents
-	nodes[2].X_hat = nodes[2].PubKey
-	nodes[3].X_hat = nodes[3].PubKey
-	nodes[1].X_hat.Add(nodes[1].PubKey, nodes[2].X_hat)
-	nodes[1].X_hat.Add(nodes[1].X_hat, nodes[3].X_hat)
-	nodes[0].X_hat.Add(nodes[0].PubKey, nodes[1].X_hat)
-
-	// test that X_Hats of non-leaves are != their pub keys
-	firstLeaf := 2
-	for i := 0; i < firstLeaf; i++ {
-		if nodes[i].X_hat.Equal(nodes[i].PubKey) {
-			panic("pub key equal x hat")
-		}
-
-	}
-
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].LogTest = []byte("Hello World")

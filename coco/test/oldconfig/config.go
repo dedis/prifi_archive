@@ -69,21 +69,9 @@ type HostConfig struct {
 }
 
 func (hc *HostConfig) Verify() error {
-	root := hc.SNodes[0]
-	traverseTree(root, hc, publicKeyCheck)
+	// root := hc.SNodes[0]
+	// traverseTree(root, hc, publicKeyCheck)
 	fmt.Println("tree verified")
-	return nil
-}
-
-func publicKeyCheck(n *sign.SigningNode, hc *HostConfig) error {
-	x_hat := n.PubKey
-	for _, cn := range n.Children() {
-		c := hc.Hosts[cn.Name()]
-		x_hat.Add(x_hat, c.X_hat)
-	}
-	/*if x_hat != n.X_hat {
-		return errors.New("parent X_hat != Sum(child.X_hat)+PubKey")
-	}*/
 	return nil
 }
 
@@ -197,14 +185,14 @@ func ConstructTree(
 	rand cipher.Stream,
 	hosts map[string]coconet.Host,
 	nameToAddr map[string]string,
-	opts ConfigOptions) (abstract.Point, int, error) {
+	opts ConfigOptions) (int, error) {
 	// passes up its X_hat, and/or an error
 
 	// get the name associated with this address
 	name, ok := nameToAddr[n.Name]
 	if !ok {
 		fmt.Println("unknown name in address book:", n.Name)
-		return nil, 0, errors.New("unknown name in address book")
+		return 0, errors.New("unknown name in address book")
 	}
 
 	// generate indicates whether we should generate the signing
@@ -216,7 +204,7 @@ func ConstructTree(
 	h, ok := hosts[name]
 	if !ok {
 		fmt.Println("unknown host in tree:", name)
-		return nil, 0, errors.New("unknown host in tree")
+		return 0, errors.New("unknown host in tree")
 	}
 
 	var prikey abstract.Secret
@@ -229,25 +217,25 @@ func ConstructTree(
 		encoded, err := hex.DecodeString(string(n.PubKey))
 		if err != nil {
 			log.Print("failed to decode hex from encoded")
-			return nil, 0, err
+			return 0, err
 		}
 		pubkey = suite.Point()
 		err = pubkey.UnmarshalBinary(encoded)
 		if err != nil {
 			log.Print("failed to decode point from hex")
-			return nil, 0, err
+			return 0, err
 		}
 		// log.Println("decoding point")
 		encoded, err = hex.DecodeString(string(n.PriKey))
 		if err != nil {
 			log.Print("failed to decode hex from encoded")
-			return nil, 0, err
+			return 0, err
 		}
 		prikey = suite.Secret()
 		err = prikey.UnmarshalBinary(encoded)
 		if err != nil {
 			log.Print("failed to decode point from hex")
-			return nil, 0, err
+			return 0, err
 		}
 	}
 	if generate {
@@ -277,16 +265,13 @@ func ConstructTree(
 	// log.Println("name: ", n.Name)
 	// log.Println("prikey: ", prikey)
 	// log.Println("pubkey: ", pubkey)
-	x_hat := suite.Point().Null()
-	x_hat.Add(x_hat, pubkey)
-	// log.Println("x_hat: ", x_hat)
 	height := 0
 	for _, c := range n.Children {
 		// connect this node to its children
 		cname, ok := nameToAddr[c.Name]
 		if !ok {
 			fmt.Println("unknown name in address book:", n.Name)
-			return nil, 0, errors.New("unknown name in address book")
+			return 0, errors.New("unknown name in address book")
 		}
 
 		if generate {
@@ -295,23 +280,20 @@ func ConstructTree(
 
 		// recursively construct the children
 		// log.Print("ConstructTree:", h, suite, rand, hosts, nameToAddr, opts)
-		cpubkey, h, err := ConstructTree(c, hc, name, suite, rand, hosts, nameToAddr, opts)
+		h, err := ConstructTree(c, hc, name, suite, rand, hosts, nameToAddr, opts)
 		if err != nil {
-			return nil, 0, err
+			return 0, err
 		}
 		height = max(h+1, height)
 		// if generating all csn will be availible
-		// log.Print("adding from child: ", x_hat, cpubkey)
-		x_hat.Add(x_hat, cpubkey)
 	}
 	if generate {
-		sn.X_hat = x_hat
 		sn.Height = height
 	}
 	// log.Println("name: ", n.Name)
 	// log.Println("final x_hat: ", x_hat)
 	// log.Println("final pubkey: ", pubkey)
-	return x_hat, height, nil
+	return height, nil
 }
 
 var ipv4Reg = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
@@ -450,7 +432,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	}
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
-	_, _, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)
+	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)
 	if connT != GoC {
 		hc.Dir = nil
 	}
