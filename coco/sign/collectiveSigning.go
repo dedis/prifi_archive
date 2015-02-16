@@ -227,7 +227,7 @@ func (sn *SigningNode) initCommitCrypto(Round int) {
 	sn.add(round.X_hat, sn.PubKey)
 }
 
-func (sn *SigningNode) waitOn(ch chan *SigningMessage, timeout time.Duration) []*SigningMessage {
+func (sn *SigningNode) waitOn(ch chan *SigningMessage, timeout time.Duration, what string) []*SigningMessage {
 	nChildren := len(sn.Children())
 	messgs := make([]*SigningMessage, 0)
 	received := 0
@@ -243,7 +243,7 @@ func (sn *SigningNode) waitOn(ch chan *SigningMessage, timeout time.Duration) []
 					break forloop
 				}
 			case <-time.After(timeout):
-				log.Println(sn.Name(), "timeouted", timeout)
+				log.Println(sn.Name(), "timeouted on", what, timeout)
 				break forloop
 			}
 		}
@@ -257,7 +257,8 @@ func (sn *SigningNode) Commit(Round int) error {
 	sn.initCommitCrypto(Round)
 
 	// wait on commits from children
-	messgs := sn.waitOn(sn.ComCh[Round], sn.GetTimeout())
+	sn.UpdateTimeout()
+	messgs := sn.waitOn(sn.ComCh[Round], sn.GetTimeout(), "commits")
 
 	// prepare to handle exceptions
 	round.ExceptionList = make([]abstract.Point, 0)
@@ -269,6 +270,10 @@ func (sn *SigningNode) Commit(Round int) error {
 	round.Leaves = make([]hashid.HashId, 0)
 	round.LeavesFrom = make([]string, 0)
 
+	for key := range children {
+		round.ChildX_hat[key] = sn.suite.Point().Null()
+		round.ChildV_hat[key] = sn.suite.Point().Null()
+	}
 	for _, sm := range messgs {
 		from := sm.From
 		switch sm.Type {
@@ -276,8 +281,6 @@ func (sn *SigningNode) Commit(Round int) error {
 			// fmt.Println(sn.Name(), "no commit from", i)
 			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
 			// take note of lack of pub keys and commit points from i
-			round.ChildX_hat[from] = sn.suite.Point().Null()
-			round.ChildV_hat[from] = sn.suite.Point().Null()
 			continue
 		case Commitment:
 			round.Leaves = append(round.Leaves, sm.Com.MTRoot)
@@ -386,7 +389,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 		messg = &SigningMessage{Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
-		log.Errorln("connection: sending children challenge proofs:", name, conn)
+		// log.Println("connection: sending children challenge proofs:", name, conn)
 		if err := <-conn.Put(messg); err != nil {
 			return err
 		}
@@ -471,7 +474,8 @@ func (sn *SigningNode) Respond(Round int) error {
 	sn.initResponseCrypto(Round)
 
 	// wait on responses from children
-	messgs := sn.waitOn(sn.RmCh[Round], sn.GetTimeout())
+	sn.UpdateTimeout()
+	messgs := sn.waitOn(sn.RmCh[Round], sn.GetTimeout(), "responses")
 
 	// initialize exception handling
 	var exceptionV_hat abstract.Point
