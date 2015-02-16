@@ -18,7 +18,7 @@ const DefaultTCPTimeout time.Duration = 500 * time.Millisecond
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
 	name   string // the hostname
-	parent Conn   // the Peer representing parent, nil if root
+	parent string // the Peer representing parent, nil if root
 
 	childLock sync.Mutex
 	children  []string // a list of unique peers for each hostname
@@ -154,6 +154,7 @@ func (h *TCPHost) Listen() error {
 			h.rlock.Lock()
 			h.ready[name] = true
 			h.peers[name] = tp
+			log.Infoln("setup peer:", tp, tp.conn)
 			h.rlock.Unlock()
 		}
 	}()
@@ -161,10 +162,10 @@ func (h *TCPHost) Listen() error {
 }
 
 func (h *TCPHost) Connect() error {
-	if h.parent == nil {
+	if h.parent == "" {
 		return nil
 	}
-	conn, err := net.Dial("tcp", h.parent.Name())
+	conn, err := net.Dial("tcp", h.parent)
 	if err != nil {
 		log.Println(err)
 		return err
@@ -177,7 +178,7 @@ func (h *TCPHost) Connect() error {
 		log.Println(err)
 		return err
 	}
-	tp.SetName(h.parent.Name())
+	tp.SetName(h.parent)
 
 	err = <-tp.Put(h.Pubkey)
 	if err != nil {
@@ -187,9 +188,8 @@ func (h *TCPHost) Connect() error {
 	// log.Println("CONNECTING TO PARENT")
 
 	h.rlock.Lock()
-	h.parent = tp
 	h.ready[tp.Name()] = true
-	h.peers[tp.Name()] = tp
+	h.peers[h.parent] = tp
 	h.rlock.Unlock()
 
 	log.Infoln("Successfully CONNECTED TO PARENT")
@@ -198,8 +198,9 @@ func (h *TCPHost) Connect() error {
 
 func (h *TCPHost) Close() {
 	h.rlock.Lock()
-	for _, p := range h.peers {
+	for k, p := range h.peers {
 		p.Close()
+		h.peers[k] = nil
 	}
 	h.rlock.Unlock()
 }
@@ -209,7 +210,7 @@ func (h *TCPHost) AddParent(c string) {
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c] = NewTCPConn(c)
 	}
-	h.parent = h.peers[c]
+	h.parent = c
 }
 
 // AddChildren variadically adds multiple Peers as children to the TCPHost.
@@ -247,7 +248,7 @@ func (h *TCPHost) Name() string {
 // IsRoot returns true if the TCPHost is the root of it's tree (if it has no
 // parent).
 func (h *TCPHost) IsRoot() bool {
-	return h.parent == nil
+	return h.parent == ""
 }
 
 // Peers returns the list of peers as a mapping from hostname to Conn
@@ -286,28 +287,38 @@ func (h *TCPHost) WaitTick() {
 	time.Sleep(1 * time.Second)
 }
 
+var ErrorConnClosed error = errors.New("connection closed")
+
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) PutUp(data BinaryMarshaler) error {
 	h.rlock.Lock()
-	isReady := h.ready[h.parent.Name()]
+	isReady := h.ready[h.parent]
+	parent := h.peers[h.parent]
 	h.rlock.Unlock()
 	if !isReady {
 		return ConnectionNotEstablished
+	} else if parent == nil && h.parent != "" {
+		// not the root and I have closed my parent connection
+		return ErrorConnClosed
 	}
-	return <-h.parent.Put(data)
+	return <-parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
 	h.rlock.Lock()
-	isReady := h.ready[h.parent.Name()]
+	isReady := h.ready[h.parent]
+	parent := h.peers[h.parent]
 	h.rlock.Unlock()
 	if !isReady {
 		return ConnectionNotEstablished
+	} else if parent == nil && h.parent != "" {
+		// not the root and I have closed my parent connection
+		return ErrorConnClosed
 	}
-	return <-h.parent.Get(data)
+	return <-parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -351,14 +362,22 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	if c == nil {
+		errchan := make(chan error, 1)
+		errchan <- ErrorConnClosed
+		return errchan
+	}
 
 	return c.Get(data)
 }
 
+// TODO: After GetDown is called, every time we add a child, we should
+// make sure to also output its responses here
+
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
 func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
-	var chmu sync.Mutex
+	// var chmu sync.Mutex
 	ch := make(chan NetworkMessg, 1)
 	errch := make(chan error, 1)
 
@@ -377,11 +396,16 @@ func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 
 					data := h.pool.Get().(BinaryUnmarshaler)
 					e := <-h.whenReadyGet(c, data)
+					// check to see if the connection is Closed
+					if e == ErrorConnClosed {
+						errch <- errors.New("connection has been closed")
+						return
+					}
 
-					chmu.Lock()
-					ch <- NetworkMessg{Data: data, From: c} // this should be copy of data[i]
+					// chmu.Lock()
+					ch <- NetworkMessg{Data: data, From: c}
 					errch <- e
-					chmu.Unlock()
+					// chmu.Unlock()
 
 				}
 			}(i, c)

@@ -35,6 +35,9 @@ func (sn *SigningNode) getUp() {
 		if err := sn.GetUp(&sm); err != nil {
 			// TODO: could pass err up via channel
 			log.Println("err")
+			if err == coconet.ErrorConnClosed {
+				return // stop getting up if the connection is closed
+			}
 		}
 		switch sm.Type {
 		default:
@@ -72,6 +75,9 @@ func (sn *SigningNode) getDown() {
 		err = <-errch
 
 		if err != nil {
+			if err == coconet.ErrorConnClosed {
+				return
+			}
 			// TODO: something else?
 			continue
 		}

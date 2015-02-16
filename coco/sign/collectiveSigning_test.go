@@ -2,6 +2,7 @@ package sign_test
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 	"testing"
 
@@ -230,6 +231,7 @@ func TestTCPStaticConfig(t *testing.T) {
 	for _, n := range hc.SNodes {
 		n.Close()
 	}
+	log.Println("Test Done")
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {

@@ -3,10 +3,10 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
-	"fmt"
-	"log"
 	"net"
 	"sync"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
 )
@@ -94,6 +94,9 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
 	}
 	// tc.RUnlock()
 	err := tc.enc.Encode(bm)
+	if err != nil {
+		log.Errorln("failed to put/encode:", err)
+	}
 	errchan <- err
 	return errchan
 }
@@ -112,8 +115,9 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
 		// log.Println("decoding from", tc.Name())
 		err := tc.dec.Decode(bum)
 		if err != nil {
-			fmt.Println("failed to unmarshal binary: ", tc.conn)
-			fmt.Printf("\tinto: %#v\n", bum)
+			log.Errorln("failed to decode:", err)
+			// fmt.Println("failed to unmarshal binary: ", tc.conn)
+			// fmt.Printf("\tinto: %#v\n", bum)
 		}
 		// log.Println("decoded", err)
 		errchan <- err
@@ -123,7 +127,11 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
 }
 
 func (tc *TCPConn) Close() {
+	log.Errorln("Closing Connection")
 	if tc.conn != nil {
 		tc.conn.Close()
 	}
+	tc.conn = nil
+	tc.enc = nil
+	tc.dec = nil
 }
