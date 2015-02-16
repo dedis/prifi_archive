@@ -376,6 +376,8 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
+// Must be called after network topology is completely set: ie
+// all children must have already been added.
 func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 	// var chmu sync.Mutex
 	ch := make(chan NetworkMessg, 1)

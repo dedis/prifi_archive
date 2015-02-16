@@ -114,7 +114,9 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 				time.Sleep(500 * time.Millisecond)
 				continue
 			} else {
+				c.Mux.Lock()
 				c.Servers[name] = conn
+				c.Mux.Unlock()
 				log.Println("SUCCESS: connected to server:", conn)
 				if c.handleServer(conn) == io.EOF {
 					c.Servers[name] = nil
@@ -130,6 +132,8 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 
 // Send data to server given by name (data should be a timestamp request)
 func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
+	c.Mux.Lock()
+	defer c.Mux.Unlock()
 	conn := c.Servers[name]
 	if conn == nil {
 		log.WithFields(log.Fields{

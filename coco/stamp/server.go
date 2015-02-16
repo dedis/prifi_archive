@@ -32,6 +32,7 @@ type Server struct {
 	Root   hashid.HashId
 	Proofs []proof.Proof
 
+	rLock     sync.Mutex
 	nRounds   int
 	maxRounds int
 	closeChan chan bool
@@ -48,6 +49,7 @@ func NewServer(signer coco.Signer) *Server {
 	s.Signer = signer
 	s.Signer.RegisterAnnounceFunc(s.OnAnnounce())
 	s.Signer.RegisterDoneFunc(s.OnDone())
+	s.rLock = sync.Mutex{}
 
 	// listen for client requests at one port higher
 	// than the signing node
@@ -156,7 +158,9 @@ func (s *Server) ListenToClients() {
 // Listen on client connections. If role is root also send annoucement
 // for all of the nRounds
 func (s *Server) Run(role string, nRounds int) {
+	s.rLock.Lock()
 	s.maxRounds = nRounds
+	s.rLock.Unlock()
 	switch role {
 
 	case "root":
@@ -265,9 +269,12 @@ func (s *Server) AggregateCommits() []byte {
 
 	// non root servers keep track of rounds here
 	if !s.IsRoot() {
+		s.rLock.Lock()
 		s.nRounds++
+		mr := s.maxRounds
+		s.rLock.Unlock()
 		// if this is our last round then close the connections
-		if s.nRounds >= s.maxRounds && s.maxRounds >= 0 {
+		if s.nRounds >= mr && mr >= 0 {
 			s.closeChan <- true
 		}
 	}

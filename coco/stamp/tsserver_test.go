@@ -185,11 +185,14 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 				go func(c *stamp.Client, messg []byte, i int) {
 					defer wg.Done()
 					server := "NO VALID SERVER"
+
 				retry:
+					c.Mux.Lock()
 					for k := range c.Servers {
 						server = k
 						break
 					}
+					c.Mux.Unlock()
 					log.Infoln("timestamping")
 					err := c.TimeStamp(messg, server)
 					if err != nil {
