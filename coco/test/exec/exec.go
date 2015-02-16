@@ -12,14 +12,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io"
-	"log"
 	"math"
-	"net"
-	"os"
+	"net/http"
+	_ "net/http/pprof"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
+
 	"github.com/dedis/prifi/coco/sign"
+	"github.com/dedis/prifi/coco/test/logutils"
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
@@ -28,43 +29,44 @@ var configFile string
 var logger string
 var app string
 var nrounds int
+var pprofaddr string
 
 func init() {
 	flag.StringVar(&hostname, "hostname", "", "the hostname of this node")
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
-	flag.StringVar(&logger, "logger", "", "remote logging interface")
+	flag.StringVar(&logger, "logger", "", "remote logger")
 	flag.StringVar(&app, "app", "sign", "application to run [sign|time]")
 	flag.IntVar(&nrounds, "nrounds", math.MaxInt32, "number of rounds to run")
+	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 }
 
 func main() {
 	flag.Parse()
-	log.SetPrefix(hostname + ":")
-	log.SetFlags(log.Lshortfile)
+	go func() {
+		//runtime.MemProfileRate = 1
+		log.Println(http.ListenAndServe(pprofaddr, nil))
+	}()
+	//log.SetPrefix(hostname + ":")
+	//log.SetFlags(log.Lshortfile)
 	fmt.Println("Execing")
-	// open connection with remote logging interface if there is one
-	if false && logger != "" {
-		conn, err := net.Dial("tcp", logger)
-		if err != nil {
-			fmt.Println("ERROR ESTABLISHING LOG CONNECTION")
-			os.Exit(1)
-			log.Fatal("ERROR: error establishing logging connection: ", err)
-		}
-		defer conn.Close()
-		log.Println("Log Test")
-		fmt.Println("Connected to logger successfully")
-		log.SetOutput(io.MultiWriter(os.Stdout, conn))
-		log.SetPrefix(hostname + ":")
-		log.Println("Log Test")
-		fmt.Println("exiting logger block")
-	}
 	if hostname == "" {
 		fmt.Println("hostname is empty")
 		log.Fatal("no hostname given")
 	}
+	// connect with the logging server
+	if logger != "" {
+		// blocks until we can connect to the logger
+		lh, err := logutils.NewLoggerHook(logger, hostname, app)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.AddHook(lh)
+		log.Println("Log Test")
+		fmt.Println("exiting logger block")
+	}
 
 	// load the configuration
-	fmt.Println("loading configuration")
+	log.Println("loading configuration")
 	hc, err := oldconfig.LoadConfig(configFile, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname})
 	if err != nil {
 		fmt.Println(err)
@@ -89,19 +91,22 @@ func main() {
 			iters := 10
 
 			for i := 0; i < iters; i++ {
-				if i == 1 {
-					start = time.Now()
-				}
+				start = time.Now()
 				fmt.Println("ANNOUNCING")
 				hc.SNodes[0].LogTest = []byte("Hello World")
 				err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{hc.SNodes[0].LogTest})
 				if err != nil {
 					log.Println(err)
 				}
+				elapsed := time.Since(start)
+				log.WithFields(log.Fields{
+					"file":  logutils.File(),
+					"type":  "root_announce",
+					"round": i,
+					"time":  elapsed,
+				}).Info("")
 			}
 
-			elapsed := time.Since(start)
-			log.Printf("took %d ns/op\n", elapsed.Nanoseconds()/int64(iters-1))
 		} else {
 			// otherwise wait a little bit (hopefully it finishes by the end of this)
 			time.Sleep(480 * time.Second)
@@ -117,11 +122,14 @@ func main() {
 			if s.Name() == hostname {
 				if s.IsRoot() {
 					s.Run("root", nrounds)
+					fmt.Println("\n\nROOT DONE\n\n")
+
 				} else {
 					s.Run("regular", nrounds)
+					fmt.Println("\n\nREGULAR DONE\n\n")
 				}
 			}
 		}
 	}
-	fmt.Println("DONE")
+
 }

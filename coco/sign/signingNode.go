@@ -3,8 +3,9 @@ package sign
 import (
 	"bytes"
 	"crypto/cipher"
-	"log"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco"

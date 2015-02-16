@@ -2,11 +2,12 @@ package stamp_test
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
@@ -15,10 +16,10 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func init() {
-	log.SetFlags(log.Lshortfile)
-	//log.SetOutput(ioutil.Discard)
-}
+// func init() {
+// 	log.SetFlags(log.Lshortfile)
+// 	//log.SetOutput(ioutil.Discard)
+// }
 
 // Configuration file data/exconf.json
 //       0
@@ -147,7 +148,7 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 	oldconfig.StartConfigPort += 2010
 	nMessages := 1
 	nClients := 1
-	nRounds := 3
+	nRounds := 2
 
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
@@ -169,9 +170,9 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 	// 	// go c.Connect()
 	// }
 	for _, s := range stampers[1:] {
-		go s.Run("regular", nRounds+2)
+		go s.Run("regular", nRounds)
 	}
-	go stampers[0].Run("root", nRounds+2)
+	go stampers[0].Run("root", nRounds)
 	log.Println("About to start sending client messages")
 	// time.Sleep(1 * time.Second)
 	for r := 0; r < nRounds; r++ {
@@ -184,17 +185,24 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 				go func(c *stamp.Client, messg []byte, i int) {
 					defer wg.Done()
 					server := "NO VALID SERVER"
+				retry:
 					for k := range c.Servers {
 						server = k
 						break
 					}
-					c.TimeStamp(messg, server)
+					log.Infoln("timestamping")
+					err := c.TimeStamp(messg, server)
+					if err != nil {
+						time.Sleep(1 * time.Second)
+						goto retry
+					}
+					log.Infoln("timestamped")
 				}(c, messg, r)
 			}
 		}
 		// wait between rounds
 		wg.Wait()
-		fmt.Println("done with round:", r, nRounds)
+		log.Println("done with round:", r, nRounds)
 	}
 	for _, h := range hc.SNodes {
 		h.Close()

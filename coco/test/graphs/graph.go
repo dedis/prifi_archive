@@ -143,7 +143,11 @@ func (g *Graph) Tree(nlevels int) *Tree {
 	}
 
 	// find the branching factor needed
-	bf := n/nlevels + 1
+	bf := n / nlevels
+	if n%nlevels != 0 {
+		bf += 1
+	}
+	// log.Panicf("n: %d, nlevels: %d, branching factor: %d\n", n, nlevels, bf)
 	fmt.Println("Tree:", n, nlevels, bf)
 	g.constructTree(ri, bf, make([]bool, n), tnodes)
 	log.Println("tnodes:", tnodes)

@@ -3,9 +3,10 @@ package sign_test
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"reflect"
 	"testing"
+
+	"log"
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/hashid"
@@ -15,6 +16,22 @@ import (
 
 func init() {
 	log.SetFlags(log.Lshortfile)
+}
+
+func TestErrorMessage(t *testing.T) {
+	sm := &sign.SigningMessage{Type: sign.Error, Err: &sign.ErrorMessage{"random error"}}
+	b, e := sm.MarshalBinary()
+	if e != nil {
+		t.Fatal(e)
+	}
+	sm2 := &sign.SigningMessage{}
+	e = sm2.UnmarshalBinary(b)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !reflect.DeepEqual(sm, sm2) {
+		t.Fatal("sm != sm2: ", sm, sm2, sm.Am, sm2.Am)
+	}
 }
 
 // test marshalling and unmarshalling for

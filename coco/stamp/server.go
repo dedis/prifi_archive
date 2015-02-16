@@ -1,17 +1,19 @@
 package stamp
 
 import (
-	"log"
 	"net"
 	"strconv"
 	"sync"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/proof"
 	"github.com/dedis/prifi/coco/sign"
+	"github.com/dedis/prifi/coco/test/logutils"
 )
 
 type Server struct {
@@ -30,7 +32,9 @@ type Server struct {
 	Root   hashid.HashId
 	Proofs []proof.Proof
 
-	nRounds int
+	nRounds   int
+	maxRounds int
+	closeChan chan bool
 }
 
 func NewServer(signer coco.Signer) *Server {
@@ -57,7 +61,7 @@ func NewServer(signer coco.Signer) *Server {
 	}
 	s.Queue[s.READING] = make([]MustReplyMessage, 0)
 	s.Queue[s.PROCESSING] = make([]MustReplyMessage, 0)
-
+	s.closeChan = make(chan bool)
 	return s
 }
 
@@ -81,11 +85,11 @@ func (s *Server) Listen() error {
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
-				log.Println("failed to accept connection")
+				log.Errorln("failed to accept connection")
 				continue
 			}
 			if conn == nil {
-				log.Println("!!!nil connection!!!")
+				log.Errorln("!!!nil connection!!!")
 			}
 
 			c := coconet.NewTCPConnFromNet(conn)
@@ -102,8 +106,9 @@ func (s *Server) Listen() error {
 						err := <-c.Get(&tsm)
 						// log.Println("GOT:", c.Name(), c)
 						if err != nil {
-							log.Println(err, err.Error())
-							log.Fatal("ERROR GETTING:", err)
+							log.Errorln("Failed to get from child:", err)
+							c.Close()
+							return
 						}
 						switch tsm.Type {
 						default:
@@ -151,7 +156,7 @@ func (s *Server) ListenToClients() {
 // Listen on client connections. If role is root also send annoucement
 // for all of the nRounds
 func (s *Server) Run(role string, nRounds int) {
-
+	s.maxRounds = nRounds
 	switch role {
 
 	case "root":
@@ -160,20 +165,31 @@ func (s *Server) Run(role string, nRounds int) {
 		for _ = range ticker {
 			s.nRounds++
 			if s.nRounds > nRounds {
-				continue
+				break
 			}
+			start := time.Now()
 			s.StartSigningRound()
+			elapsed := time.Since(start)
+			log.WithFields(log.Fields{
+				"file":  logutils.File(),
+				"type":  "root_round",
+				"round": s.nRounds,
+				"time":  elapsed,
+			}).Info("root round")
 		}
 
 	case "test":
-		ticker := time.Tick(1000 * time.Millisecond)
+		ticker := time.Tick(2000 * time.Millisecond)
 		for _ = range ticker {
 			s.AggregateCommits()
 		}
 	case "regular":
-		for {
-			time.Sleep(1000 * time.Millisecond)
-		}
+		// run until we close it
+		<-s.closeChan
+		log.WithFields(log.Fields{
+			"file": logutils.File(),
+			"type": "close",
+		}).Infoln("server has closed")
 	}
 
 }
@@ -187,6 +203,7 @@ func (s *Server) OnAnnounce() coco.CommitFunc {
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
 		// log.Println("DONE")
+		start := time.Now()
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -207,11 +224,19 @@ func (s *Server) OnDone() coco.DoneFunc {
 			s.PutToClient(msg.To, respMessg)
 		}
 		s.mux.Unlock()
+		elapsed := time.Since(start)
+		log.WithFields(log.Fields{
+			"file":  logutils.File(),
+			"type":  "on_done",
+			"round": s.nRounds,
+			"time":  elapsed,
+		}).Info("root round")
 	}
 
 }
 
 func (s *Server) AggregateCommits() []byte {
+	start := time.Now()
 	// log.Println("Aggregateing Commits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
@@ -241,6 +266,10 @@ func (s *Server) AggregateCommits() []byte {
 	// non root servers keep track of rounds here
 	if !s.IsRoot() {
 		s.nRounds++
+		// if this is our last round then close the connections
+		if s.nRounds >= s.maxRounds && s.maxRounds >= 0 {
+			s.closeChan <- true
+		}
 	}
 
 	// create Merkle tree for this round's messages and check corectness
@@ -251,6 +280,13 @@ func (s *Server) AggregateCommits() []byte {
 		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
 	}
 
+	elapsed := time.Since(start)
+	log.WithFields(log.Fields{
+		"file":  logutils.File(),
+		"type":  "aggregate_commits",
+		"round": s.nRounds,
+		"time":  elapsed,
+	}).Info("root round")
 	return s.Root
 }
 

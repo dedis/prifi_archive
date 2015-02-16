@@ -55,15 +55,17 @@ func (tc TCPConn) Name() string {
 	return tc.name
 }
 
+var ConnectionNotEstablished error = errors.New(" connection not established")
+
 // blocks until the put is availible
 func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
-	errchan := make(chan error, 2)
+	errchan := make(chan error, 1)
 	tc.RLock()
 	for tc.enc == nil {
 		tc.RUnlock()
 		time.Sleep(time.Second)
 		tc.RLock()
-		errchan <- errors.New(" connection not established")
+		errchan <- ConnectionNotEstablished
 		return errchan
 	}
 	tc.RUnlock()
@@ -74,12 +76,12 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
 
 // blocks until we get something
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
-	errchan := make(chan error, 2)
+	errchan := make(chan error, 1)
 	for tc.dec == nil {
-		time.Sleep(time.Second)
+		//time.Sleep(time.Second)
 		// panic("no decoder yet")
 		// log.Fatal("no decoder yet")
-		errchan <- errors.New("connection not established")
+		errchan <- ConnectionNotEstablished
 		return errchan
 	}
 

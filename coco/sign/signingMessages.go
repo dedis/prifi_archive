@@ -88,7 +88,7 @@ type ResponseMessage struct {
 }
 
 type ErrorMessage struct {
-	Err error
+	Err string
 }
 
 type TestMessage struct {

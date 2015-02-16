@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"log"
 	"sync"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
+
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/test/logutils"
 )
 
 type Client struct {
@@ -101,7 +103,7 @@ func (c *Client) handleResponse(tsm *TimeStampMessage) {
 }
 
 func (c *Client) AddServer(name string, conn coconet.Conn) {
-	c.Servers[name] = conn
+	//c.Servers[name] = conn
 	go func(conn coconet.Conn) {
 		for {
 			// log.Println("Conn Before Connection:", conn)
@@ -109,11 +111,13 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 			// log.Println("Conn After Connection:", conn, err)
 			if err != nil {
 				// log.Println("FAILURE: failed to connect to server:", err)
-				time.Sleep(1 * time.Second)
+				time.Sleep(500 * time.Millisecond)
 				continue
 			} else {
-				log.Println("SUCCESS: connected to server")
+				c.Servers[name] = conn
+				log.Println("SUCCESS: connected to server:", conn)
 				if c.handleServer(conn) == io.EOF {
+					c.Servers[name] = nil
 					return
 				} else {
 					// try reconnecting if it didn't close the channel
@@ -128,21 +132,24 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 	conn := c.Servers[name]
 	if conn == nil {
-		return errors.New("INVALID SERVER")
+		log.WithFields(log.Fields{
+			"file": logutils.File(),
+		}).Warnln("Server is nil:", c.Servers, "with: ", name)
+		return errors.New("INVALID SERVER/NOT CONNECTED")
 	}
-	// log.Println("MYCONN: ", conn)
+	// log.Println("PUT CONN: ", conn)
 	return <-conn.Put(data)
 }
 
 // When client asks for val to be timestamped
 // It blocks until it get a stamp reply back
 func (c *Client) TimeStamp(val []byte, TSServerName string) error {
+
 	c.Mux.Lock()
 	c.reqno++
 	myReqno := c.reqno
 	c.doneChan[c.reqno] = make(chan bool, 1) // new done channel for new req
 	c.Mux.Unlock()
-
 	// send request to TSServer
 	// log.Println("SENDING TIME STAMP REQUEST TO: ", TSServerName)
 	err := c.PutToServer(TSServerName,
@@ -151,7 +158,6 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 			ReqNo: myReqno,
 			Sreq:  &StampRequest{Val: val}})
 	if err != nil {
-		log.Println("FAILED TO PUT TO SERVER:", err)
 		return err
 	}
 

@@ -3,10 +3,11 @@ package coconet
 // TCPHost is a simple implementation of Host that does not specify the
 import (
 	"errors"
-	"log"
 	"net"
 	"sync"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 // Default timeout for any network operation

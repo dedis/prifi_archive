@@ -8,7 +8,7 @@ import (
 )
 
 func scp(username, host, file, dest string) error {
-	cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-C", file, username+"@"+host+":"+dest)
+	cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-r", "-C", file, username+"@"+host+":"+dest)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

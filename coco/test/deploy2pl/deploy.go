@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/test/config"
@@ -27,9 +29,10 @@ var nrounds int
 var zoo bool
 var uname string
 var nmsgs int
+var kill bool
+var logger string
 
 func init() {
-	log.SetFlags(log.Lshortfile)
 	flag.StringVar(&hostfile, "hostfile", "hosts.txt", "file with hostnames space separated")
 	flag.StringVar(&clientfile, "clientfile", "hosts.txt", "file with clientnames space separated")
 	flag.IntVar(&depth, "depth", 2, "the depth of the tree to build")
@@ -40,6 +43,38 @@ func init() {
 	flag.IntVar(&cps, "cps", 10, "clients per server")
 	flag.BoolVar(&zoo, "zoo", false, "flag to indicate that there is a shared ")
 	flag.StringVar(&uname, "u", "yale_dissent", "the username to use when logging in")
+	flag.BoolVar(&kill, "kill", false, "kill services running on given nodes")
+	flag.StringVar(&logger, "logger", "hippo.zoo.cs.yale.edu:9123", "the address that the logger will be running at")
+}
+
+func setupLogger() {
+	h, _, err := net.SplitHostPort(logger)
+	if err != nil {
+		log.Info(err)
+		h = logger
+	}
+	// build the logserver for the logger's environment
+	err = build("../logserver", "386", "linux")
+	if err != nil {
+		log.Fatal("failed to build logserver:", err)
+	}
+	// move the build to the logserver directory
+	err = os.Rename("logserver", "../logserver/logserver")
+	if err != nil {
+		log.Fatal("failed to rename logserver:", err)
+	}
+	// scp the logserver to the environment it will run on
+	err = scp(uname, h, "../logserver", "~/")
+	if err != nil {
+		log.Fatal("failed to scp logserver:", err)
+	}
+	// startup the logserver
+	go func() {
+		sshRunStdout(uname, h, "cd logserver; ./logserver -addr="+logger)
+		if err != nil {
+			log.Fatal("failed to run logserver:", err)
+		}
+	}()
 }
 
 // takes in list of unique hosts
@@ -83,18 +118,18 @@ func testNodes(hostnames []string, failed map[string]bool) ([]string, []byte) {
 	var edgelist []byte
 	var wg sync.WaitGroup
 	for _, host := range hostnames {
-		wg.Add(1)
 		log.Println("latency test:", host)
 		if _, ok := failed[host]; ok {
 			continue
 		}
+		wg.Add(1)
 		go func(host string) {
-			starttime := time.Now()
 			defer wg.Done()
+			starttime := time.Now()
 			// kill latent processes
 			err := timeoutRun(10*time.Second,
 				func() error {
-					return sshRunStdout(uname, host, "killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec")
+					return sshRunStdout(uname, host, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec")
 				})
 			if err != nil {
 				log.Println("Failed:", host, err)
@@ -117,7 +152,7 @@ func testNodes(hostnames []string, failed map[string]bool) ([]string, []byte) {
 
 			// if this took to long say that this has failed
 			if time.Since(starttime) > (20 * time.Minute) {
-				log.Println("Failed took too long:", host, err)
+				log.Println("Failed:", host, err)
 				mu.Lock()
 				failed[host] = true
 				mu.Unlock()
@@ -158,7 +193,7 @@ func scpClientFiles(clients []string) {
 
 func deployClient(client string, host string) {
 	time.Sleep(1 * time.Second)
-	log.Println("running client")
+	// log.Println("running client")
 	// timestamp server runs a port one higher than the signingnode port
 	h, p, err := net.SplitHostPort(host)
 	if err != nil {
@@ -167,7 +202,7 @@ func deployClient(client string, host string) {
 	pn, _ := strconv.Atoi(p)
 	pn += 1
 	hp := net.JoinHostPort(h, strconv.Itoa(pn))
-	if err := sshRunStdout(uname, client, "./timeclient -name="+client+" -server="+hp+" -nmsgs="+strconv.Itoa(nrounds)); err != nil {
+	if err := sshRunStdout(uname, client, "./timeclient -name="+client+" -server="+hp+" -nmsgs="+strconv.Itoa(nrounds)+" -logger="+logger); err != nil {
 		log.Fatal(host, err)
 	}
 }
@@ -205,7 +240,6 @@ func scpServerFiles(hostnames []string) {
 func deployServers(hostnames []string) {
 	var wg sync.WaitGroup
 	for _, hostport := range hostnames {
-		log.Println("sending over cfg")
 		wg.Add(1)
 		go func(hostport string) {
 			defer wg.Done()
@@ -213,8 +247,8 @@ func deployServers(hostnames []string) {
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Println("running signing node")
-			if err := sshRunStdout(uname, host, "./cocoexec -hostname="+hostport+" -app="+app+" -nrounds="+strconv.Itoa(nrounds)+" -config=cfg.json"); err != nil {
+			// log.Println("running signing node")
+			if err := sshRunStdout(uname, host, "./cocoexec -hostname="+hostport+" -app="+app+" -nrounds="+strconv.Itoa(nrounds)+" -config=cfg.json -logger="+logger); err != nil {
 				log.Fatal(host, err)
 			}
 		}(hostport)
@@ -276,6 +310,27 @@ func main() {
 
 	// test the latency between nodes and remove bad ones
 	uniquehosts := getUniqueHosts(hostnames)
+	uniqueclients := getUniqueHosts(clientnames)
+
+	if kill {
+		var wg sync.WaitGroup
+		for _, h := range hostnames {
+			wg.Add(1)
+			go func(h string) {
+				defer wg.Done()
+				sshRun(uname, h, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec; rm -rf latency_test; rm -rf timeclient")
+			}(h)
+		}
+		for _, h := range clientnames {
+			wg.Add(1)
+			go func(h string) {
+				defer wg.Done()
+				sshRun(uname, h, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec; rm -rf latency_test; rm -rf timeclient")
+			}(h)
+		}
+		wg.Wait()
+		return
+	}
 	log.Println("uniquehosts: ", uniquehosts)
 	failed := scpTestFiles(uniquehosts)
 	goodhosts, edgelist := testNodes(hostnames, failed)
@@ -286,6 +341,7 @@ func main() {
 	g.LoadEdgeList(edgelist)
 
 	// this network into a tree with the given depth
+	log.Println("CONSTRUCTING TREE OF DEPTH:", depth)
 	t := g.Tree(depth)
 
 	// generate the public and private keys for each node in this tree
@@ -311,9 +367,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	uniqueclients := getUniqueHosts(clientnames)
+	log.Infoln("setting up logger")
+	setupLogger()
+	log.Infoln("set up logger")
+	uniqueclients = getUniqueHosts(clientnames)
 	uniquehosts = getUniqueHosts(cf.Hosts)
+	log.Infoln("running clients and servers")
 	scpClientFiles(uniqueclients)
 	scpServerFiles(uniquehosts)
 	runClients(clientnames, cf.Hosts, cps)

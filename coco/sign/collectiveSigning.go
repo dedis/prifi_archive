@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
 	"sort"
 	"strconv"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
@@ -353,7 +354,7 @@ func (sn *SigningNode) Respond() error {
 				// ignore if no error is actually set
 				continue
 			}
-			return sm.Err.Err
+			return errors.New(sm.Err.Err)
 		case Response:
 			// disregard response from children that did not commit
 			if sn.ChildVs[i].Equal(nullPoint) {
@@ -385,7 +386,7 @@ func (sn *SigningNode) Respond() error {
 		if err != nil {
 			return sn.PutUp(SigningMessage{
 				Type: Error,
-				Err:  &ErrorMessage{Err: err}})
+				Err:  &ErrorMessage{Err: err.Error()}})
 		}
 		rm := &ResponseMessage{
 			R_hat:          sn.r_hat,
