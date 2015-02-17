@@ -3,8 +3,10 @@ package graphs
 import (
 	"bytes"
 	"container/list"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"strconv"
 )
 
@@ -172,4 +174,164 @@ func (g *Graph) BestConnector() int {
 		}
 	}
 	return index
+}
+
+var ErrNoNodesGiven = errors.New("No Nodes Given as argument")
+var ErrNoHosts = errors.New("Can't have 0 hosts per node")
+
+// Given a list of machine names, a number of hosts per machine(node),
+// and a branching factor
+// Return a Tree that meets the branching factor restriction, and
+// has no two adjacent nodes in the Tree running as hosts on the same machine
+// Also returns a list of the host names created and their ports
+func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...string) (
+	*Tree, []string, error) {
+
+	if len(nodeNames) < 1 {
+		return nil, nil, ErrNoNodesGiven
+	}
+
+	if hostsPerNode <= 0 {
+		// TODO: maybe something else is desired here
+		return nil, nil, ErrNoHosts
+	}
+
+	// Hosts on one machine get ports starting with StartPort
+	// and distanced 10 away
+	StartPort := 32600
+
+	// Map from nodes to their hosts
+	mp := make(map[string][]string)
+
+	// Generate host names
+	hostAddr := make([]string, 0)
+	for _, nodeName := range nodeNames {
+		mp[nodeName] = make([]string, 0)
+		for i := 0; i < hostsPerNode; i++ {
+			addr := net.JoinHostPort(nodeName, strconv.Itoa(StartPort+i*10))
+			hostAddr = append(hostAddr, addr)
+
+			mp[nodeName] = append(mp[nodeName], addr)
+		}
+	}
+
+	var startM string
+	if len(startMachine) > 0 {
+		startM = startMachine[0]
+	} else {
+		startM = nodeNames[0]
+	}
+
+	tnodes, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp)
+	return tnodes, usedHostAddr, err
+}
+
+func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, startM string, mp map[string][]string) (
+	*Tree, []string, error) {
+
+	if hostsPerNode <= 0 {
+		// TODO: maybe something else is desired here
+		return nil, nil, ErrNoHosts
+	}
+
+	nodesTouched := make([]string, 0)
+	nodesTouched = append(nodesTouched, startM)
+
+	hostsCreated := make([]string, 0)
+	rootHost := mp[startM][0]
+	hostsCreated = append(hostsCreated, rootHost)
+	mp[startM] = mp[startM][1:]
+
+	hostTNodes := make([]*Tree, 0)
+	rootTNode := &Tree{Name: rootHost}
+	hostTNodes = append(hostTNodes, rootTNode)
+
+	for i := 0; i < len(hostsCreated); i++ {
+		curHost := hostsCreated[i]
+		curTNode := hostTNodes[i]
+		curNode, _, _ := net.SplitHostPort(curHost)
+
+		curTNode.Children = make([]*Tree, 0)
+
+		for c := 0; c < bf; c++ {
+			var newHost string
+			nodesTouched, mp, newHost = GetFirstFreeNode(nodesTouched, mp, curNode)
+			if newHost == "" {
+				break
+			}
+
+			// create Tree Node for the new host
+			newHostTNode := &Tree{Name: newHost}
+			curTNode.Children = append(curTNode.Children, newHostTNode)
+
+			// keep track of created hosts and nodes
+			hostsCreated = append(hostsCreated, newHost)
+			hostTNodes = append(hostTNodes, newHostTNode)
+
+			// keep track of machines used in FIFO order
+			node, _, _ := net.SplitHostPort(newHost)
+			nodesTouched = append(nodesTouched, node)
+		}
+		// fmt.Println(i, hostsCreated)
+	}
+
+	return rootTNode, hostsCreated, nil
+}
+
+// Go through list of nodes(machines) and choose a hostName on the first node that
+// still has room for more hosts on it and is != curNode
+// If such a machine does not exist, loop through the map from machine names
+// to their available host names, and choose a name on the first free machine != curNode
+// Return updated nodes and map (completely full nodes are deleted ) and the chosen hostName
+func GetFirstFreeNode(nodes []string, mp map[string][]string, curNode string) (
+	[]string, map[string][]string, string) {
+	var chosen string
+	uNodes := make([]string, 0)
+
+	// loop through recently selected machines that already have hosts
+	var i int
+	var node string
+	for i, node = range nodes {
+		if node != curNode {
+			if len(mp[node]) > 0 {
+				// choose hostname on this node
+				chosen = mp[node][0]
+				mp[node] = mp[node][1:]
+
+				// if still not fully used, add to updated nodes
+				if len(mp[node]) > 0 {
+					uNodes = append(uNodes, node)
+				}
+				break
+			} else {
+				// remove full node
+				delete(mp, node)
+			}
+		}
+	}
+
+	// keep in list nodes after chosen node
+	for ; i < len(nodes); i++ {
+		uNodes = append(uNodes, node)
+	}
+
+	if chosen != "" {
+		// we were able to make a choice
+		// but all recently seen nodes before 'i' were fully used
+		return uNodes, mp, chosen
+	}
+
+	// all recently seen nodes were fully used or == curNode
+	// must choose free machine from map
+	for node := range mp {
+		if node != curNode {
+			if len(mp[node]) > 0 {
+				chosen = mp[node][0]
+				mp[node] = mp[node][1:]
+				break
+			}
+		}
+	}
+
+	return uNodes, mp, chosen
 }

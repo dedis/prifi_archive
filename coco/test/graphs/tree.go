@@ -2,6 +2,7 @@ package graphs
 
 import (
 	"encoding/hex"
+	"fmt"
 
 	"github.com/dedis/crypto/abstract"
 )
@@ -34,4 +35,13 @@ func (t *Tree) GenKeys(suite abstract.Suite, rand abstract.Cipher) {
 		t.PriKey = string(hex.EncodeToString(prk))
 		t.PubKey = string(hex.EncodeToString(pbk))
 	})
+}
+
+func PrintTreeNode(t *Tree) {
+	fmt.Println(t.Name)
+
+	for _, c := range t.Children {
+		fmt.Println("\t", c.Name)
+	}
+
 }
