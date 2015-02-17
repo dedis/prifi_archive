@@ -20,6 +20,7 @@ var server string
 var nmsgs int
 var name string
 var logger string
+var rate int
 
 func init() {
 	addr, _ := oldconfig.GetAddress()
@@ -27,6 +28,7 @@ func init() {
 	flag.IntVar(&nmsgs, "nmsgs", 100, "messages per round")
 	flag.StringVar(&name, "name", addr, "name for the client")
 	flag.StringVar(&logger, "logger", "", "remote logger")
+	flag.IntVar(&rate, "rate", -1, "milliseconds between timestamp requests")
 
 	//log.SetFormatter(&log.JSONFormatter{})
 }
@@ -63,6 +65,24 @@ func main() {
 	conn := coconet.NewTCPConn(server)
 	c.AddServer(server, conn)
 	msgs := genRandomMessages(nmsgs)
+
+	// if the rate has been specified then send out one message every
+	// rate milliseconds
+	if rate != -1 {
+		c := time.Tick(rate * time.Millisecond)
+		for {
+			go func() {
+				e := c.TimeStamp(msgs[0], server)
+				if e != nil {
+					log.Errorln("error timesamping:", e)
+				}
+			}()
+			<-c
+		}
+		return
+	}
+
+	// rounds based messaging
 	r := 0
 	for {
 		start := time.Now()
