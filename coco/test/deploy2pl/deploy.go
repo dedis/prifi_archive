@@ -1,3 +1,7 @@
+// deploy2pl handles deployment to planet lab nodes
+//
+// TODO: multiple processes per node
+//
 package main
 
 import (
@@ -15,6 +19,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/coco/test/cliutils"
 	"github.com/dedis/prifi/coco/test/config"
 	"github.com/dedis/prifi/coco/test/graphs"
 )
@@ -54,7 +59,7 @@ func setupLogger() {
 		h = logger
 	}
 	// build the logserver for the logger's environment
-	err = build("../logserver", "386", "linux")
+	err = cliutils.Build("../logserver", "386", "linux")
 	if err != nil {
 		log.Fatal("failed to build logserver:", err)
 	}
@@ -64,13 +69,13 @@ func setupLogger() {
 		log.Fatal("failed to rename logserver:", err)
 	}
 	// scp the logserver to the environment it will run on
-	err = scp(uname, h, "../logserver", "~/")
+	err = cliutils.Scp(uname, h, "../logserver", "~/")
 	if err != nil {
 		log.Fatal("failed to scp logserver:", err)
 	}
 	// startup the logserver
 	go func() {
-		sshRunStdout(uname, h, "cd logserver; ./logserver -addr="+logger)
+		cliutils.SshRunStdout(uname, h, "cd logserver; ./logserver -addr="+logger)
 		if err != nil {
 			log.Fatal("failed to run logserver:", err)
 		}
@@ -88,8 +93,8 @@ func scpTestFiles(hostnames []string) map[string]bool {
 
 		go func(host string) {
 			defer wg.Done()
-			err := timeoutRun(10*time.Second,
-				func() error { return scp(uname, host, "latency_test", "latency_test") })
+			err := cliutils.TimeoutRun(10*time.Second,
+				func() error { return cliutils.Scp(uname, host, "latency_test", "latency_test") })
 			if err != nil {
 				log.Println("Failed:", host, err)
 				mu.Lock()
@@ -98,8 +103,8 @@ func scpTestFiles(hostnames []string) map[string]bool {
 				return
 			}
 
-			err = timeoutRun(10*time.Second,
-				func() error { return scp(uname, host, hostfile, "hosts.txt") })
+			err = cliutils.TimeoutRun(10*time.Second,
+				func() error { return cliutils.Scp(uname, host, hostfile, "hosts.txt") })
 			if err != nil {
 				log.Println("Failed:", host, err)
 				mu.Lock()
@@ -127,9 +132,9 @@ func testNodes(hostnames []string, failed map[string]bool) ([]string, []byte) {
 			defer wg.Done()
 			starttime := time.Now()
 			// kill latent processes
-			err := timeoutRun(10*time.Second,
+			err := cliutils.TimeoutRun(10*time.Second,
 				func() error {
-					return sshRunStdout(uname, host, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec")
+					return cliutils.SshRunStdout(uname, host, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec")
 				})
 			if err != nil {
 				log.Println("Failed:", host, err)
@@ -141,7 +146,7 @@ func testNodes(hostnames []string, failed map[string]bool) ([]string, []byte) {
 
 			// run the latency test
 			log.Println("running latency_test:", host)
-			output, err := sshRun(uname, host, "./latency_test -hostfile=hosts.txt -hostname="+host)
+			output, err := cliutils.SshRun(uname, host, "./latency_test -hostfile=hosts.txt -hostname="+host)
 			if err != nil {
 				log.Println("Failed:", host, err)
 				mu.Lock()
@@ -183,7 +188,7 @@ func scpClientFiles(clients []string) {
 		wg.Add(1)
 		go func(client string) {
 			defer wg.Done()
-			if err := scp(uname, client, "timeclient", "timeclient"); err != nil {
+			if err := cliutils.Scp(uname, client, "timeclient", "timeclient"); err != nil {
 				log.Println(client, err)
 			}
 		}(c)
@@ -202,7 +207,7 @@ func deployClient(client string, host string) {
 	pn, _ := strconv.Atoi(p)
 	pn += 1
 	hp := net.JoinHostPort(h, strconv.Itoa(pn))
-	if err := sshRunStdout(uname, client, "./timeclient -name="+client+" -server="+hp+" -nmsgs="+strconv.Itoa(nrounds)+" -logger="+logger); err != nil {
+	if err := cliutils.SshRunStdout(uname, client, "./timeclient -name="+client+" -server="+hp+" -nmsgs="+strconv.Itoa(nrounds)+" -logger="+logger); err != nil {
 		log.Fatal(host, err)
 	}
 }
@@ -226,10 +231,10 @@ func scpServerFiles(hostnames []string) {
 		wg.Add(1)
 		go func(host string) {
 			defer wg.Done()
-			if err := scp(uname, host, "cfg.json", "cfg.json"); err != nil {
+			if err := cliutils.Scp(uname, host, "cfg.json", "cfg.json"); err != nil {
 				log.Fatal(host, err)
 			}
-			if err := scp(uname, host, "exec", "cocoexec"); err != nil {
+			if err := cliutils.Scp(uname, host, "exec", "cocoexec"); err != nil {
 				log.Println(host, err)
 			}
 		}(host)
@@ -248,7 +253,7 @@ func deployServers(hostnames []string) {
 				log.Fatal(err)
 			}
 			// log.Println("running signing node")
-			if err := sshRunStdout(uname, host, "./cocoexec -hostname="+hostport+" -app="+app+" -nrounds="+strconv.Itoa(nrounds)+" -config=cfg.json -logger="+logger); err != nil {
+			if err := cliutils.SshRunStdout(uname, host, "./cocoexec -hostname="+hostport+" -app="+app+" -nrounds="+strconv.Itoa(nrounds)+" -config=cfg.json -logger="+logger); err != nil {
 				log.Fatal(host, err)
 			}
 		}(hostport)
@@ -296,14 +301,14 @@ func main() {
 	clientnames := strings.Fields(string(content))
 	log.Println("clientnames: ", clientnames)
 
-	if err := build("../latency_test", "386", "linux"); err != nil {
+	if err := cliutils.Build("../latency_test", "386", "linux"); err != nil {
 		log.Fatal(err)
 	}
-	if err := build("../exec", "386", "linux"); err != nil {
+	if err := cliutils.Build("../exec", "386", "linux"); err != nil {
 		log.Fatal(err)
 	}
 	if app == "time" {
-		if err := build("../timeclient", "386", "linux"); err != nil {
+		if err := cliutils.Build("../timeclient", "386", "linux"); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -318,14 +323,14 @@ func main() {
 			wg.Add(1)
 			go func(h string) {
 				defer wg.Done()
-				sshRun(uname, h, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec; rm -rf latency_test; rm -rf timeclient")
+				cliutils.SshRun(uname, h, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec; rm -rf latency_test; rm -rf timeclient")
 			}(h)
 		}
 		for _, h := range clientnames {
 			wg.Add(1)
 			go func(h string) {
 				defer wg.Done()
-				sshRun(uname, h, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec; rm -rf latency_test; rm -rf timeclient")
+				cliutils.SshRun(uname, h, "killall logserver; killall timeclient; killall latency_test; killall cocoexec; rm -rf cocoexec; rm -rf latency_test; rm -rf timeclient")
 			}(h)
 		}
 		wg.Wait()

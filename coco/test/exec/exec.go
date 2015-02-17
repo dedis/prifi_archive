@@ -13,8 +13,10 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"strconv"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -35,7 +37,7 @@ func init() {
 	flag.StringVar(&hostname, "hostname", "", "the hostname of this node")
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
 	flag.StringVar(&logger, "logger", "", "remote logger")
-	flag.StringVar(&app, "app", "sign", "application to run [sign|time]")
+	flag.StringVar(&app, "app", "time", "application to run [sign|time]")
 	flag.IntVar(&nrounds, "nrounds", math.MaxInt32, "number of rounds to run")
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 }
@@ -43,8 +45,13 @@ func init() {
 func main() {
 	flag.Parse()
 	go func() {
+		_, port, err := net.SplitHostPort(hostname)
+		if err != nil {
+			log.Fatal("improperly formatted hostname: should be host:port")
+		}
+		p, _ := strconv.Atoi(port)
 		//runtime.MemProfileRate = 1
-		log.Println(http.ListenAndServe(pprofaddr, nil))
+		log.Println(http.ListenAndServe(strconv.Itoa(p+2), nil))
 	}()
 	//log.SetPrefix(hostname + ":")
 	//log.SetFlags(log.Lshortfile)
@@ -114,6 +121,8 @@ func main() {
 	} else if app == "time" {
 		log.Println("RUNNING TIMESTAMPER")
 		stampers, _, err := hc.RunTimestamper(0, hostname)
+		// get rid of the hc information so it can be GC
+		hc = nil
 		if err != nil {
 			log.Fatal(err)
 		}
