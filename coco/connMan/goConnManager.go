@@ -19,6 +19,18 @@ type GoConnManager struct {
 	pubKey abstract.Point
 }
 
+
+//type ConnManager struct {
+//	peerMap map[string]coconet.Conn
+//}
+
+//func (cm *ConnManager) AddConn(top abstract.Point, conn coconet.Conn) {
+//	to := top.String()
+//	peerMap[to] = conn
+//}
+
+
+
 /* Initializes a new GoConnManager
  *
  * Arguments:
