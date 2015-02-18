@@ -1,7 +1,6 @@
 package dcnet
 
 import (
-	"crypto/cipher"
 	"github.com/dedis/crypto/abstract"
 )
 
@@ -22,32 +21,28 @@ type CellCoder interface {
 	// accounting for whatever expansion the cell encoding imposes.
 	TrusteeCellSize(payloadlen int) int
 
-
 	///// Client methods /////
 
-	ClientSetup(suite abstract.Suite, trusteestreams []cipher.Stream)
+	ClientSetup(suite abstract.Suite, trusteeciphers []abstract.Cipher)
 
 	// Encode a ciphertext slice for the current cell,
 	// transmitting the optional payload if non-nil.
-	ClientEncode(payload []byte, payloadlen int,
-			histoream cipher.Stream) []byte
-
+	ClientEncode(payload []byte, payloadlen int, history abstract.Cipher) []byte
 
 	///// Client methods /////
 
-	TrusteeSetup(suite abstract.Suite, clientstreams []cipher.Stream) []byte
+	TrusteeSetup(suite abstract.Suite, clientciphers []abstract.Cipher) []byte
 
 	// Encode the trustee's ciphertext slice for the current cell.
 	// Can be pre-computed for an interval based on a client-set.
 	TrusteeEncode(payloadlen int) []byte
-
 
 	///// Relay methods /////
 
 	RelaySetup(suite abstract.Suite, trusteeinfo [][]byte)
 
 	// Initialize per-cell decoding state for the next cell
-	DecodeStart(payloadlen int, histoream cipher.Stream)
+	DecodeStart(payloadlen int, history abstract.Cipher)
 
 	// Combine a client's ciphertext slice into this cell.
 	// This decoding could be done in the background for parallelism;
@@ -62,6 +57,4 @@ type CellCoder interface {
 	DecodeCell() []byte
 }
 
-
 type CellFactory func() CellCoder
-
