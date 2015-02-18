@@ -2,10 +2,8 @@ package insure
 
 import (
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/edwards"
 	"github.com/dedis/crypto/nist"
-	"github.com/dedis/prifi/coco/connMan"
 )
 
 const (
@@ -43,9 +41,9 @@ type Policy interface {
 	// needed to reconstruct the secret. Once it has achieved at least "r"
 	// receipts from other servers verifying that it has taken out a policy
 	// with them (where t <= r <= n), the function returns the new policy.
-	TakeOutPolicy(keyPair *config.KeyPair, serverList []abstract.Point,
+	TakeOutPolicy(serverList []abstract.Point,
 		selectInsurers func([]abstract.Point, int) ([]abstract.Point, bool),
-		cman connMan.ConnManager, n int) (*Policy, bool)
+		n int) (*Policy, bool)
 
 	// Returns the list of insurers for the policy
 	GetInsurers() []abstract.Point

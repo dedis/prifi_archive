@@ -82,21 +82,24 @@ func setupConn() bool {
 	return true
 }
 
-func insurers(k * config.KeyPair, cm connMan.ConnManager) {
+func insurers(t *testing.T, k * config.KeyPair, cm connMan.ConnManager) {
+
+	policy := new(LifePolicy).Init(k, cm) 
 
 	for true {
 		msg := new(PolicyMessage)
 		cm.Get(keyPairT.Public, msg)
+		
+		msgType, ok := policy.handlePolicyMessage(msg)
 			
 		// If a RequestInsuranceMessage, send an acceptance message and then
 		// exit.
-		if msg.Type == RequestInsurance {
-			reply := new(PolicyApprovedMessage).createMessage(k, msg.getRIM().PubKey)
-			cm.Put(msg.getRIM().PubKey, new(PolicyMessage).createPAMessage(reply))
-			
-			// Send a duplicate to make sure that our insurance policy doesn't add
-			// the same message from the same source twice.
-			cm.Put(msg.getRIM().PubKey, new(PolicyMessage).createPAMessage(reply))	
+		if msgType == RequestInsurance && ok {
+		
+			if storedMsg, ok := policy.insuredClients[keyPairT.Public.String()]; !ok ||
+				!storedMsg.Equal(msg.getRIM()){			
+				t.Error("Request message failed to be properly stored.")
+			}
 			return
 		}
 	}
@@ -107,8 +110,7 @@ func TestTakeOutPolicy(t *testing.T) {
 	// ERROR CHECKING
 	
 	// Invalid n
-	_, ok1 := new(LifePolicy).TakeOutPolicy(keyPairT, insurerList, nil,
-			goConn, 0)
+	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(insurerList, nil, 0)
 			
 	if ok1 {
 		t.Fatal("Policy should fail if n < TSHARES.")
@@ -116,8 +118,7 @@ func TestTakeOutPolicy(t *testing.T) {
 	
 	// Too small insurersList
 	
-	_, ok2 := new(LifePolicy).TakeOutPolicy(keyPairT,[]abstract.Point{keyPair2T.Public}, nil,
-			goConn, 0)
+	_, ok2 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy([]abstract.Point{keyPair2T.Public}, nil, 0)
 			
 	if ok2 {
 		t.Fatal("Policy should fail not enough servers are given.")
@@ -127,8 +128,7 @@ func TestTakeOutPolicy(t *testing.T) {
 	
 	badFunc := func(sl []abstract.Point, n int)([]abstract.Point, bool) {return []abstract.Point{keyPair2T.Public, keyPair3T.Public}, true}
 	
-	_, ok3 := new(LifePolicy).TakeOutPolicy(keyPairT, insurerList, badFunc,
-			goConn, 0)
+	_, ok3 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(insurerList, badFunc, 0)
 			
 	if ok3 {
 		t.Fatal("Policy should fail not enough servers are given.")
@@ -136,21 +136,20 @@ func TestTakeOutPolicy(t *testing.T) {
 	
 	
 	// Start up the other insurers.
-	go insurers(keyPair2T, goConn2)
-	go insurers(keyPair3T, goConn3)
-	go insurers(keyPair4T, goConn4)
-	go insurers(keyPair5T, goConn5)
-	go insurers(keyPair6T, goConn6)
-	go insurers(keyPair7T, goConn7)
-	go insurers(keyPair8T, goConn8)
-	go insurers(keyPair9T, goConn9)
-	go insurers(keyPair10T, goConn10)
-	go insurers(keyPair11T, goConn11)
+	go insurers(t, keyPair2T, goConn2)
+	go insurers(t, keyPair3T, goConn3)
+	go insurers(t, keyPair4T, goConn4)
+	go insurers(t, keyPair5T, goConn5)
+	go insurers(t, keyPair6T, goConn6)
+	go insurers(t, keyPair7T, goConn7)
+	go insurers(t, keyPair8T, goConn8)
+	go insurers(t, keyPair9T, goConn9)
+	go insurers(t, keyPair10T, goConn10)
+	go insurers(t, keyPair11T, goConn11)
 	
 	n := 10
 
-	policy, ok := new(LifePolicy).TakeOutPolicy(keyPairT, insurerList, nil,
-				goConn, n)
+	policy, ok := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(insurerList, nil, n)
 				
 	if !ok {
 		t.Error("Policy failed to be created.")
@@ -206,3 +205,4 @@ func TestTakeOutPolicy(t *testing.T) {
 		}
 	}
 }
+
