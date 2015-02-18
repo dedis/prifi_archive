@@ -84,9 +84,6 @@ func (gcm *GoConnManager) GetDir() *coconet.GoDirectory {
  * 	An error denoting whether the put was successfull
  */
 func (gcm * GoConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
-	if gcm.peerMap[p.String()] == nil {
-		panic("DADADAAAA")
-	}
 	return gcm.peerMap[p.String()].Put(data)
 }
 
