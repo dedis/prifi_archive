@@ -160,6 +160,9 @@ func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsura
 	msg.ShareNumber = nist.NewInt(int64(0), big.NewInt(int64(math.MaxInt64)))
 	b := bytes.NewBuffer(data)
 	err := abstract.Read(b, msg, INSURE_GROUP)
+	if err != nil {
+		panic(err)
+	}
 	return msg, err
 //	return 	msg, protobuf.Decode(data, msg)
 

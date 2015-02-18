@@ -41,7 +41,7 @@ func TestRequestInsuranceCreate(t *testing.T) {
 	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, share, pubCommit)
 
 	if !keyPair.Public.Equal(msg.PubKey) || !share.Equal(msg.Share) || !pubCommit.Equal(msg.PubCommit) ||
-	   0 != msg.ShareNumber.V.Sign() {
+	   0 != msg.ShareNumber.V.Int64() {
 		t.Error("RequestInsuranceMessage was not initialized properly.")
 	}
 }
@@ -88,8 +88,8 @@ func TestRequestInsuranceEqual(t *testing.T) {
 
 // Verifies that a RequestInsuranceMessage can be marshalled and unmarshalled
 func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
-	share := prishares.Share(0)
-	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0, share, pubCommit)
+	share := prishares.Share(5)
+	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 5, share, pubCommit)
 	encodedMsg, err := msg.MarshalBinary()
 	if err != nil {
 		t.Error("Marshalling failed!")
@@ -105,7 +105,74 @@ func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
 	    !pubCommit.Equal(msg.PubCommit) ||
 	    !msg.Share.Equal(newMsg.Share) || !keyPair.Public.Equal(newMsg.PubKey) ||
 	    !msg.PubCommit.Equal(newMsg.PubCommit) ||
-	    msg.ShareNumber.V.Sign() != newMsg.ShareNumber.V.Sign() {
+	    msg.ShareNumber.V.Int64() != newMsg.ShareNumber.V.Int64() ||
+	    !msg.PubCommit.Check(int(msg.ShareNumber.V.Int64()), msg.Share) ||
+	    !newMsg.PubCommit.Check(int(newMsg.ShareNumber.V.Int64()), newMsg.Share) {
+	    
+	    
+	    	if !msg.PubCommit.Check(int(newMsg.ShareNumber.V.Int64()), newMsg.Share) {
+	    		t.Error("Share and number of new message corrupted")
+	    	}
+	    
+	    	if !newMsg.PubCommit.Check(int(msg.ShareNumber.V.Int64()), msg.Share) {
+	    		t.Error("New pub poly failed to verify old share")
+	    	}
+
+	    	if !msg.PubCommit.Equal(newMsg.PubCommit) {
+	    		t.Error("Polynomials are not equal.")
+	    	}
+	    
+	    
+	    	t.Error("Share Number Original", int(msg.ShareNumber.V.Int64()))
+	        t.Error("Share Number New", int(newMsg.ShareNumber.V.Int64()) )
+	        
+	    	bytes, _ := msg.PubCommit.MarshalBinary()
+	    	bytes2, _ := newMsg.PubCommit.MarshalBinary()
+	    
+	    	if len(bytes) != len(bytes2) {
+	    		t.Error("Polynomial has been corrupted.")
+	    	}
+	    
+	    	for i := 0; i < len(bytes); i++ {
+	    		if bytes[i] != bytes2[i] {
+	    			t.Error("Byte corrupted at position: ", i)
+	    		}
+	    	}
+	    	
+	    	orgBytes, _ := pubCommit.MarshalBinary()
+	    	
+	    	for i := 0; i < len(bytes2); i++ {
+	    		if orgBytes[i] != bytes2[i] {
+	    			t.Error("Byte corrupted at position: ", i)
+	    		}
+	    	}
+	    	
+	    	
+	    	secbytes, _ := msg.Share.MarshalBinary()
+	    	secbytes2, _ := newMsg.Share.MarshalBinary()
+	    
+	    	if len(secbytes) != len(secbytes2) {
+	    		t.Error("Polynomial has been corrupted.")
+	    	}
+	    
+	    	for i := 0; i < len(secbytes); i++ {
+	    		if secbytes[i] != secbytes2[i] {
+	    			t.Error("Byte corrupted at position: ", i)
+	    		}
+	    	}
+	    	
+	    	orgSecButes, _ := share.MarshalBinary()
+	    	
+	    	for i := 0; i < len(secbytes2); i++ {
+	    		if orgSecButes[i] != secbytes2[i] {
+	    			t.Error("Byte corrupted at position: ", i)
+	    		}
+	    	}
+	    	
+	  	//t.Error("Bytes from original plynomial", orgBytes)
+	    	//t.Error("Bytes from original message", bytes)
+	    	//t.Error("Bytes from sent message", bytes2)
+	    
 		t.Error("Data was lost during marshalling.")
 	}
 }
