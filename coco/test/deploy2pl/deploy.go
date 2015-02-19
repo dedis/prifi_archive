@@ -199,7 +199,7 @@ func scpClientFiles(clients []string) {
 func deployClient(client string, host string) {
 	time.Sleep(1 * time.Second)
 	// log.Println("running client")
-	// timestamp server runs a port one higher than the signingnode port
+	// timestamp server runs a port one higher than the Node port
 	h, p, err := net.SplitHostPort(host)
 	if err != nil {
 		log.Fatal(err)

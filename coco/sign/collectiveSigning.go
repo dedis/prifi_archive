@@ -28,7 +28,7 @@ var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
 // Determine type of message coming from the parent
 // Pass the duty of acting on it to another function
-func (sn *SigningNode) getUp() {
+func (sn *Node) getUp() {
 	for {
 		sm := SigningMessage{}
 		if err := sn.GetUp(&sm); err != nil {
@@ -50,7 +50,7 @@ func (sn *SigningNode) getUp() {
 
 // Used in Commit and Respond to get commits and responses from all
 // children before creating own commit and response
-func (sn *SigningNode) getDown() {
+func (sn *Node) getDown() {
 	// update waiting time based on current depth
 	sn.UpdateTimeout()
 	// wait for all children to commit
@@ -94,7 +94,7 @@ func (sn *SigningNode) getDown() {
 }
 
 // Start listening for messages coming from parent(up)
-func (sn *SigningNode) Listen() error {
+func (sn *Node) Listen() error {
 	sn.setPool()
 
 	if !sn.IsRoot() {
@@ -106,7 +106,7 @@ func (sn *SigningNode) Listen() error {
 }
 
 // initiated by root, propagated by all others
-func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
+func (sn *Node) Announce(am *AnnouncementMessage) error {
 	// the root is the only node that keeps track of round # internally
 	if sn.IsRoot() {
 		sn.Round = am.Round
@@ -132,7 +132,7 @@ func (sn *SigningNode) Announce(am *AnnouncementMessage) error {
 	return sn.Commit(am.Round)
 }
 
-func (sn *SigningNode) GetChildrenMerkleRoots(Round int) {
+func (sn *Node) GetChildrenMerkleRoots(Round int) {
 	round := sn.Rounds[Round]
 	// children commit roots
 	round.CMTRoots = make([]hashid.HashId, len(round.Leaves))
@@ -151,7 +151,7 @@ func (sn *SigningNode) GetChildrenMerkleRoots(Round int) {
 	}
 }
 
-func (sn *SigningNode) GetLocalMerkleRoot(Round int) {
+func (sn *Node) GetLocalMerkleRoot(Round int) {
 	round := sn.Rounds[Round]
 	// add own local mtroot to leaves
 	if sn.CommitFunc != nil {
@@ -162,7 +162,7 @@ func (sn *SigningNode) GetLocalMerkleRoot(Round int) {
 	round.Leaves = append(round.Leaves, round.LocalMTRoot)
 }
 
-func (sn *SigningNode) ComputeCombinedMerkleRoot(Round int) {
+func (sn *Node) ComputeCombinedMerkleRoot(Round int) {
 	round := sn.Rounds[Round]
 	// add hash of whole log to leaves
 	round.Leaves = append(round.Leaves, round.HashedLog)
@@ -170,11 +170,11 @@ func (sn *SigningNode) ComputeCombinedMerkleRoot(Round int) {
 	// compute MT root based on Log as right child and
 	// MT of leaves as left child and send it up to parent
 	sort.Sort(hashid.ByHashId(round.Leaves))
-	left, proofs := proof.ProofTree(sn.GetSuite().Hash, round.Leaves)
+	left, proofs := proof.ProofTree(sn.Suite().Hash, round.Leaves)
 	right := round.HashedLog
 	moreLeaves := make([]hashid.HashId, 0)
 	moreLeaves = append(moreLeaves, left, right)
-	round.MTRoot, _ = proof.ProofTree(sn.GetSuite().Hash, moreLeaves)
+	round.MTRoot, _ = proof.ProofTree(sn.Suite().Hash, moreLeaves)
 
 	// Hashed Log has to come first in the proof; len(sn.CMTRoots)+1 proofs
 	round.Proofs = make(map[string]proof.Proof, 0)
@@ -191,7 +191,7 @@ func (sn *SigningNode) ComputeCombinedMerkleRoot(Round int) {
 
 // Create round lasting secret and commit point v and V
 // Initialize log structure for the round
-func (sn *SigningNode) initCommitCrypto(Round int) {
+func (sn *Node) initCommitCrypto(Round int) {
 	round := sn.Rounds[Round]
 	// generate secret and point commitment for this round
 	rand := sn.suite.Cipher([]byte(sn.Name()))
@@ -206,7 +206,7 @@ func (sn *SigningNode) initCommitCrypto(Round int) {
 	sn.add(round.X_hat, sn.PubKey)
 }
 
-func (sn *SigningNode) waitOn(ch chan *SigningMessage, timeout time.Duration, what string) []*SigningMessage {
+func (sn *Node) waitOn(ch chan *SigningMessage, timeout time.Duration, what string) []*SigningMessage {
 	nChildren := len(sn.Children())
 	messgs := make([]*SigningMessage, 0)
 	received := 0
@@ -231,7 +231,7 @@ func (sn *SigningNode) waitOn(ch chan *SigningMessage, timeout time.Duration, wh
 	return messgs
 }
 
-func (sn *SigningNode) Commit(Round int) error {
+func (sn *Node) Commit(Round int) error {
 	round := sn.Rounds[Round]
 	sn.initCommitCrypto(Round)
 
@@ -289,7 +289,7 @@ func (sn *SigningNode) Commit(Round int) error {
 
 // Finalize commits by initiating the challenge pahse if root
 // Send own commitment message up to parent if non-root
-func (sn *SigningNode) actOnCommits(Round int) (err error) {
+func (sn *Node) actOnCommits(Round int) (err error) {
 	round := sn.Rounds[Round]
 	if sn.IsRoot() {
 		err = sn.FinalizeCommits()
@@ -317,19 +317,19 @@ func (sn *SigningNode) actOnCommits(Round int) (err error) {
 	return
 }
 
-func (sn *SigningNode) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
+func (sn *Node) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
 	round := sn.Rounds[chm.Round]
 	// proof from client to my root
-	proof.CheckProof(sn.GetSuite().Hash, round.MTRoot, round.LocalMTRoot, round.Proofs["local"])
+	proof.CheckProof(sn.Suite().Hash, round.MTRoot, round.LocalMTRoot, round.Proofs["local"])
 	// proof from my root to big root
-	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, round.MTRoot, chm.Proof)
+	proof.CheckProof(sn.Suite().Hash, chm.MTRoot, round.MTRoot, chm.Proof)
 	// proof from client to big root
-	proof.CheckProof(sn.GetSuite().Hash, chm.MTRoot, round.LocalMTRoot, proofForClient)
+	proof.CheckProof(sn.Suite().Hash, chm.MTRoot, round.LocalMTRoot, proofForClient)
 }
 
 // Create Merkle Proof for local client (timestamp server)
 // Send Merkle Proof to local client (timestamp server)
-func (sn *SigningNode) SendLocalMerkleProof(chm *ChallengeMessage) error {
+func (sn *Node) SendLocalMerkleProof(chm *ChallengeMessage) error {
 	if sn.DoneFunc != nil {
 		round := sn.Rounds[chm.Round]
 		proofForClient := make(proof.Proof, len(chm.Proof))
@@ -352,7 +352,7 @@ func (sn *SigningNode) SendLocalMerkleProof(chm *ChallengeMessage) error {
 
 // Create Personalized Merkle Proofs for children servers
 // Send Personalized Merkle Proofs to children servers
-func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error {
+func (sn *Node) SendChildrenChallengesProofs(chm *ChallengeMessage) error {
 	round := sn.Rounds[chm.Round]
 	// proof from big root to our root will be sent to all children
 	baseProof := make(proof.Proof, len(chm.Proof))
@@ -378,7 +378,7 @@ func (sn *SigningNode) SendChildrenChallengesProofs(chm *ChallengeMessage) error
 }
 
 // Send children challenges
-func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
+func (sn *Node) SendChildrenChallenges(chm *ChallengeMessage) error {
 	for _, child := range sn.Children() {
 		var messg coconet.BinaryMarshaler
 		messg = &SigningMessage{Type: Challenge, Chm: chm}
@@ -393,7 +393,7 @@ func (sn *SigningNode) SendChildrenChallenges(chm *ChallengeMessage) error {
 }
 
 // initiated by root, propagated by all others
-func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
+func (sn *Node) Challenge(chm *ChallengeMessage) error {
 	// register challenge
 	round := sn.Rounds[chm.Round]
 	round.c = chm.C
@@ -416,7 +416,7 @@ func (sn *SigningNode) Challenge(chm *ChallengeMessage) error {
 
 }
 
-func (sn *SigningNode) initResponseCrypto(Round int) {
+func (sn *Node) initResponseCrypto(Round int) {
 	round := sn.Rounds[Round]
 	// generate response   r = v - xc
 	round.r = sn.suite.Secret()
@@ -426,7 +426,7 @@ func (sn *SigningNode) initResponseCrypto(Round int) {
 }
 
 // accommodate nils
-func (sn *SigningNode) add(a abstract.Point, b abstract.Point) {
+func (sn *Node) add(a abstract.Point, b abstract.Point) {
 	if a == nil {
 		a = sn.suite.Point().Null()
 	}
@@ -437,7 +437,7 @@ func (sn *SigningNode) add(a abstract.Point, b abstract.Point) {
 }
 
 // accommodate nils
-func (sn *SigningNode) sub(a abstract.Point, b abstract.Point) {
+func (sn *Node) sub(a abstract.Point, b abstract.Point) {
 	if a == nil {
 		a = sn.suite.Point().Null()
 	}
@@ -447,7 +447,7 @@ func (sn *SigningNode) sub(a abstract.Point, b abstract.Point) {
 
 }
 
-func (sn *SigningNode) Respond(Round int) error {
+func (sn *Node) Respond(Round int) error {
 	var err error
 	round := sn.Rounds[Round]
 	sn.initResponseCrypto(Round)
@@ -531,7 +531,7 @@ func (sn *SigningNode) Respond(Round int) error {
 }
 
 // Called *only* by root node after receiving all commits
-func (sn *SigningNode) FinalizeCommits() error {
+func (sn *Node) FinalizeCommits() error {
 	Round := sn.Round // *only* in root
 	round := sn.Rounds[Round]
 	// NOTE: root has sn.ExceptionList <-- the nodes that
@@ -553,7 +553,7 @@ func (sn *SigningNode) FinalizeCommits() error {
 	return err
 }
 
-func (sn *SigningNode) cleanXHat(Round int) {
+func (sn *Node) cleanXHat(Round int) {
 	round := sn.Rounds[Round]
 	for _, pubKey := range round.ExceptionList {
 		round.X_hat.Sub(round.X_hat, pubKey)
@@ -561,7 +561,7 @@ func (sn *SigningNode) cleanXHat(Round int) {
 }
 
 // Called by every node after receiving aggregate responses from descendants
-func (sn *SigningNode) VerifyResponses(Round int) error {
+func (sn *Node) VerifyResponses(Round int) error {
 	round := sn.Rounds[Round]
 	// Check that: base**r_hat * X_hat**c == V_hat
 	// Equivalent to base**(r+xc) == base**(v) == T in vanillaElGamal
@@ -591,7 +591,7 @@ func (sn *SigningNode) VerifyResponses(Round int) error {
 }
 
 // Called when log for round if full and ready to be hashed
-func (sn *SigningNode) HashLog(Round int) error {
+func (sn *Node) HashLog(Round int) error {
 	round := sn.Rounds[Round]
 	var err error
 	round.HashedLog, err = sn.hashLog(Round)
@@ -599,7 +599,7 @@ func (sn *SigningNode) HashLog(Round int) error {
 }
 
 // Auxilary function to perform the actual hashing of the log
-func (sn *SigningNode) hashLog(Round int) ([]byte, error) {
+func (sn *Node) hashLog(Round int) ([]byte, error) {
 	round := sn.Rounds[Round]
 
 	h := sn.suite.Hash()
@@ -614,7 +614,7 @@ func (sn *SigningNode) hashLog(Round int) ([]byte, error) {
 // Identify which proof corresponds to which leaf
 // Needed given that the leaves are sorted before passed to the function that create
 // the Merkle Tree and its Proofs
-func (sn *SigningNode) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId, Round int) {
+func (sn *Node) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId, Round int) {
 	round := sn.Rounds[Round]
 	// separate proofs for children servers mt roots
 	for i := 0; i < len(round.CMTRoots); i++ {
@@ -646,7 +646,7 @@ func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstrac
 
 // Check that starting from its own committed message each child can reach our subtrees' mtroot
 // Also checks that starting from local mt root we can get to  our subtrees' mtroot <-- could be in diff fct
-func (sn *SigningNode) checkChildrenProofs(Round int) {
+func (sn *Node) checkChildrenProofs(Round int) {
 	round := sn.Rounds[Round]
 	cmtAndLocal := make([]hashid.HashId, len(round.CMTRoots))
 	copy(cmtAndLocal, round.CMTRoots)
@@ -657,7 +657,7 @@ func (sn *SigningNode) checkChildrenProofs(Round int) {
 		proofs = append(proofs, round.Proofs[name])
 	}
 
-	if proof.CheckLocalProofs(sn.GetSuite().Hash, round.MTRoot, cmtAndLocal, proofs) == true {
+	if proof.CheckLocalProofs(sn.Suite().Hash, round.MTRoot, cmtAndLocal, proofs) == true {
 		log.Println("Chidlren Proofs of", sn.Name(), "successful for round "+strconv.Itoa(sn.nRounds))
 	} else {
 		panic("Children Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))

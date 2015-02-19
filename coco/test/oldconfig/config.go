@@ -64,9 +64,9 @@ type Node struct {
 
 // HostConfig stores all of the relevant information of the configuration file.
 type HostConfig struct {
-	SNodes []*sign.SigningNode          // an array of signing nodes
-	Hosts  map[string]*sign.SigningNode // maps hostname to host
-	Dir    *coconet.GoDirectory         // the directory mapping hostnames to goPeers
+	SNodes []*sign.Node          // an array of signing nodes
+	Hosts  map[string]*sign.Node // maps hostname to host
+	Dir    *coconet.GoDirectory  // the directory mapping hostnames to goPeers
 }
 
 func (hc *HostConfig) Verify() error {
@@ -76,9 +76,9 @@ func (hc *HostConfig) Verify() error {
 	return nil
 }
 
-func traverseTree(p *sign.SigningNode,
+func traverseTree(p *sign.Node,
 	hc *HostConfig,
-	f func(*sign.SigningNode, *HostConfig) error) error {
+	f func(*sign.Node, *HostConfig) error) error {
 	if err := f(p, hc); err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ func (hc *HostConfig) String() string {
 	return string(bformatted.Bytes())
 }
 
-func writeHC(b *bytes.Buffer, hc *HostConfig, p *sign.SigningNode) error {
+func writeHC(b *bytes.Buffer, hc *HostConfig, p *sign.Node) error {
 	// Node{name, pubkey, x_hat, children}
 	if p == nil {
 		return errors.New("node does not exist")
@@ -158,7 +158,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *sign.SigningNode) error {
 // NewHostConfig creates a new host configuration that can be populated with
 // hosts.
 func NewHostConfig() *HostConfig {
-	return &HostConfig{SNodes: make([]*sign.SigningNode, 0), Hosts: make(map[string]*sign.SigningNode), Dir: coconet.NewGoDirectory()}
+	return &HostConfig{SNodes: make([]*sign.Node, 0), Hosts: make(map[string]*sign.Node), Dir: coconet.NewGoDirectory()}
 }
 
 type ConnType int
@@ -210,7 +210,7 @@ func ConstructTree(
 
 	var prikey abstract.Secret
 	var pubkey abstract.Point
-	var sn *sign.SigningNode
+	var sn *sign.Node
 
 	// if the JSON holds the fields field is set load from there
 	if len(n.PubKey) != 0 {
@@ -242,11 +242,11 @@ func ConstructTree(
 	if generate {
 		if prikey != nil {
 			// if we have been given a private key load that
-			hc.SNodes = append(hc.SNodes, sign.NewKeyedSigningNode(h, suite, prikey))
+			hc.SNodes = append(hc.SNodes, sign.NewKeyedNode(h, suite, prikey))
 			h.SetPubKey(pubkey)
 		} else {
 			// otherwise generate a random new one
-			sn := sign.NewSigningNode(h, suite, rand)
+			sn := sign.NewNode(h, suite, rand)
 			hc.SNodes = append(hc.SNodes, sn)
 			h.SetPubKey(sn.PubKey)
 		}
@@ -442,7 +442,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 
 // run the given hostnames
 func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
-	hostnames := make(map[string]*sign.SigningNode)
+	hostnames := make(map[string]*sign.Node)
 	if hostnameSlice == nil {
 		hostnames = hc.Hosts
 	} else {
@@ -457,7 +457,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	}
 	for _, sn := range hostnames {
 		sn.Type = signType
-		//go func(sn *sign.SigningNode) {
+		//go func(sn *sign.Node) {
 		// start listening for messages from within the tree
 		sn.Host.Listen()
 		//}(sn)
@@ -491,7 +491,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	// wait for a little bit for connections to establish fully
 	time.Sleep(1000 * time.Millisecond)
 	for _, sn := range hostnames {
-		go func(sn *sign.SigningNode) {
+		go func(sn *sign.Node) {
 			// start listening for messages from within the tree
 			sn.Listen()
 		}(sn)
@@ -502,7 +502,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 // run each host in hostnameSlice with the number of clients given
 func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*stamp.Server, []*stamp.Client, error) {
 	log.Println("RunTimestamper")
-	hostnames := make(map[string]*sign.SigningNode)
+	hostnames := make(map[string]*sign.Node)
 	// make a list of hostnames we want to run
 	if hostnameSlice == nil {
 		hostnames = hc.Hosts

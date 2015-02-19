@@ -65,7 +65,7 @@ func NewRound() *Round {
 	return round
 }
 
-type SigningNode struct {
+type Node struct {
 	coconet.Host
 
 	// Set to true if FaultyHosts are used instead of Hosts
@@ -94,23 +94,23 @@ type SigningNode struct {
 	peerKeys  map[string]abstract.Point    // map of all peer public keys
 }
 
-func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {
+func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
 	sn.CommitFunc = cf
 }
 
-func (sn *SigningNode) RegisterDoneFunc(df coco.DoneFunc) {
+func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
 	sn.DoneFunc = df
 }
 
-func (sn *SigningNode) StartSigningRound() {
+func (sn *Node) StartSigningRound() {
 	sn.nRounds++
 	// send an announcement message to all other TSServers
 	log.Println("I", sn.Name(), "Sending an annoucement")
 	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round")})
 }
 
-func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
-	sn := &SigningNode{Host: hn, suite: suite}
+func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {
+	sn := &Node{Host: hn, suite: suite}
 	sn.PrivKey = suite.Secret().Pick(random)
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
@@ -124,8 +124,8 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 }
 
 // Create new signing node that incorporates a given private key
-func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret) *SigningNode {
-	sn := &SigningNode{Host: hn, suite: suite, PrivKey: PrivKey}
+func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret) *Node {
+	sn := &Node{Host: hn, suite: suite, PrivKey: PrivKey}
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
 	sn.peerKeys = make(map[string]abstract.Point)
@@ -137,16 +137,16 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract
 	return sn
 }
 
-func (sn *SigningNode) AddPeer(conn string, PubKey abstract.Point) {
+func (sn *Node) AddPeer(conn string, PubKey abstract.Point) {
 	sn.Host.AddPeers(conn)
 	sn.peerKeys[conn] = PubKey
 }
 
-func (sn *SigningNode) GetSuite() abstract.Suite {
+func (sn *Node) Suite() abstract.Suite {
 	return sn.suite
 }
 
-func (sn *SigningNode) UpdateTimeout(t ...time.Duration) {
+func (sn *Node) UpdateTimeout(t ...time.Duration) {
 	if len(t) > 0 {
 		sn.SetTimeout(t[0])
 	} else {
@@ -155,7 +155,7 @@ func (sn *SigningNode) UpdateTimeout(t ...time.Duration) {
 	}
 }
 
-func (sn *SigningNode) setPool() {
+func (sn *Node) setPool() {
 	var p sync.Pool
 	p.New = NewSigningMessage
 	sn.Host.SetPool(p)

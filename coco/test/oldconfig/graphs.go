@@ -18,14 +18,14 @@ import (
 
 // dijkstra is actually implemented as BFS right now because it is equivalent
 // when edge weights are all 1.
-func dijkstra(m map[string]*sign.SigningNode, root *sign.SigningNode) {
+func dijkstra(m map[string]*sign.Node, root *sign.Node) {
 	l := list.New()
 	visited := make(map[string]bool)
 	l.PushFront(root)
 	visited[root.Name()] = true
 	for e := l.Front(); e != nil; e = l.Front() {
 		l.Remove(e)
-		sn := e.Value.(*sign.SigningNode)
+		sn := e.Value.(*sign.Node)
 		// make all unvisited peers children
 		// and mark them as visited
 		for name, conn := range sn.Peers() {
@@ -51,12 +51,12 @@ func dijkstra(m map[string]*sign.SigningNode, root *sign.SigningNode) {
 	}
 }
 
-func loadHost(hostname string, m map[string]*sign.SigningNode, testSuite abstract.Suite, testRand cipher.Stream, hc *HostConfig) *sign.SigningNode {
+func loadHost(hostname string, m map[string]*sign.Node, testSuite abstract.Suite, testRand cipher.Stream, hc *HostConfig) *sign.Node {
 	if h, ok := m[hostname]; ok {
 		return h
 	}
 	host := coconet.NewGoHost(hostname, coconet.NewGoDirectory())
-	h := sign.NewSigningNode(host, testSuite, testRand)
+	h := sign.NewNode(host, testSuite, testRand)
 	hc.Hosts[hostname] = h
 	m[hostname] = h
 	return h
@@ -74,9 +74,9 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 	}
 	s := bufio.NewScanner(f)
 	// generate the list of hosts
-	hosts := make(map[string]*sign.SigningNode)
+	hosts := make(map[string]*sign.Node)
 	hc := NewHostConfig()
-	var root *sign.SigningNode
+	var root *sign.Node
 	for s.Scan() {
 		var host1, host2 string
 		n, err := fmt.Sscan(s.Text(), &host1, &host2)
@@ -97,7 +97,7 @@ func loadGraph(name string, testSuite abstract.Suite, testRand cipher.Stream) (*
 	}
 	dijkstra(hosts, root)
 	for _, sn := range hc.SNodes {
-		go func(sn *sign.SigningNode) {
+		go func(sn *sign.Node) {
 			// start listening for messages from within the tree
 			sn.Listen()
 		}(sn)

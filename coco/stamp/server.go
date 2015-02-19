@@ -223,7 +223,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 			combProof = append(combProof, s.Proofs[i]...)
 
 			// proof that i can get from a leaf message to the big root
-			proof.CheckProof(s.Signer.(*sign.SigningNode).GetSuite().Hash, SNRoot, s.Leaves[i], combProof)
+			proof.CheckProof(s.Signer.(*sign.Node).Suite().Hash, SNRoot, s.Leaves[i], combProof)
 
 			respMessg := TimeStampMessage{
 				Type:  StampReplyType,
@@ -285,8 +285,8 @@ func (s *Server) AggregateCommits() []byte {
 	}
 
 	// create Merkle tree for this round's messages and check corectness
-	s.Root, s.Proofs = proof.ProofTree(s.GetSuite().Hash, s.Leaves)
-	if proof.CheckLocalProofs(s.GetSuite().Hash, s.Root, s.Leaves, s.Proofs) == true {
+	s.Root, s.Proofs = proof.ProofTree(s.Suite().Hash, s.Leaves)
+	if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
 		log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
 	} else {
 		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))

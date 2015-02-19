@@ -90,7 +90,7 @@ func main() {
 	defer hc.SNodes[0].Close()
 
 	if app == "sign" {
-		log.Println("RUNNING SIGNINGNODE")
+		log.Println("RUNNING Node")
 		// if I am root do the announcement message
 		if hc.SNodes[0].IsRoot() {
 			time.Sleep(3 * time.Second)
