@@ -1,7 +1,6 @@
 package sign
 
 import (
-	"bytes"
 	"crypto/cipher"
 	"sync"
 	"time"
@@ -147,23 +146,6 @@ func (sn *SigningNode) GetSuite() abstract.Suite {
 	return sn.suite
 }
 
-// used for testing purposes
-func (sn *SigningNode) Write(data interface{}) []byte {
-	buf := bytes.Buffer{}
-	abstract.Write(&buf, &data, sn.suite)
-	return buf.Bytes()
-}
-
-// used for testing purposes
-func (sn *SigningNode) Read(data []byte) (interface{}, error) {
-	buf := bytes.NewBuffer(data)
-	messg := TestMessage{}
-	if err := abstract.Read(buf, &messg, sn.suite); err != nil {
-		return nil, err
-	}
-	return messg, nil
-}
-
 func (sn *SigningNode) UpdateTimeout(t ...time.Duration) {
 	if len(t) > 0 {
 		sn.SetTimeout(t[0])
@@ -171,4 +153,10 @@ func (sn *SigningNode) UpdateTimeout(t ...time.Duration) {
 		tt := time.Duration(sn.Height)*sn.GetDefaultTimeout() + 1000*time.Millisecond
 		sn.SetTimeout(tt)
 	}
+}
+
+func (sn *SigningNode) setPool() {
+	var p sync.Pool
+	p.New = NewSigningMessage
+	sn.Host.SetPool(p)
 }

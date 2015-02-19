@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -33,16 +32,14 @@ func (sn *SigningNode) getUp() {
 	for {
 		sm := SigningMessage{}
 		if err := sn.GetUp(&sm); err != nil {
-			// TODO: could pass err up via channel
-			log.Println("err")
 			if err == coconet.ErrorConnClosed {
-				return // stop getting up if the connection is closed
+				// stop getting up if the connection is closed
+				return
 			}
 		}
 		switch sm.Type {
 		default:
-			log.Println("in get up", ErrUnknownMessageType, sm)
-			// return ErrUnknownMessageType
+			continue
 		case Announcement:
 			sn.Announce(sm.Am)
 		case Challenge:
@@ -53,36 +50,29 @@ func (sn *SigningNode) getUp() {
 
 // Used in Commit and Respond to get commits and responses from all
 // children before creating own commit and response
-// Messages from children are returns in STRICT order
-// ith message = message from ith child
 func (sn *SigningNode) getDown() {
 	// update waiting time based on current depth
-	// and wait for all children to commit
 	sn.UpdateTimeout()
+	// wait for all children to commit
 	ch, errch := sn.GetDown()
 
-	var sm *SigningMessage
-	var nm coconet.NetworkMessg
-	var err error
 	for {
-		nm = <-ch
-		err = <-errch
+		nm := <-ch
+		err := <-errch
 
 		if err != nil {
 			if err == coconet.ErrorConnClosed {
-				return
+				continue
 			}
-			// TODO: something else?
-			continue
 		}
 
-		sm = nm.Data.(*SigningMessage)
-
+		// interpret network message as Siging Message
+		sm := nm.Data.(*SigningMessage)
 		sm.From = nm.From
+
 		switch sm.Type {
 		default:
-			log.Println(sn.Name(), "getDown", ErrUnknownMessageType, sm)
-			// return ErrUnknownMessageType
+			continue
 		case Commitment:
 			// shove message on commit channel for its round
 			round := sm.Com.Round
@@ -103,23 +93,15 @@ func (sn *SigningNode) getDown() {
 	}
 }
 
-func (sn *SigningNode) setPool() {
-	var p sync.Pool
-	p.New = NewSigningMessage
-	sn.Host.SetPool(p)
-}
-
 // Start listening for messages coming from parent(up)
 func (sn *SigningNode) Listen() error {
 	sn.setPool()
 
-	if sn.IsRoot() {
-		// Sleep/ Yield until change in network
-		go sn.getDown()
-	} else {
+	if !sn.IsRoot() {
 		go sn.getUp()
-		go sn.getDown()
 	}
+	go sn.getDown()
+
 	return nil
 }
 

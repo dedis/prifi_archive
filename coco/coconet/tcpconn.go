@@ -106,20 +106,15 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
 	errchan := make(chan error, 1)
 	for tc.dec == nil {
 		// panic("no decoder yet")
-		// log.Fatal("no decoder yet")
 		errchan <- ConnectionNotEstablished
 		return errchan
 	}
 
 	go func(bum BinaryUnmarshaler) {
-		// log.Println("decoding from", tc.Name())
 		err := tc.dec.Decode(bum)
 		if err != nil {
 			log.Errorln("failed to decode:", err)
-			// fmt.Println("failed to unmarshal binary: ", tc.conn)
-			// fmt.Printf("\tinto: %#v\n", bum)
 		}
-		// log.Println("decoded", err)
 		errchan <- err
 	}(bum)
 
