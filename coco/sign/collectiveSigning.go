@@ -231,7 +231,7 @@ func (sn *Node) Commit(Round int) error {
 
 	// wait on commits from children
 	sn.UpdateTimeout()
-	messgs := sn.waitOn(sn.ComCh[Round], sn.GetTimeout(), "commits")
+	messgs := sn.waitOn(sn.ComCh[Round], sn.Timeout(), "commits")
 
 	// prepare to handle exceptions
 	round.ExceptionList = make([]abstract.Point, 0)
@@ -424,7 +424,7 @@ func (sn *Node) Respond(Round int) error {
 
 	// wait on responses from children
 	sn.UpdateTimeout()
-	messgs := sn.waitOn(sn.RmCh[Round], sn.GetTimeout(), "responses")
+	messgs := sn.waitOn(sn.RmCh[Round], sn.Timeout(), "responses")
 
 	// initialize exception handling
 	var exceptionV_hat abstract.Point

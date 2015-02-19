@@ -45,7 +45,7 @@ func (h *GoHost) GetDirectory() *GoDirectory {
 	return h.dir
 }
 
-func (h *GoHost) GetDefaultTimeout() time.Duration {
+func (h *GoHost) DefaultTimeout() time.Duration {
 	h.mutimeout.Lock()
 	t := DefaultGoTimeout
 	h.mutimeout.Unlock()
@@ -58,7 +58,7 @@ func (h *GoHost) SetTimeout(t time.Duration) {
 	h.mutimeout.Unlock()
 }
 
-func (h *GoHost) GetTimeout() time.Duration {
+func (h *GoHost) Timeout() time.Duration {
 	var t time.Duration
 	h.mutimeout.Lock()
 	t = h.timeout

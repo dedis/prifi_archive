@@ -83,16 +83,13 @@ var ConnectionNotEstablished error = errors.New("connection not established")
 // blocks until the put is availible
 func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
 	errchan := make(chan error, 1)
-	// tc.RLock()
+
 	for tc.enc == nil {
-		// tc.RUnlock()
-		// time.Sleep(time.Second)
-		// tc.RLock()
 		log.Println("Conn not established")
 		errchan <- ConnectionNotEstablished
 		return errchan
 	}
-	// tc.RUnlock()
+
 	err := tc.enc.Encode(bm)
 	if err != nil {
 		log.Errorln("failed to put/encode:", err)

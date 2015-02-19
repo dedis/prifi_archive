@@ -22,7 +22,6 @@ type TCPHost struct {
 
 	childLock sync.Mutex
 	children  []string // a list of unique peers for each hostname
-	// childrenMap map[string]Conn
 
 	rlock sync.Mutex
 	ready map[string]bool
@@ -37,7 +36,7 @@ type TCPHost struct {
 	pool sync.Pool
 }
 
-func (h *TCPHost) GetDefaultTimeout() time.Duration {
+func (h *TCPHost) DefaultTimeout() time.Duration {
 	return DefaultTCPTimeout
 }
 
@@ -47,7 +46,7 @@ func (h *TCPHost) SetTimeout(t time.Duration) {
 	h.mutimeout.Unlock()
 }
 
-func (h *TCPHost) GetTimeout() time.Duration {
+func (h *TCPHost) Timeout() time.Duration {
 	var t time.Duration
 	h.mutimeout.Lock()
 	t = h.timeout
@@ -134,7 +133,7 @@ func (h *TCPHost) Listen() error {
 				log.Fatal("unable to get pubkey from child")
 			}
 			tp.SetPubKey(pubkey)
-			log.Infoln("successfully received public key:", pubkey)
+
 			// accept children connections but no one else
 			found := false
 			h.childLock.Lock()
@@ -360,8 +359,10 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 		if isReady {
 			break
 		}
+		// XXX see if we should change Sleep with sth else
 		time.Sleep(100 * time.Millisecond)
 	}
+
 	if c == nil {
 		errchan := make(chan error, 1)
 		errchan <- ErrorConnClosed
@@ -371,15 +372,11 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 	return c.Get(data)
 }
 
-// TODO: After GetDown is called, every time we add a child, we should
-// make sure to also output its responses here
-
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
 // Must be called after network topology is completely set: ie
 // all children must have already been added.
 func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
-	// var chmu sync.Mutex
 	ch := make(chan NetworkMessg, 1)
 	errch := make(chan error, 1)
 
@@ -404,10 +401,8 @@ func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 						return
 					}
 
-					// chmu.Lock()
 					ch <- NetworkMessg{Data: data, From: c}
 					errch <- e
-					// chmu.Unlock()
 
 				}
 			}(i, c)
