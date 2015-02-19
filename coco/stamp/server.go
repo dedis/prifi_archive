@@ -97,16 +97,13 @@ func (s *Server) Listen() error {
 			c := coconet.NewTCPConnFromNet(conn)
 			// log.Println("CLIENT TCP CONNECTION SUCCESSFULLY ESTABLISHED:", c)
 
-			// name := "client" + strconv.Itoa(clientNumber)
 			if _, ok := s.Clients[c.Name()]; !ok {
 				s.Clients[c.Name()] = c
-				//s.Clients[c.Name()] = c
+
 				go func(c coconet.Conn) {
 					for {
 						tsm := TimeStampMessage{}
-						// log.Println("GETTING:", c.Name(), c)
 						err := <-c.Get(&tsm)
-						// log.Println("GOT:", c.Name(), c)
 						if err != nil {
 							log.Errorln("Failed to get from child:", err)
 							c.Close()
