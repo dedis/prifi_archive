@@ -10,8 +10,6 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/coco/hashid"
-	"github.com/dedis/prifi/coco/proof"
 )
 
 var ROUND_TIME time.Duration = 1 * time.Second
@@ -21,49 +19,10 @@ type Type int // used by other modules as sign.Type
 const (
 	// Default Signature involves creating Merkle Trees
 	MerkleTree = iota
-	// Basic Signature removes all Merkle Trees Collective PubKey
-	// Collective public keys are still created and can be useds
+	// Basic Signature removes all Merkle Trees
+	// Collective public keys are still created and can be used
 	PubKey
 )
-
-type Round struct {
-	c abstract.Secret // round lasting challenge
-	r abstract.Secret // round lasting response
-
-	Log       SNLog // round lasting log structure
-	HashedLog []byte
-
-	r_hat abstract.Secret // aggregate of responses
-	X_hat abstract.Point  // aggregate of public keys
-
-	// own big merkle subtree
-	MTRoot     hashid.HashId   // mt root for subtree, passed upwards
-	Leaves     []hashid.HashId // leaves used to build the merkle subtre
-	LeavesFrom []string        // child names for leaves
-
-	// mtRoot before adding HashedLog
-	LocalMTRoot hashid.HashId
-
-	// merkle tree roots of children in strict order
-	CMTRoots     []hashid.HashId
-	CMTRootNames []string
-	Proofs       map[string]proof.Proof
-
-	// round-lasting public keys of children servers that did not
-	// respond to latest commit or respond phase, in subtree
-	ExceptionList []abstract.Point
-	// combined point commits of children servers in subtree
-	ChildV_hat map[string]abstract.Point
-	// combined public keys of children servers in subtree
-	ChildX_hat map[string]abstract.Point
-}
-
-func NewRound() *Round {
-	round := &Round{}
-	round.ExceptionList = make([]abstract.Point, 0)
-
-	return round
-}
 
 type Node struct {
 	coconet.Host
@@ -159,4 +118,26 @@ func (sn *Node) setPool() {
 	var p sync.Pool
 	p.New = NewSigningMessage
 	sn.Host.SetPool(p)
+}
+
+// accommodate nils
+func (sn *Node) add(a abstract.Point, b abstract.Point) {
+	if a == nil {
+		a = sn.suite.Point().Null()
+	}
+	if b != nil {
+		a.Add(a, b)
+	}
+
+}
+
+// accommodate nils
+func (sn *Node) sub(a abstract.Point, b abstract.Point) {
+	if a == nil {
+		a = sn.suite.Point().Null()
+	}
+	if b != nil {
+		a.Sub(a, b)
+	}
+
 }

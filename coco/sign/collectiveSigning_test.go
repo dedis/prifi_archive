@@ -13,7 +13,7 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-// TODO: when announcing must provide round numbers
+// NOTE: when announcing must provide round numbers
 
 // Testing suite for signing
 // NOTE: when testing if we can gracefully accommodate failures we must:

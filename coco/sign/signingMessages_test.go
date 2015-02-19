@@ -2,7 +2,6 @@ package sign_test
 
 import (
 	"bytes"
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -53,8 +52,6 @@ func TestMUAnnouncement(t *testing.T) {
 	if !reflect.DeepEqual(sm, sm2) {
 		t.Fatal("sm != sm2: ", sm, sm2, sm.Am, sm2.Am)
 	}
-	fmt.Println(sm2)
-	fmt.Println("Marshal and Unmarshal work")
 }
 
 // Test for Marshalling and Unmarshalling Challenge Messages
@@ -89,10 +86,6 @@ func TestMUChallenge(t *testing.T) {
 		!byteArrayEqual(cm2.Proof, cm.Proof) {
 		t.Error("challenge message MU failed")
 	}
-
-	// log.Println(cm)
-	// log.Println()
-	// log.Println(cm2)
 }
 
 // Test for Marshalling and Unmarshalling Comit Messages
@@ -106,8 +99,6 @@ func TestMUCommit(t *testing.T) {
 	cm := &sign.CommitmentMessage{}
 	cm.V, _ = suite.Point().Pick(nil, rand)
 	cm.V_hat, _ = suite.Point().Pick(nil, rand2)
-
-	// log.Println("v and v_hat len", cm.V.Len(), cm.V_hat.Len())
 
 	cm.MTRoot = make([]byte, hashid.Size)
 	sm := sign.SigningMessage{Type: sign.Commitment, Com: cm}
@@ -127,9 +118,6 @@ func TestMUCommit(t *testing.T) {
 		t.Error("commit message MU failed")
 	}
 
-	// log.Println(cm)
-	// log.Println()
-	// log.Println(cm2)
 }
 
 func byteArrayEqual(a proof.Proof, b proof.Proof) bool {

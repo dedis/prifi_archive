@@ -3,7 +3,6 @@ package sign
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"time"
@@ -118,7 +117,6 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 	sn.roundLock.Unlock()
 
 	// Inform all children of announcement
-	// PutDown requires each child to have his own message
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
 		sm := SigningMessage{Type: Announcement, Am: am}
@@ -139,10 +137,6 @@ func (sn *Node) GetChildrenMerkleRoots(Round int) {
 	copy(round.CMTRoots, round.Leaves)
 	round.CMTRootNames = make([]string, len(round.Leaves))
 	copy(round.CMTRootNames, round.LeavesFrom)
-
-	if len(round.Leaves) != len(round.LeavesFrom) {
-		panic("len leaves != len leaves from")
-	}
 
 	// concatenate children commit roots in one binary blob for easy marshalling
 	round.Log.CMTRoots = make([]byte, 0)
@@ -259,7 +253,6 @@ func (sn *Node) Commit(Round int) error {
 		default: // default == no response from i
 			// fmt.Println(sn.Name(), "no commit from", i)
 			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
-			// take note of lack of pub keys and commit points from i
 			continue
 		case Commitment:
 			round.Leaves = append(round.Leaves, sm.Com.MTRoot)
@@ -273,7 +266,6 @@ func (sn *Node) Commit(Round int) error {
 			sn.add(round.Log.V_hat, sm.Com.V_hat)
 		}
 
-		// sn.Pool().Put(sm)
 	}
 
 	if sn.Type == PubKey {
@@ -306,7 +298,7 @@ func (sn *Node) actOnCommits(Round int) (err error) {
 		if sn.TestingFailures == true &&
 			(sn.Host.(*coconet.FaultyHost).IsDead() ||
 				sn.Host.(*coconet.FaultyHost).IsDeadFor("commit")) {
-			fmt.Println(sn.Name(), "dead for commits")
+			// fmt.Println(sn.Name(), "dead for commits")
 			return
 		}
 
@@ -425,28 +417,6 @@ func (sn *Node) initResponseCrypto(Round int) {
 	round.r_hat = round.r
 }
 
-// accommodate nils
-func (sn *Node) add(a abstract.Point, b abstract.Point) {
-	if a == nil {
-		a = sn.suite.Point().Null()
-	}
-	if b != nil {
-		a.Add(a, b)
-	}
-
-}
-
-// accommodate nils
-func (sn *Node) sub(a abstract.Point, b abstract.Point) {
-	if a == nil {
-		a = sn.suite.Point().Null()
-	}
-	if b != nil {
-		a.Sub(a, b)
-	}
-
-}
-
 func (sn *Node) Respond(Round int) error {
 	var err error
 	round := sn.Rounds[Round]
@@ -476,7 +446,7 @@ func (sn *Node) Respond(Round int) error {
 			sn.add(exceptionV_hat, round.ChildV_hat[from])
 			continue
 		case Response:
-			// disregard response from children that did not commit
+			// disregard response from children who did not commit
 			_, ok := round.ChildV_hat[from]
 			if ok == true && round.ChildV_hat[from].Equal(nullPoint) {
 				continue
@@ -502,10 +472,8 @@ func (sn *Node) Respond(Round int) error {
 	}
 
 	// remove all Vs of nodes from subtree that failed
-	// fmt.Println(sn.Name(), "Removing exception V_hat", exceptionV_hat)
 	sn.sub(round.Log.V_hat, exceptionV_hat)
 	sn.sub(round.X_hat, exceptionX_hat)
-	log.Println(sn.Name(), "Verify responses ", len(messgs), "messgs")
 	err = sn.VerifyResponses(Round)
 
 	if !sn.IsRoot() {
@@ -534,8 +502,6 @@ func (sn *Node) Respond(Round int) error {
 func (sn *Node) FinalizeCommits() error {
 	Round := sn.Round // *only* in root
 	round := sn.Rounds[Round]
-	// NOTE: root has sn.ExceptionList <-- the nodes that
-	// did not reply to its annoucement
 
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
@@ -590,27 +556,6 @@ func (sn *Node) VerifyResponses(Round int) error {
 	return nil
 }
 
-// Called when log for round if full and ready to be hashed
-func (sn *Node) HashLog(Round int) error {
-	round := sn.Rounds[Round]
-	var err error
-	round.HashedLog, err = sn.hashLog(Round)
-	return err
-}
-
-// Auxilary function to perform the actual hashing of the log
-func (sn *Node) hashLog(Round int) ([]byte, error) {
-	round := sn.Rounds[Round]
-
-	h := sn.suite.Hash()
-	logBytes, err := round.Log.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-	h.Write(logBytes)
-	return h.Sum(nil), nil
-}
-
 // Identify which proof corresponds to which leaf
 // Needed given that the leaves are sorted before passed to the function that create
 // the Merkle Tree and its Proofs
@@ -636,14 +581,6 @@ func (sn *Node) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId, Rou
 	}
 }
 
-// Returns a secret that depends on on a message and a point
-func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstract.Secret {
-	pb, _ := p.MarshalBinary()
-	c := suite.Cipher(pb)
-	c.Message(nil, nil, message)
-	return suite.Secret().Pick(c)
-}
-
 // Check that starting from its own committed message each child can reach our subtrees' mtroot
 // Also checks that starting from local mt root we can get to  our subtrees' mtroot <-- could be in diff fct
 func (sn *Node) checkChildrenProofs(Round int) {
@@ -662,4 +599,33 @@ func (sn *Node) checkChildrenProofs(Round int) {
 	} else {
 		panic("Children Proofs" + sn.Name() + " unsuccessful for round " + strconv.Itoa(sn.nRounds))
 	}
+}
+
+// Returns a secret that depends on on a message and a point
+func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstract.Secret {
+	pb, _ := p.MarshalBinary()
+	c := suite.Cipher(pb)
+	c.Message(nil, nil, message)
+	return suite.Secret().Pick(c)
+}
+
+// Called when log for round if full and ready to be hashed
+func (sn *Node) HashLog(Round int) error {
+	round := sn.Rounds[Round]
+	var err error
+	round.HashedLog, err = sn.hashLog(Round)
+	return err
+}
+
+// Auxilary function to perform the actual hashing of the log
+func (sn *Node) hashLog(Round int) ([]byte, error) {
+	round := sn.Rounds[Round]
+
+	h := sn.suite.Hash()
+	logBytes, err := round.Log.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	h.Write(logBytes)
+	return h.Sum(nil), nil
 }
