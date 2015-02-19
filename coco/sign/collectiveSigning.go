@@ -56,12 +56,6 @@ func (sn *SigningNode) getUp() {
 // Messages from children are returns in STRICT order
 // ith message = message from ith child
 func (sn *SigningNode) getDown() {
-	// grab space for children messages
-	// messgs := make([]coconet.BinaryUnmarshaler, sn.NChildren())
-	// for i := range messgs {
-	// 	messgs[i] = &SigningMessage{}
-	// }
-
 	// update waiting time based on current depth
 	// and wait for all children to commit
 	sn.UpdateTimeout()
@@ -121,7 +115,6 @@ func (sn *SigningNode) Listen() error {
 
 	if sn.IsRoot() {
 		// Sleep/ Yield until change in network
-		// sn.WaitTick()
 		go sn.getDown()
 	} else {
 		go sn.getUp()
@@ -185,8 +178,6 @@ func (sn *SigningNode) GetLocalMerkleRoot(Round int) {
 		round.LocalMTRoot = make([]byte, hashid.Size)
 	}
 	round.Leaves = append(round.Leaves, round.LocalMTRoot)
-	// sn.LocalMTRootIndex = len(sn.Leaves) - 1
-
 }
 
 func (sn *SigningNode) ComputeCombinedMerkleRoot(Round int) {
