@@ -45,17 +45,17 @@ func init() {
 func main() {
 	flag.Parse()
 	go func() {
-		_, port, err := net.SplitHostPort(hostname)
+		host, port, err := net.SplitHostPort(hostname)
 		if err != nil {
 			log.Fatal("improperly formatted hostname: should be host:port")
 		}
 		p, _ := strconv.Atoi(port)
 		//runtime.MemProfileRate = 1
-		log.Println(http.ListenAndServe(strconv.Itoa(p+2), nil))
+		log.Println(http.ListenAndServe(net.JoinHostPort(host, strconv.Itoa(p+2)), nil))
 	}()
 	//log.SetPrefix(hostname + ":")
 	//log.SetFlags(log.Lshortfile)
-	fmt.Println("Execing")
+	fmt.Println("Execing: @"+hostname, " logger: ", logger)
 	if hostname == "" {
 		fmt.Println("hostname is empty")
 		log.Fatal("no hostname given")
@@ -65,7 +65,9 @@ func main() {
 		// blocks until we can connect to the logger
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
 		if err != nil {
-			log.Fatal(err)
+			log.WithFields(log.Fields{
+				"file": logutils.File(),
+			}).Errorln(err)
 		}
 		log.AddHook(lh)
 		log.Println("Log Test")
@@ -101,7 +103,10 @@ func main() {
 				start = time.Now()
 				fmt.Println("ANNOUNCING")
 				hc.SNodes[0].LogTest = []byte("Hello World")
-				err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+				err = hc.SNodes[0].Announce(
+					&sign.AnnouncementMessage{
+						LogTest: hc.SNodes[0].LogTest,
+						Round:   i})
 				if err != nil {
 					log.Println(err)
 				}

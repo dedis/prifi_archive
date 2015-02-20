@@ -62,10 +62,10 @@ func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
 }
 
 func (sn *Node) StartSigningRound() {
-	sn.nRounds++
 	// send an announcement message to all other TSServers
 	log.Println("I", sn.Name(), "Sending an annoucement")
-	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round")})
+	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+	sn.nRounds++
 }
 
 func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {

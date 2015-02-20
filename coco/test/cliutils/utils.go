@@ -41,7 +41,12 @@ func SshRun(username, host, command string) ([]byte, error) {
 }
 
 func SshRunStdout(username, host, command string) error {
-	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", username+"@"+host,
+	addr := host
+	if username != "" {
+		addr = username + "@" + addr
+	}
+
+	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", addr,
 		"eval '"+command+"'")
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout

@@ -78,7 +78,7 @@ func (s *Server) Listen() error {
 	if err != nil {
 		log.Println("failed to listen:", err)
 		panic(err)
-		return err
+		//return err
 	}
 
 	go func() {
@@ -209,7 +209,6 @@ func (s *Server) OnAnnounce() coco.CommitFunc {
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
 		// log.Println("DONE")
-		start := time.Now()
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -230,19 +229,11 @@ func (s *Server) OnDone() coco.DoneFunc {
 			s.PutToClient(msg.To, respMessg)
 		}
 		s.mux.Unlock()
-		elapsed := time.Since(start)
-		log.WithFields(log.Fields{
-			"file":  logutils.File(),
-			"type":  "on_done",
-			"round": s.nRounds,
-			"time":  elapsed,
-		}).Info("root round")
 	}
 
 }
 
 func (s *Server) AggregateCommits() []byte {
-	start := time.Now()
 	// log.Println("Aggregateing Commits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
@@ -289,13 +280,6 @@ func (s *Server) AggregateCommits() []byte {
 		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
 	}
 
-	elapsed := time.Since(start)
-	log.WithFields(log.Fields{
-		"file":  logutils.File(),
-		"type":  "aggregate_commits",
-		"round": s.nRounds,
-		"time":  elapsed,
-	}).Info("root round")
 	return s.Root
 }
 
