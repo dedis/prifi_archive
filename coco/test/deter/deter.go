@@ -43,24 +43,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// kill old processes
+	var wg sync.WaitGroup
+	for _, h := range hosts {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			cliutils.SshRun("", h, "killall exec logserver timeclient scp ssh")
+		}(h)
+	}
+	wg.Wait()
 	logger := hosts[len(hosts)-1]
 	hosts = hosts[:len(hosts)-1]
-
-	fmt.Println("copying over files")
-	// copy the files over to all the host machines.
-	var wg sync.WaitGroup
-	for _, f := range fs {
-		for _, h := range hosts {
-			wg.Add(1)
-			go func(h string, f string) {
-				defer wg.Done()
-				cliutils.Scp("", h, f, f)
-			}(h, f)
-		}
-	}
-	cliutils.SshRunStdout("", logger, "killall exec logserver timeclient")
-
-	cliutils.Scp("", logger, "logserver", "")
 
 	// Read in and parse the configuration file
 	file, e := ioutil.ReadFile("cfg.json")
@@ -81,10 +75,28 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// write out a true configuration file
+	log.Println(string(cfb))
 	err = ioutil.WriteFile("cfg.json", cfb, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println("copying over files")
+	// copy the files over to all the host machines.
+	for _, f := range fs {
+		for _, h := range hosts {
+			wg.Add(1)
+			go func(h string, f string) {
+				defer wg.Done()
+				cliutils.Scp("", h, f, f)
+			}(h, f)
+		}
+	}
+
+	cliutils.Scp("", logger, "logserver", "")
+
 	wg.Wait()
 
 	// start up the logging server on the final host at port 10000
@@ -111,8 +123,8 @@ func main() {
 		go func() {
 			defer wg.Done()
 			// run the timestampers
-			log.Println("running timestamp at @", t.Name, "listening to logger:", logger)
-			cliutils.SshRunStdout("", h, "./exec -hostname="+t.Name+" -logger="+logger)
+			log.Println("running timestamp at @", t.Name, "listening to logger:", loggerport)
+			cliutils.SshRunStdout("", h, "./exec -hostname="+t.Name+" -logger="+loggerport)
 		}()
 	})
 	// wait for the servers to finish before stopping

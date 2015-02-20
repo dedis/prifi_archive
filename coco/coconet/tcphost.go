@@ -103,11 +103,11 @@ func (h *TCPHost) Listen() error {
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
-				log.Println("failed to accept connection")
+				log.Errorln("failed to accept connection")
 				continue
 			}
 			if conn == nil {
-				log.Println("!!!nil connection!!!")
+				log.Errorln("!!!nil connection!!!")
 				continue
 			}
 			// Read in name of client
@@ -115,7 +115,7 @@ func (h *TCPHost) Listen() error {
 			var mname Smarsh
 			err = <-tp.Get(&mname)
 			if err != nil {
-				log.Println("ERROR ERROR ERROR: TCP HOST FAILED:", err)
+				log.Errorln("ERROR ERROR ERROR: TCP HOST FAILED:", err)
 				tp.Close()
 				continue
 			}
@@ -130,7 +130,9 @@ func (h *TCPHost) Listen() error {
 			pubkey := suite.Point()
 			err = <-tp.Get(pubkey)
 			if err != nil {
-				log.Fatal("unable to get pubkey from child")
+				log.Errorln("unable to get pubkey from child")
+				tp.Close()
+				continue
 			}
 			tp.SetPubKey(pubkey)
 
@@ -153,7 +155,7 @@ func (h *TCPHost) Listen() error {
 			h.rlock.Lock()
 			h.ready[name] = true
 			h.peers[name] = tp
-			log.Infoln("setup peer:", tp, tp.conn)
+			log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
 			h.rlock.Unlock()
 		}
 	}()
@@ -166,7 +168,7 @@ func (h *TCPHost) Connect() error {
 	}
 	conn, err := net.Dial("tcp", h.parent)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return err
 	}
 	tp := NewTCPConnFromNet(conn)
@@ -174,7 +176,7 @@ func (h *TCPHost) Connect() error {
 	mname := Smarsh(h.Name())
 	err = <-tp.Put(&mname)
 	if err != nil {
-		log.Println(err)
+		log.Errorln(err)
 		return err
 	}
 	tp.SetName(h.parent)
@@ -191,7 +193,7 @@ func (h *TCPHost) Connect() error {
 	h.peers[h.parent] = tp
 	h.rlock.Unlock()
 
-	log.Infoln("Successfully CONNECTED TO PARENT")
+	log.Infoln("CONNECTED TO PARENT:", h.parent)
 	return nil
 }
 

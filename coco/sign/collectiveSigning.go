@@ -216,7 +216,7 @@ func (sn *Node) waitOn(ch chan *SigningMessage, timeout time.Duration, what stri
 					break forloop
 				}
 			case <-time.After(timeout):
-				log.Println(sn.Name(), "timeouted on", what, timeout)
+				log.Warnln(sn.Name(), "timeouted on", what, timeout)
 				break forloop
 			}
 		}

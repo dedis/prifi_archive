@@ -104,11 +104,11 @@ func (f *JSONFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	for k, v := range entry.Data {
 		data[k] = v
 	}
-	data["entry.host"] = f.Host // the host that this is running on
-	data["entry.app"] = f.App   // what app we are running (timeclient, timestamper, signer)
-	data["entry.time"] = entry.Time.Format(time.RFC3339)
-	data["entry.msg"] = entry.Message
-	data["entry.level"] = entry.Level.String()
+	data["ehost"] = f.Host // the host that this is running on
+	data["eapp"] = f.App   // what app we are running (timeclient, timestamper, signer)
+	data["etime"] = entry.Time.Format(time.RFC3339)
+	data["emsg"] = entry.Message
+	data["elevel"] = entry.Level.String()
 
 	serialized, err := json.Marshal(data)
 	if err != nil {

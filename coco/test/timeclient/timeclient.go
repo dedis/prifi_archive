@@ -74,10 +74,10 @@ func main() {
 			go func() {
 				e := c.TimeStamp(msgs[0], server)
 				if e != nil {
-					log.WithFields(log.Fields{
+					/*log.WithFields(log.Fields{
 						"clientname": name,
 						"server":     server,
-					}).Errorln("error timesamping:", e)
+					}).Errorln("error timesamping:", e)*/
 				}
 			}()
 			<-ticker
