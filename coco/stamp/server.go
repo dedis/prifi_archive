@@ -78,7 +78,7 @@ func (s *Server) Listen() error {
 	if err != nil {
 		log.Println("failed to listen:", err)
 		panic(err)
-		return err
+		//return err
 	}
 
 	go func() {

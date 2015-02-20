@@ -358,7 +358,6 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	if err != nil {
 		return hc, err
 	}
-
 	connT := GoC
 	if cf.Conn == "tcp" {
 		connT = TcpC

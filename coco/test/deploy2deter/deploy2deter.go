@@ -1,10 +1,20 @@
-// logging server can be seen at localhost:8080
+// deploy2deter is responsible for kicking off the deployment process
+// for deterlab. Given a list of hostnames, it will create an overlay
+// tree topology, using all but the last node. It will create multiple
+// nodes per server and run timestamping processes. The last node is
+// reserved for the logging server, which is forwarded to localhost:8080
+//
+// options are "bf" which specifies the branching factor
+//
+// 	and "hpn" which specifies the replicaiton factor: hosts per node
 package main
 
 import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"log"
+	"os"
 	"os/exec"
 	"sync"
 
@@ -12,7 +22,10 @@ import (
 	"github.com/dedis/prifi/coco/test/graphs"
 )
 
+// bf is the branching factor of the tree that we want to build
 var bf int
+
+// hpn is the replication factor of hosts per node: how many hosts do we want per node
 var hpn int
 
 func init() {
@@ -27,18 +40,34 @@ func main() {
 	packages := []string{"../logserver", "../timeclient", "../exec", "../deter"}
 	for _, p := range packages {
 		wg.Add(1)
+		if p == "../deter" {
+			go func(p string) {
+				defer wg.Done()
+				// the users node has a 386 FreeBSD architecture
+				cliutils.Build(p, "386", "freebsd")
+			}(p)
+			continue
+		}
 		go func(p string) {
 			defer wg.Done()
 			// deter has an amd64, linux architecture
 			cliutils.Build(p, "amd64", "linux")
 		}(p)
 	}
-
+	// killssh processes on users
+	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh; killall scp")
 	// read in the hosts config and create the graph topology that we will be using
-	hosts := cliutils.ReadLines("hosts.txt")
+	// reserve the final host for the logging package
+	hosts, err := cliutils.ReadLines("hosts.txt")
+	if err != nil {
+		log.Fatal("error reading hosts file:", err)
+	}
 	logger := hosts[len(hosts)-1]
 	hosts = hosts[:len(hosts)-1]
-	var t graphs.Tree = graph.TreeFromList(hosts, bf)
+	t, _, err := graphs.TreeFromList(hosts, hpn, bf)
+
+	// after constructing the tree generate a configuration file
+	// for deployment on each of the nodes
 	b, err := json.Marshal(t)
 	if err != nil {
 		log.Fatal("unable to generate tree from list")
@@ -47,9 +76,17 @@ func main() {
 	if err != nil {
 		log.Fatal("unable to write configuration file")
 	}
-	//hosts per node, branching factor, start machine[]
+
+	// at this point we need all of our builds to be complete
 	wg.Wait()
-	files := []string{"logserver", "timeclient", "exec", "deter", "cfg.json", "hosts.txt"}
+	// move the logserver into the other directory
+	err = os.Rename("logserver", "../logserver/logserver")
+	if err != nil {
+		log.Fatal("failed to copy logserver")
+	}
+	// scp the files that we need over to the boss node
+	files := []string{"timeclient", "exec", "deter", "cfg.json", "hosts.txt"}
+	cliutils.Scp("dvisher", "users.isi.deterlab.net", "../logserver", "")
 	for _, f := range files {
 		wg.Add(1)
 		go func(f string) {
@@ -61,11 +98,12 @@ func main() {
 
 	// setup port forwarding for viewing log server
 	// ssh -L 8080:pcXXX:80 username@users.isi.deterlab.net
-
 	err = exec.Command("ssh", "-L", "8080:"+logger+":10000", "dvisher@users.isi.deterlab.ne").Start()
 	if err != nil {
-		log.Errorln("failed to setup portforwarding for logging server")
+		log.Fatal("failed to setup portforwarding for logging server")
 	}
-
-	log.Fatal(cliutils.SshRun("dvisher", "users.isi.deterlab.net", "./deter"))
+	// run the deter lab boss nodes process
+	// it will be responsible for forwarding the files and running the individual
+	// timestamping servers
+	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "./deter"))
 }
