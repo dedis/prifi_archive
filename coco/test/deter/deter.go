@@ -58,7 +58,7 @@ func main() {
 			}(h, f)
 		}
 	}
-	cliutils.SshRunStdout("", logger, "killall exec logserver")
+	cliutils.SshRunStdout("", logger, "killall exec logserver timeclient")
 
 	cliutils.Scp("", logger, "logserver", "")
 
@@ -89,8 +89,8 @@ func main() {
 
 	// start up the logging server on the final host at port 10000
 	fmt.Println("starting up logserver")
-	logger = hosts[len(hosts)-1] + ":10000"
-	go cliutils.SshRunStdout("", hosts[len(hosts)-1], "cd logserver; ./logserver -addr="+logger)
+	loggerport := logger + ":10000"
+	go cliutils.SshRunStdout("", logger, "cd logserver; ./logserver -addr="+loggerport)
 	// wait a little bit for the logserver to start up
 	time.Sleep(5 * time.Second)
 	fmt.Println("starting time clients")

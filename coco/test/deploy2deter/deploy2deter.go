@@ -12,6 +12,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -98,7 +99,16 @@ func main() {
 
 	// setup port forwarding for viewing log server
 	// ssh -L 8080:pcXXX:80 username@users.isi.deterlab.net
-	err = exec.Command("ssh", "-L", "8080:"+logger+":10000", "dvisher@users.isi.deterlab.ne").Start()
+	// ssh username@users.deterlab.net -L 8118:somenode.experiment.YourClass.isi.deterlab.net:80
+	fmt.Println("setup port forwarding for logger: ", logger)
+	cmd := exec.Command(
+		"ssh",
+		"-t",
+		"-t",
+		"dvisher@users.isi.deterlab.net",
+		"-L",
+		"8080:"+logger+":10000")
+	cmd.Start()
 	if err != nil {
 		log.Fatal("failed to setup portforwarding for logging server")
 	}
