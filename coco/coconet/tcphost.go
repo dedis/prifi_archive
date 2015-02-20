@@ -113,7 +113,7 @@ func (h *TCPHost) Listen() error {
 			// Read in name of client
 			tp := NewTCPConnFromNet(conn)
 			var mname Smarsh
-			err = <-tp.Get(&mname)
+			err = tp.Get(&mname)
 			if err != nil {
 				log.Errorln("ERROR ERROR ERROR: TCP HOST FAILED:", err)
 				tp.Close()
@@ -128,7 +128,7 @@ func (h *TCPHost) Listen() error {
 			// get and set public key
 			suite := nist.NewAES128SHA256P256()
 			pubkey := suite.Point()
-			err = <-tp.Get(pubkey)
+			err = tp.Get(pubkey)
 			if err != nil {
 				log.Errorln("unable to get pubkey from child")
 				tp.Close()
@@ -174,14 +174,14 @@ func (h *TCPHost) Connect() error {
 	tp := NewTCPConnFromNet(conn)
 
 	mname := Smarsh(h.Name())
-	err = <-tp.Put(&mname)
+	err = tp.Put(&mname)
 	if err != nil {
 		log.Errorln(err)
 		return err
 	}
 	tp.SetName(h.parent)
 
-	err = <-tp.Put(h.Pubkey)
+	err = tp.Put(h.Pubkey)
 	if err != nil {
 		log.Errorln("failed to enc p key")
 		return errors.New("failed to encode public key")
@@ -303,7 +303,7 @@ func (h *TCPHost) PutUp(data BinaryMarshaler) error {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
 	}
-	return <-parent.Put(data)
+	return parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
@@ -319,7 +319,7 @@ func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
 	}
-	return <-parent.Get(data)
+	return parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -343,14 +343,14 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 		}
 		conn := h.peers[c]
 		h.rlock.Unlock()
-		if e := <-conn.Put(data[i]); e != nil {
+		if e := conn.Put(data[i]); e != nil {
 			err = e
 		}
 	}
 	return err
 }
 
-func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
+func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
 	var c Conn
 	for {
 		h.rlock.Lock()
@@ -366,9 +366,7 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 	}
 
 	if c == nil {
-		errchan := make(chan error, 1)
-		errchan <- ErrorConnClosed
-		return errchan
+		return ErrorConnClosed
 	}
 
 	return c.Get(data)
@@ -396,7 +394,7 @@ func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 				for {
 
 					data := h.pool.Get().(BinaryUnmarshaler)
-					e := <-h.whenReadyGet(c, data)
+					e := h.whenReadyGet(c, data)
 					// check to see if the connection is Closed
 					if e == ErrorConnClosed {
 						errch <- errors.New("connection has been closed")

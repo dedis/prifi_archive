@@ -103,7 +103,7 @@ func (s *Server) Listen() error {
 				go func(c coconet.Conn) {
 					for {
 						tsm := TimeStampMessage{}
-						err := <-c.Get(&tsm)
+						err := c.Get(&tsm)
 						if err != nil {
 							log.Errorln("Failed to get from child:", err)
 							c.Close()
@@ -135,7 +135,7 @@ func (s *Server) ListenToClients() {
 		go func(c coconet.Conn) {
 			for {
 				tsm := TimeStampMessage{}
-				err := <-c.Get(&tsm)
+				err := c.Get(&tsm)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"file": logutils.File(),
