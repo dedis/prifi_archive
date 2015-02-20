@@ -23,6 +23,7 @@ const (
 	Commitment
 	Challenge
 	Response
+	Default // for internal use
 	Error
 )
 

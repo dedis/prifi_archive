@@ -3,6 +3,7 @@ package sign
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"time"
@@ -427,21 +428,40 @@ func (sn *Node) Respond(Round int) error {
 	messgs := sn.waitOn(sn.RmCh[Round], sn.Timeout(), "responses")
 
 	// initialize exception handling
-	var exceptionV_hat abstract.Point
-	var exceptionX_hat abstract.Point
+	exceptionV_hat := sn.suite.Point().Null()
+	exceptionX_hat := sn.suite.Point().Null()
 	round.ExceptionList = make([]abstract.Point, 0)
 	nullPoint := sn.suite.Point().Null()
 	children := sn.Children()
 
-	for _, sm := range messgs {
+	allmessgs := make([]*SigningMessage, len(messgs))
+	copy(allmessgs, messgs)
+	for c := range children {
+		found := false
+		for _, m := range messgs {
+			if m.From == c {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			// fmt.Println(sn.Name(), "addind no message from", c)
+			allmessgs = append(allmessgs, &SigningMessage{Type: Default, From: c})
+		}
+	}
+
+	var someExceptions bool
+	for _, sm := range allmessgs {
 		from := sm.From
 		switch sm.Type {
 		default:
 			// default == no response from child
-			// log.Println(sn.Name(), "default in respose for child", from, sm)
+			log.Println(sn.Name(), "default in respose for child", from, sm)
 			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
 
 			// remove public keys and point commits from subtree of faild child
+			someExceptions = true
 			sn.add(exceptionX_hat, round.ChildX_hat[from])
 			sn.add(exceptionV_hat, round.ChildV_hat[from])
 			continue
@@ -452,9 +472,10 @@ func (sn *Node) Respond(Round int) error {
 				continue
 			}
 
-			// log.Println(sn.Name(), "accepts response from", from)
+			log.Println(sn.Name(), "accepts response from", from)
 			round.r_hat.Add(round.r_hat, sm.Rm.R_hat)
 
+			someExceptions = true
 			sn.add(exceptionV_hat, sm.Rm.ExceptionV_hat)
 			sn.add(exceptionX_hat, sm.Rm.ExceptionX_hat)
 			round.ExceptionList = append(round.ExceptionList, sm.Rm.ExceptionList...)
@@ -472,17 +493,31 @@ func (sn *Node) Respond(Round int) error {
 	}
 
 	// remove all Vs of nodes from subtree that failed
-	sn.sub(round.Log.V_hat, exceptionV_hat)
-	sn.sub(round.X_hat, exceptionX_hat)
+	// fmt.Println(sn.Name(), exceptionX_hat, exceptionV_hat)
+	if someExceptions {
+		sn.sub(round.Log.V_hat, exceptionV_hat)
+		sn.sub(round.X_hat, exceptionX_hat)
+	}
 	err = sn.VerifyResponses(Round)
 
 	if !sn.IsRoot() {
+		if sn.TestingFailures == true &&
+			(sn.Host.(*coconet.FaultyHost).IsDead() ||
+				sn.Host.(*coconet.FaultyHost).IsDeadFor("response")) {
+			fmt.Println(sn.Name(), "dead for response")
+			return nil
+		}
 		// report verify response error
 		// log.Println(sn.Name(), "put up response with err", err)
 		if err != nil {
 			return sn.PutUp(&SigningMessage{
 				Type: Error,
 				Err:  &ErrorMessage{Err: err.Error()}})
+		}
+
+		if !someExceptions {
+			exceptionV_hat = nil
+			exceptionX_hat = nil
 		}
 		rm := &ResponseMessage{
 			R_hat:          round.r_hat,
@@ -538,9 +573,13 @@ func (sn *Node) VerifyResponses(Round int) error {
 
 	var c2 abstract.Secret
 	if sn.IsRoot() {
+		// round challenge must be recomputed given potential
+		// exception list
 		if sn.Type == PubKey {
+			round.c = hashElGamal(sn.suite, sn.LogTest, round.Log.V_hat)
 			c2 = hashElGamal(sn.suite, sn.LogTest, T)
 		} else {
+			round.c = hashElGamal(sn.suite, round.MTRoot, round.Log.V_hat)
 			c2 = hashElGamal(sn.suite, round.MTRoot, T)
 		}
 	}

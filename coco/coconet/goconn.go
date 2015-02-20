@@ -119,10 +119,6 @@ func (c *GoConn) Put(data BinaryMarshaler) error {
 
 // Get receives data from the sender.
 func (c *GoConn) Get(bum BinaryUnmarshaler) error {
-	// log.Println("GOCONN GET")
-	// since the channel is owned by the sender, we flip around the ordering of
-	// the fromto key to indicate that we want to receive from this instead of
-	// send.
 	tofrom := c.ToFrom()
 	c.dir.Lock()
 	ch := c.dir.channel[tofrom]
