@@ -113,7 +113,7 @@ func (h *TCPHost) Listen() error {
 			// Read in name of client
 			tp := NewTCPConnFromNet(conn)
 			var mname Smarsh
-			err = <-tp.Get(&mname)
+			err = tp.Get(&mname)
 			if err != nil {
 				log.Println("ERROR ERROR ERROR: TCP HOST FAILED:", err)
 				tp.Close()
@@ -128,7 +128,7 @@ func (h *TCPHost) Listen() error {
 			// get and set public key
 			suite := nist.NewAES128SHA256P256()
 			pubkey := suite.Point()
-			err = <-tp.Get(pubkey)
+			err = tp.Get(pubkey)
 			if err != nil {
 				log.Fatal("unable to get pubkey from child")
 			}
@@ -317,7 +317,7 @@ func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
 	}
-	return <-parent.Get(data)
+	return parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -348,7 +348,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 	return err
 }
 
-func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
+func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
 	var c Conn
 	for {
 		h.rlock.Lock()
@@ -364,9 +364,7 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) chan error {
 	}
 
 	if c == nil {
-		errchan := make(chan error, 1)
-		errchan <- ErrorConnClosed
-		return errchan
+		return ErrorConnClosed
 	}
 
 	return c.Get(data)
@@ -394,7 +392,7 @@ func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 				for {
 
 					data := h.pool.Get().(BinaryUnmarshaler)
-					e := <-h.whenReadyGet(c, data)
+					e := h.whenReadyGet(c, data)
 					// check to see if the connection is Closed
 					if e == ErrorConnClosed {
 						errch <- errors.New("connection has been closed")

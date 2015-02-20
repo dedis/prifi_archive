@@ -99,23 +99,18 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
 }
 
 // blocks until we get something
-func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
-	errchan := make(chan error, 1)
+func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
+	// errchan := make(chan error, 1)
 	for tc.dec == nil {
 		// panic("no decoder yet")
-		errchan <- ConnectionNotEstablished
-		return errchan
+		return ConnectionNotEstablished
 	}
 
-	go func(bum BinaryUnmarshaler) {
-		err := tc.dec.Decode(bum)
-		if err != nil {
-			log.Errorln("failed to decode:", err)
-		}
-		errchan <- err
-	}(bum)
-
-	return errchan
+	err := tc.dec.Decode(bum)
+	if err != nil {
+		log.Errorln("failed to decode:", err)
+	}
+	return err
 }
 
 func (tc *TCPConn) Close() {

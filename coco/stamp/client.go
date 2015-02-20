@@ -57,7 +57,7 @@ func (c *Client) handleServer(s coconet.Conn) error {
 	for {
 		tsm := &TimeStampMessage{}
 		// log.Println("connection:", s)
-		err := <-s.Get(tsm)
+		err := s.Get(tsm)
 		if err != nil {
 			return err
 		}

@@ -114,7 +114,7 @@ func (h *GoHost) Listen() error {
 			conn := h.peers[c]
 			h.rlock.Unlock()
 
-			e := <-conn.Get(pubkey)
+			e := conn.Get(pubkey)
 			if e != nil {
 				log.Fatal("unable to get pubkey from child")
 			}
@@ -210,7 +210,7 @@ func (h *GoHost) PutUp(data BinaryMarshaler) error {
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
 	// fmt.Println("GETTING UP from up")
-	return <-h.parent.Get(data)
+	return h.parent.Get(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
@@ -236,7 +236,7 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	return err
 }
 
-func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) chan error {
+func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) error {
 	// defer fmt.Println(h.Name(), "returned ready channel for", c.Name(), c)
 	for {
 		h.rlock.Lock()
@@ -271,7 +271,7 @@ func (h *GoHost) GetDown() (chan NetworkMessg, chan error) {
 
 				for {
 					data := h.pool.Get().(BinaryUnmarshaler)
-					e := <-h.whenReadyGet(conn, data)
+					e := h.whenReadyGet(conn, data)
 
 					chmu.Lock()
 					ch <- NetworkMessg{Data: data, From: c} // this should be copy of data[i]
