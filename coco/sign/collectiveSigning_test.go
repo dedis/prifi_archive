@@ -13,12 +13,12 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-// TODO: when announcing must provide round numbers
+// NOTE: when announcing must provide round numbers
 
 // Testing suite for signing
 // NOTE: when testing if we can gracefully accommodate failures we must:
 // 1. Wrap our hosts in FaultyHosts (ex: via field passed in LoadConfig)
-// 2. Set out SigningNodes TesingFailures field to true
+// 2. Set out Nodes TesingFailures field to true
 // 3. We can Choose at which stage our nodes fail by using SetDeadFor
 //    or we can choose to take them off completely via SetDead
 
@@ -78,15 +78,15 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	}
 
 	// Create Signing Nodes out of the hosts
-	nodes := make([]*sign.SigningNode, nNodes)
+	nodes := make([]*sign.Node, nNodes)
 	for i := 0; i < nNodes; i++ {
-		nodes[i] = sign.NewSigningNode(h[i], suite, rand)
+		nodes[i] = sign.NewNode(h[i], suite, rand)
 		nodes[i].Type = signType
 
 		h[i].SetPubKey(nodes[i].PubKey)
 		// To test the already keyed signing node, uncomment
 		// PrivKey := suite.Secret().Pick(rand)
-		// nodes[i] = NewKeyedSigningNode(h[i], suite, PrivKey)
+		// nodes[i] = NewKeyedNode(h[i], suite, PrivKey)
 	}
 	nodes[0].Height = 2
 	nodes[1].Height = 1

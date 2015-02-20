@@ -46,21 +46,6 @@ func (c *Client) Name() string {
 	return c.name
 }
 
-// Listen must be called before Connect
-// func (c *Client) Connect() error {
-// 	var err error
-// 	for _, conn := range c.Servers {
-// 		e := conn.Connect()
-// 		if e != nil {
-// 			log.Println("failed to connect to server:", e)
-// 			err = e
-// 			continue
-// 		}
-// 		go handleServer(conn)
-// 	}
-// 	return err
-// }
-
 func (c *Client) Close() {
 	for _, c := range c.Servers {
 		log.Println("CLOSING SERVER")
@@ -80,15 +65,6 @@ func (c *Client) handleServer(s coconet.Conn) error {
 	}
 }
 
-// XXX: Listen to server responses?
-// This doesn't make that much sense.
-// I should connect to the server and then handle the connection.
-// func (c *Client) Listen() {
-// 	for _, s := range c.Servers {
-// 		go handleServer(s)
-// 	}
-// }
-
 // Act on type of response received from srrvr
 func (c *Client) handleResponse(tsm *TimeStampMessage) {
 	switch tsm.Type {
@@ -106,11 +82,8 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 	//c.Servers[name] = conn
 	go func(conn coconet.Conn) {
 		for {
-			// log.Println("Conn Before Connection:", conn)
 			err := conn.Connect()
-			// log.Println("Conn After Connection:", conn, err)
 			if err != nil {
-				// log.Println("FAILURE: failed to connect to server:", err)
 				time.Sleep(500 * time.Millisecond)
 				continue
 			} else {
@@ -199,21 +172,3 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	}
 	done <- true
 }
-
-// func (c *Client) ShowHistory() {
-// 	for {
-// 		select {
-// 		case nRound := <-c.roundChan:
-// 			if nRound != 1 {
-// 				// If not all replies received by client it will block infinitely
-// 				// fmt.Println("All round", nRound-1, "responses received by", c.Name())
-// 			}
-// 			// c.historyMux.Lock()
-// 			// for _, msg := range c.history {
-// 			// 	fmt.Println("ReqNo =", msg.reqno, "Signature =", msg.Sig)
-// 			// }
-// 			// c.historyMux.Unlock()
-// 		}
-
-// 	}
-// }

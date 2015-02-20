@@ -8,8 +8,6 @@ import (
 	"github.com/dedis/prifi/coco/proof"
 )
 
-//"time"
-
 type SeqNo byte
 
 // struct to ease keeping track of who requires a reply after

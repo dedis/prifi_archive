@@ -83,16 +83,13 @@ var ConnectionNotEstablished error = errors.New("connection not established")
 // blocks until the put is availible
 func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
 	errchan := make(chan error, 1)
-	// tc.RLock()
+
 	for tc.enc == nil {
-		// tc.RUnlock()
-		// time.Sleep(time.Second)
-		// tc.RLock()
 		log.Println("Conn not established")
 		errchan <- ConnectionNotEstablished
 		return errchan
 	}
-	// tc.RUnlock()
+
 	err := tc.enc.Encode(bm)
 	if err != nil {
 		log.Errorln("failed to put/encode:", err)
@@ -106,20 +103,15 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
 	errchan := make(chan error, 1)
 	for tc.dec == nil {
 		// panic("no decoder yet")
-		// log.Fatal("no decoder yet")
 		errchan <- ConnectionNotEstablished
 		return errchan
 	}
 
 	go func(bum BinaryUnmarshaler) {
-		// log.Println("decoding from", tc.Name())
 		err := tc.dec.Decode(bum)
 		if err != nil {
 			log.Errorln("failed to decode:", err)
-			// fmt.Println("failed to unmarshal binary: ", tc.conn)
-			// fmt.Printf("\tinto: %#v\n", bum)
 		}
-		// log.Println("decoded", err)
 		errchan <- err
 	}(bum)
 

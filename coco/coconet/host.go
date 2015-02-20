@@ -64,8 +64,8 @@ type Host interface {
 	Close() // connections need to be cleaned up
 
 	SetTimeout(time.Duration)
-	GetTimeout() time.Duration
-	GetDefaultTimeout() time.Duration
+	Timeout() time.Duration
+	DefaultTimeout() time.Duration
 
 	PubKey() abstract.Point
 	SetPubKey(abstract.Point)

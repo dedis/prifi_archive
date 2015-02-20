@@ -34,7 +34,7 @@ func TestPubKeysOneNode(t *testing.T) {
 		":6098",
 		":6099",
 		":6100"}
-	nodes := make(map[string]*sign.SigningNode)
+	nodes := make(map[string]*sign.Node)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for _, host := range hosts {

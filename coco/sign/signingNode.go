@@ -1,7 +1,6 @@
 package sign
 
 import (
-	"bytes"
 	"crypto/cipher"
 	"sync"
 	"time"
@@ -11,8 +10,6 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/coco/hashid"
-	"github.com/dedis/prifi/coco/proof"
 )
 
 var ROUND_TIME time.Duration = 1 * time.Second
@@ -22,51 +19,12 @@ type Type int // used by other modules as sign.Type
 const (
 	// Default Signature involves creating Merkle Trees
 	MerkleTree = iota
-	// Basic Signature removes all Merkle Trees Collective PubKey
-	// Collective public keys are still created and can be useds
+	// Basic Signature removes all Merkle Trees
+	// Collective public keys are still created and can be used
 	PubKey
 )
 
-type Round struct {
-	c abstract.Secret // round lasting challenge
-	r abstract.Secret // round lasting response
-
-	Log       SNLog // round lasting log structure
-	HashedLog []byte
-
-	r_hat abstract.Secret // aggregate of responses
-	X_hat abstract.Point  // aggregate of public keys
-
-	// own big merkle subtree
-	MTRoot     hashid.HashId   // mt root for subtree, passed upwards
-	Leaves     []hashid.HashId // leaves used to build the merkle subtre
-	LeavesFrom []string        // child names for leaves
-
-	// mtRoot before adding HashedLog
-	LocalMTRoot hashid.HashId
-
-	// merkle tree roots of children in strict order
-	CMTRoots     []hashid.HashId
-	CMTRootNames []string
-	Proofs       map[string]proof.Proof
-
-	// round-lasting public keys of children servers that did not
-	// respond to latest commit or respond phase, in subtree
-	ExceptionList []abstract.Point
-	// combined point commits of children servers in subtree
-	ChildV_hat map[string]abstract.Point
-	// combined public keys of children servers in subtree
-	ChildX_hat map[string]abstract.Point
-}
-
-func NewRound() *Round {
-	round := &Round{}
-	round.ExceptionList = make([]abstract.Point, 0)
-
-	return round
-}
-
-type SigningNode struct {
+type Node struct {
 	coconet.Host
 
 	// Set to true if FaultyHosts are used instead of Hosts
@@ -95,23 +53,23 @@ type SigningNode struct {
 	peerKeys  map[string]abstract.Point    // map of all peer public keys
 }
 
-func (sn *SigningNode) RegisterAnnounceFunc(cf coco.CommitFunc) {
+func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
 	sn.CommitFunc = cf
 }
 
-func (sn *SigningNode) RegisterDoneFunc(df coco.DoneFunc) {
+func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
 	sn.DoneFunc = df
 }
 
-func (sn *SigningNode) StartSigningRound() {
-	sn.nRounds++
+func (sn *Node) StartSigningRound() {
 	// send an announcement message to all other TSServers
 	log.Println("I", sn.Name(), "Sending an annoucement")
-	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round")})
+	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+	sn.nRounds++
 }
 
-func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *SigningNode {
-	sn := &SigningNode{Host: hn, suite: suite}
+func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {
+	sn := &Node{Host: hn, suite: suite}
 	sn.PrivKey = suite.Secret().Pick(random)
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
@@ -125,8 +83,8 @@ func NewSigningNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream)
 }
 
 // Create new signing node that incorporates a given private key
-func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret) *SigningNode {
-	sn := &SigningNode{Host: hn, suite: suite, PrivKey: PrivKey}
+func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret) *Node {
+	sn := &Node{Host: hn, suite: suite, PrivKey: PrivKey}
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
 	sn.peerKeys = make(map[string]abstract.Point)
@@ -138,37 +96,48 @@ func NewKeyedSigningNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract
 	return sn
 }
 
-func (sn *SigningNode) AddPeer(conn string, PubKey abstract.Point) {
+func (sn *Node) AddPeer(conn string, PubKey abstract.Point) {
 	sn.Host.AddPeers(conn)
 	sn.peerKeys[conn] = PubKey
 }
 
-func (sn *SigningNode) GetSuite() abstract.Suite {
+func (sn *Node) Suite() abstract.Suite {
 	return sn.suite
 }
 
-// used for testing purposes
-func (sn *SigningNode) Write(data interface{}) []byte {
-	buf := bytes.Buffer{}
-	abstract.Write(&buf, &data, sn.suite)
-	return buf.Bytes()
-}
-
-// used for testing purposes
-func (sn *SigningNode) Read(data []byte) (interface{}, error) {
-	buf := bytes.NewBuffer(data)
-	messg := TestMessage{}
-	if err := abstract.Read(buf, &messg, sn.suite); err != nil {
-		return nil, err
-	}
-	return messg, nil
-}
-
-func (sn *SigningNode) UpdateTimeout(t ...time.Duration) {
+func (sn *Node) UpdateTimeout(t ...time.Duration) {
 	if len(t) > 0 {
 		sn.SetTimeout(t[0])
 	} else {
-		tt := time.Duration(sn.Height)*sn.GetDefaultTimeout() + 1000*time.Millisecond
+		tt := time.Duration(sn.Height)*sn.DefaultTimeout() + 1000*time.Millisecond
 		sn.SetTimeout(tt)
 	}
+}
+
+func (sn *Node) setPool() {
+	var p sync.Pool
+	p.New = NewSigningMessage
+	sn.Host.SetPool(p)
+}
+
+// accommodate nils
+func (sn *Node) add(a abstract.Point, b abstract.Point) {
+	if a == nil {
+		a = sn.suite.Point().Null()
+	}
+	if b != nil {
+		a.Add(a, b)
+	}
+
+}
+
+// accommodate nils
+func (sn *Node) sub(a abstract.Point, b abstract.Point) {
+	if a == nil {
+		a = sn.suite.Point().Null()
+	}
+	if b != nil {
+		a.Sub(a, b)
+	}
+
 }

@@ -53,7 +53,6 @@ func logEntryHandler(ws *websocket.Conn) {
 	var data []byte
 	err := websocket.Message.Receive(ws, &data)
 	for err == nil {
-		log.Println("RECEIVED LOG ENTRY")
 		Log.Mlock.Lock()
 		Log.Msgs = append(Log.Msgs, data)
 		Log.End += 1

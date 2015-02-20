@@ -16,6 +16,8 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
+// TODO: messages should be sent hashed eventually
+
 // func init() {
 // 	log.SetFlags(log.Lshortfile)
 // 	//log.SetOutput(ioutil.Discard)
@@ -57,13 +59,6 @@ func TestTSSIntegration(t *testing.T) {
 		go s.Run("regular", nRounds+2)
 		go s.ListenToClients()
 
-		// clients := createClientsForTSServer(ncps, sn,
-		// 	sn.Host.(*coconet.GoHost).GetDirectory(), 0+i*ncps)
-
-		//for _, client := range clientsLists[i] {
-		//go client.Listen()
-		//go client.ShowHistory()
-		//}
 		wg.Add(1)
 		go func(clients []*stamp.Client, nRounds int, nMessages int, s *stamp.Server) {
 			defer wg.Done()
@@ -101,11 +96,6 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	// for _, c := range clients {
-	// 	// go c.Listen()
-	// 	// go c.ShowHistory()
-	// 	// go c.Connect()
-	// }
 	for _, s := range stampers[1:] {
 		go s.Run("regular", nRounds)
 		go s.ListenToClients()
@@ -113,12 +103,11 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	go stampers[0].Run("root", nRounds)
 	go stampers[0].ListenToClients()
 	log.Println("About to start sending client messages")
-	// time.Sleep(1 * time.Second)
+
 	for r := 0; r < nRounds; r++ {
 		var wg sync.WaitGroup
 		for _, c := range clients {
 			for i := 0; i < nMessages; i++ {
-				// TODO: messages should be sent hashed eventually
 				messg := []byte("messg:" + strconv.Itoa(r) + "." + strconv.Itoa(i))
 				wg.Add(1)
 				go func(c *stamp.Client, messg []byte, i int) {
@@ -166,22 +155,16 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	// for _, c := range clients {
-	// 	// go c.Listen()
-	// 	// go c.ShowHistory()
-	// 	// go c.Connect()
-	// }
 	for _, s := range stampers[1:] {
 		go s.Run("regular", nRounds)
 	}
 	go stampers[0].Run("root", nRounds)
 	log.Println("About to start sending client messages")
-	// time.Sleep(1 * time.Second)
+
 	for r := 0; r < nRounds; r++ {
 		var wg sync.WaitGroup
 		for _, c := range clients {
 			for i := 0; i < nMessages; i++ {
-				// TODO: messages should be sent hashed eventually
 				messg := []byte("messg:" + strconv.Itoa(r) + "." + strconv.Itoa(i))
 				wg.Add(1)
 				go func(c *stamp.Client, messg []byte, i int) {
@@ -247,18 +230,15 @@ func clientsTalk(clients []*stamp.Client, nRounds, nMessages int, s *stamp.Serve
 		var wg sync.WaitGroup
 		for _, client := range clients {
 			for i := 0; i < nMessages; i++ {
-				// TODO: messages should be sent hashed eventually
 				messg := []byte("messg" + strconv.Itoa(r) + strconv.Itoa(i))
 				wg.Add(1)
 				go func(client *stamp.Client, messg []byte, s *stamp.Server, i int) {
 					defer wg.Done()
 					client.TimeStamp(messg, s.Name())
-					// log.Println("timestamped")
 				}(client, messg, s, r)
 			}
 		}
 		// wait between rounds
 		wg.Wait()
-		// time.Sleep(1 * time.Second)
 	}
 }

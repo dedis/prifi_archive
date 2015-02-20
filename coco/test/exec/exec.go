@@ -55,7 +55,7 @@ func main() {
 	}()
 	//log.SetPrefix(hostname + ":")
 	//log.SetFlags(log.Lshortfile)
-	fmt.Println("Execing")
+	fmt.Println("Execing: @"+hostname, " logger: ", logger)
 	if hostname == "" {
 		fmt.Println("hostname is empty")
 		log.Fatal("no hostname given")
@@ -90,7 +90,7 @@ func main() {
 	defer hc.SNodes[0].Close()
 
 	if app == "sign" {
-		log.Println("RUNNING SIGNINGNODE")
+		log.Println("RUNNING Node")
 		// if I am root do the announcement message
 		if hc.SNodes[0].IsRoot() {
 			time.Sleep(3 * time.Second)
@@ -101,7 +101,10 @@ func main() {
 				start = time.Now()
 				fmt.Println("ANNOUNCING")
 				hc.SNodes[0].LogTest = []byte("Hello World")
-				err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+				err = hc.SNodes[0].Announce(
+					&sign.AnnouncementMessage{
+						LogTest: hc.SNodes[0].LogTest,
+						Round:   i})
 				if err != nil {
 					log.Println(err)
 				}

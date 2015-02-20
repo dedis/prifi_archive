@@ -60,7 +60,7 @@ func main() {
 	//log.SetFlags(log.Lshortfile)
 	//log.SetPrefix(name + ":")
 	log.Println("TIMESTAMP CLIENT")
-	c := stamp.NewClient("time_client@" + name)
+	c := stamp.NewClient(name)
 	log.Println("SERVER: ", server)
 	conn := coconet.NewTCPConn(server)
 	c.AddServer(server, conn)
@@ -69,15 +69,18 @@ func main() {
 	// if the rate has been specified then send out one message every
 	// rate milliseconds
 	if rate != -1 {
-		c := time.Tick(rate * time.Millisecond)
+		ticker := time.Tick(time.Duration(rate) * time.Millisecond)
 		for {
 			go func() {
 				e := c.TimeStamp(msgs[0], server)
 				if e != nil {
-					log.Errorln("error timesamping:", e)
+					log.WithFields(log.Fields{
+						"clientname": name,
+						"server":     server,
+					}).Errorln("error timesamping:", e)
 				}
 			}()
-			<-c
+			<-ticker
 		}
 		return
 	}
