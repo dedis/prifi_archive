@@ -103,8 +103,3 @@ type ResponseMessage struct {
 type ErrorMessage struct {
 	Err string
 }
-
-type TestMessage struct {
-	S     abstract.Secret
-	Bytes []byte
-}

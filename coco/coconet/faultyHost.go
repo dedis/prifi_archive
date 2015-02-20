@@ -14,7 +14,7 @@ type FaultyHost struct {
 
 	State HostState
 
-	// DearFor[x]=true is Host muslt play dead when x occurs
+	// DeadFor[x]=true is Host muslt play dead when x occurs
 	// ex: DeadFor["commit"] is set true if host must fail on commit
 	DeadFor map[string]bool
 }

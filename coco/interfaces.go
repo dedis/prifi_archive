@@ -17,7 +17,7 @@ type DoneFunc func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof)
 type Signer interface {
 	Name() string
 	IsRoot() bool
-	GetSuite() abstract.Suite
+	Suite() abstract.Suite
 	StartSigningRound()
 
 	// // proof can be nil for simple non Merkle Tree signatures
