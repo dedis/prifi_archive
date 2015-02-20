@@ -361,7 +361,7 @@ func (sn *Node) SendChildrenChallengesProofs(chm *ChallengeMessage) error {
 
 		// send challenge message to child
 		// log.Println("connection: sending children challenge proofs:", name, conn)
-		if err := <-conn.Put(messg); err != nil {
+		if err := conn.Put(messg); err != nil {
 			return err
 		}
 	}
@@ -376,7 +376,7 @@ func (sn *Node) SendChildrenChallenges(chm *ChallengeMessage) error {
 		messg = &SigningMessage{Type: Challenge, Chm: chm}
 
 		// send challenge message to child
-		if err := <-child.Put(messg); err != nil {
+		if err := child.Put(messg); err != nil {
 			return err
 		}
 	}

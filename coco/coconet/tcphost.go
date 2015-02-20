@@ -172,14 +172,14 @@ func (h *TCPHost) Connect() error {
 	tp := NewTCPConnFromNet(conn)
 
 	mname := Smarsh(h.Name())
-	err = <-tp.Put(&mname)
+	err = tp.Put(&mname)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
 	tp.SetName(h.parent)
 
-	err = <-tp.Put(h.Pubkey)
+	err = tp.Put(h.Pubkey)
 	if err != nil {
 		log.Errorln("failed to enc p key")
 		return errors.New("failed to encode public key")
@@ -301,7 +301,7 @@ func (h *TCPHost) PutUp(data BinaryMarshaler) error {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
 	}
-	return <-parent.Put(data)
+	return parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
@@ -341,7 +341,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 		}
 		conn := h.peers[c]
 		h.rlock.Unlock()
-		if e := <-conn.Put(data[i]); e != nil {
+		if e := conn.Put(data[i]); e != nil {
 			err = e
 		}
 	}

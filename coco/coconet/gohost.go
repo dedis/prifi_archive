@@ -203,7 +203,7 @@ func (h *GoHost) WaitTick() {
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
 	// defer fmt.Println(h.Name(), "done put up", h.parent)
 	// fmt.Printf(h.Name(), "PUTTING UP up:%#v", data)
-	return <-h.parent.Put(data)
+	return h.parent.Put(data)
 }
 
 // GetUp gets a message (an interface{} value) from the parent through
@@ -228,7 +228,7 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 		h.rlock.Lock()
 		conn := h.peers[c]
 		h.rlock.Unlock()
-		if e := <-conn.Put(data[i]); e != nil {
+		if e := conn.Put(data[i]); e != nil {
 			err = e
 		}
 		i++

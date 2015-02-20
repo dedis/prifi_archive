@@ -101,8 +101,7 @@ func (c *GoConn) PubKey() abstract.Point {
 }
 
 // Put sends data to the goConn through the channel.
-func (c *GoConn) Put(data BinaryMarshaler) chan error {
-	errchan := make(chan error, 1)
+func (c *GoConn) Put(data BinaryMarshaler) error {
 	fromto := c.FromTo()
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
@@ -112,12 +111,10 @@ func (c *GoConn) Put(data BinaryMarshaler) chan error {
 	c.dir.Unlock()
 	b, err := data.MarshalBinary()
 	if err != nil {
-		errchan <- err
-		return errchan
+		return err
 	}
 	ch <- b
-	errchan <- nil
-	return errchan
+	return nil
 }
 
 // Get receives data from the sender.
