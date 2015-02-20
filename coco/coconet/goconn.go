@@ -129,8 +129,11 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	data := <-ch
 	err := bum.UnmarshalBinary(data)
 	if err != nil {
-		fmt.Println("failed to unmarshal binary: ", ch, data)
+		fmt.Println("failed to unmarshal binary from ", tofrom, ch, data)
 		fmt.Printf("\tinto: %#v\n", bum)
+		bum = nil
+	} else {
+		// fmt.Println("correct unmarshal binary from ", tofrom, ch, data)
 	}
 	return err
 }
