@@ -1,141 +1,163 @@
 #!/usr/bin/env python
 
+import binascii
 import random
-import unittest
 
 from Crypto.Hash import SHA256
 from Crypto.Util.number import long_to_bytes, bytes_to_long
 
-import schnorr
-from elgamal import PublicKey, PrivateKey
+from dh import PrivateKey, PublicKey
 
-class BaseVerdict:
-    def __init__(self, client_keys, trustee_keys):
-        self.group = trustee_keys[0].group
-        self.client_keys = client_keys
-        self.trustee_keys = trustee_keys
+def _s2l(s):
+    s = bytes("".join(s.split()), "UTF-8")
+    s = binascii.a2b_hex(s)
+    return bytes_to_long(s)
 
-    def generate_ciphertext(self, generator, data = None):
-        encrypted = self.group.multiply(generator, self._shared_secret)
-        if data != None:
-            data = self.group.encode(data)
-            encrypted = self.group.add(data, encrypted)
-        return encrypted
+p = _s2l("fd8a16fc2afdaeb2ea62b66b355f73e6c2fc4349bf4551793"
+    "36ca1b45f75d68da0101cba63c22efd5f72e5c81dc30cf709da"
+    "aef2323e950160926e11ef8cbf40a26496668749218b5620276"
+    "697c2d1536b31042ad846e1e5758d79b3e4e0b5bc4c5d3a4e95"
+    "da4502e9058ea3beade156d8234e35d5164783c57e6135139db"
+    "097")
 
-    def set_commitments(self, client_commitments, trustee_commitments):
-        assert len(client_commitments) == len(self.client_keys)
-        assert len(trustee_commitments) == len(self.trustee_keys)
-        self.ccommit = client_commitments
-        self.tcommit = trustee_commitments
+g = _s2l("02")
 
-    def commitment(self):
-        return self.secret_commit
+q = (p - 1) // 2
 
-class TrusteeVerdict(BaseVerdict):
-    def __init__(self, ss_or_key, client_keys, trustee_keys, ss = False):
-        BaseVerdict.__init__(self, client_keys, trustee_keys)
+def rand_in_q():
+    return random.randrange(1 << (q.bit_length() - 1), q - 1)
 
-        if ss:
-            self._shared_secret = ss_or_key
+def gen_key():
+    return rand_in_q()
+
+class Verdict:
+    def __init__(self, key, public_keys):
+        self.key = key
+        self.public_keys = public_keys
+        self.shared_secret = 1
+        self.index = -1
+        for idx in range(len(self.public_keys)):
+            ks = self.public_keys[idx].y
+            self.shared_secret = (self.shared_secret * ks) % p
+            if ks == self.key.y:
+                self.index = idx
+        assert self.index != -1
+        self.shared_secret = pow(self.shared_secret, self.key.x, p)
+        self.secret_commit = pow(g, self.shared_secret, p)
+
+    def set_commitments(self, commitments):
+        self.commitments = commitments
+        assert len(self.commitments) == len(self.public_keys)
+
+    def challenge(self, generator, ciphertext, index):
+        return self._challenge(generator, ciphertext, index)
+
+    def owner_challenge(self, generator, ciphertext):
+        return self._challenge(generator, ciphertext, self.index)
+
+    def generate_ciphertext(self, generator, data = 1):
+        return data * pow(generator, self.shared_secret, p)
+
+    def _challenge(self, generator, ciphertext, index):
+        data_key = self.public_keys[index].y
+
+        v1 = rand_in_q()
+        v2 = rand_in_q()
+        w = rand_in_q()
+        commitment = self.secret_commit
+
+        if self.index == index:
+            t1 = (pow(commitment, w, p) * pow(g, v1, p)) % p
+            t2 = (pow(ciphertext, w, p) * pow(generator, v1, p)) % p
+            t3 = pow(data_key, -w % q, p)
         else:
-            self._shared_secret = self.group.zero()
-            for idx in range(len(client_keys)):
-                self._shared_secret = (self._shared_secret - ss_or_key.exchange(client_keys[idx])) % self.group.q
-        self.secret_commit = self.group.multiply(self.group.generator(), self._shared_secret)
+            t1 = pow(g, v1, p)
+            t2 = pow(generator, v1, p)
+            t3 = (pow(data_key, w, p) * pow(g, v2, p)) % p
 
-    def shared_secret(self):
-        return self._shared_secret
-
-
-class ClientVerdict(BaseVerdict):
-    def __init__(self, key, client_keys, trustee_keys):
-        BaseVerdict.__init__(self, client_keys, trustee_keys)
-
-        self._shared_secret = self.group.zero()
-        index = -1
-        for idx in range(len(trustee_keys)):
-            ks = trustee_keys[idx]
-            if index == -1 and ks == key.element:
-                index = idx
-                continue
-            self._shared_secret = (self._shared_secret + key.exchange(trustee_keys[idx])) % self.group.q
-        self.secret_commit = self.group.multiply(self.group.generator(), self._shared_secret)
-
-class Test(unittest.TestCase):
-    def test_basic(self):
-        group = schnorr.verdict_1024()
-        self.basic(group)
-
-    def gen_keys(self, group, count):
-        keys = []
-        pkeys = []
-
-        for idx in range(count):
-            k = PrivateKey(group)
-            keys.append(k)
-            pkeys.append(k.public_key())
-
-        return (keys, pkeys)
-
-    def setup(self, group, clients, trustees):
-        ckeys, cpkeys = self.gen_keys(group, clients)
-        tkeys, tpkeys = self.gen_keys(group, trustees)
-
-        cverdicts = []
-        ccommitments = []
-
-        for idx in range(clients):
-            cverdicts.append(ClientVerdict(ckeys[idx], cpkeys, tpkeys))
-            ccommitments.append(cverdicts[-1].commitment())
-
-        tverdicts = []
-        tcommitments = []
-
-        for idx in range(trustees):
-            tverdicts.append(TrusteeVerdict(tkeys[idx], cpkeys, tpkeys))
-            tcommitments.append(tverdicts[-1].commitment())
-
-        for verdict in cverdicts:
-            verdict.set_commitments(ccommitments, tcommitments)
-
-        for verdict in tverdicts:
-            verdict.set_commitments(ccommitments, tcommitments)
-
-        return (cverdicts, tverdicts)
-
-    def basic(self, group):
-        trustees = 3
-        clients = 10
-        owner_idx = random.randrange(0, clients)
-
-        cverdicts, tverdicts = self.setup(group, clients, trustees)
-
-        msg = bytes("hello world", "UTF-8")
         h = SHA256.new()
-        h.update(msg)
-        generator = pow(group.g, bytes_to_long(h.digest()), group.p)
+        h.update(long_to_bytes(g))
+        h.update(long_to_bytes(generator))
+        h.update(long_to_bytes(g))
+        h.update(long_to_bytes(self.secret_commit))
+        h.update(long_to_bytes(ciphertext))
+        h.update(long_to_bytes(data_key))
+        h.update(long_to_bytes(t1))
+        h.update(long_to_bytes(t2))
+        h.update(long_to_bytes(t3))
+        d = bytes_to_long(h.digest())
 
-        cciphertexts = []
-        cproofs = []
+        c1 = (d - w) % q
+        c2 = w
+        if self.index == index:
+            r1 = -(self.key.x * d) % q
+        else:
+            r1 = (v1 - c1 * self.shared_secret) % q
+        r2 = v2
 
-        for idx in range(clients):
-            if idx == owner_idx:
-                cciphertexts.append(cverdicts[idx].generate_ciphertext(generator, msg))
-            else:
-                cciphertexts.append(cverdicts[idx].generate_ciphertext(generator))
+        if self.index == index:
+            return (c2, c1, v1, r1)
+        return (c1, c2, r1, r2)
 
-        tciphertexts = []
-        for idx in range(trustees):
-            tciphertexts.append(tverdicts[idx].generate_ciphertext(generator))
+    def verify(self, generator, ciphertext, proof, data_index, user_index):
+        c1, c2, r1, r2 = proof
+        commitment = self.commitments[user_index]
+        data_key = self.public_keys[data_index].y
 
-        cleartext = group.identity()
-        for ciphertext in tciphertexts:
-            cleartext = group.add(cleartext, ciphertext)
+        t1 = (pow(commitment, c1, p) * pow(g, r1, p)) % p
+        t2 = (pow(ciphertext, c1, p) * pow(generator, r1, p)) % p
+        t3 = (pow(data_key, c2, p) * pow(g, r2, p)) % p
 
-        for ciphertext in cciphertexts:
-            cleartext = group.add(cleartext, ciphertext)
+        h = SHA256.new()
+        h.update(long_to_bytes(g))
+        h.update(long_to_bytes(generator))
+        h.update(long_to_bytes(g))
+        h.update(long_to_bytes(commitment))
+        h.update(long_to_bytes(ciphertext))
+        h.update(long_to_bytes(data_key))
+        h.update(long_to_bytes(t1))
+        h.update(long_to_bytes(t2))
+        h.update(long_to_bytes(t3))
+        return (c1 + c2) % q == bytes_to_long(h.digest())
 
-        self.assertEqual(msg, group.decode(cleartext))
+def main():
+    count = 10
+    slot_index = random.randrange(0, count)
+    keys = []
+    pkeys = []
+    for idx in range(count):
+        k = PrivateKey(g, p, q)
+        keys.append(k)
+        pkeys.append(k.pubkey)
+
+    verdicts = []
+    commitments = []
+    for idx in range(count):
+        verdicts.append(Verdict(keys[idx], pkeys))
+        commitments.append(verdicts[-1].secret_commit)
+
+    for verdict in verdicts:
+        verdict.set_commitments(commitments)
+
+    msg = bytes("hello world", "UTF-8")
+    msgi = bytes_to_long(msg)
+    h = SHA256.new()
+    h.update(msg)
+    generator = pow(g, bytes_to_long(h.digest()), p)
+
+    ciphertexts = []
+    proofs = []
+
+    for idx in range(count):
+        if idx == slot_index:
+            ciphertexts.append(verdicts[slot_index].generate_ciphertext(generator, msgi))
+            proofs.append(verdicts[slot_index].owner_challenge(generator, ciphertexts[-1]))
+        else:
+            ciphertexts.append(verdicts[idx].generate_ciphertext(generator))
+            proofs.append(verdicts[idx].challenge(generator, ciphertexts[-1], slot_index))
+
+    for idx in range(count):
+        assert verdicts[0].verify(generator, ciphertexts[idx], proofs[idx], slot_index, idx) == True
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

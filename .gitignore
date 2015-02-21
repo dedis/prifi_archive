@@ -3,6 +3,7 @@
 *.swp
 *~
 moc_*
+__pycache__/
 Makefile
 ext/
 dissent/dissent

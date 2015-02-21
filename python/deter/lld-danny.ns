@@ -1,0 +1,55 @@
+set ns [new Simulator]
+source tb_compat.tcl
+
+set n_clients 32
+set n_trustees 3
+
+set lanstr_clients ""
+set lanstr_trustees ""
+
+set trustee_delay 100ms
+set remote_delay 50ms
+set relay_delay 0ms
+
+set relay [$ns node]
+tb-set-node-os $relay Ubuntu1404-64-STD
+append lanstr_clients "$relay "
+append lanstr_trustees "$relay "
+
+for {set i 0} {$i < $n_clients} {incr i} {
+   set client($i) [$ns node]
+   tb-set-node-os $client($i) Ubuntu1404-64-STD
+   append lanstr_clients "$client($i) "
+}
+
+for {set i 0} {$i < $n_trustees} {incr i} {
+   set trustee($i) [$ns node]
+   tb-set-node-os $trustee($i) Ubuntu1404-64-STD
+   append lanstr_trustees "$trustee($i) "
+}
+
+set lanclients [$ns make-lan "$lanstr_clients" 100Mb 0ms]
+set lantrustees [$ns make-lan "$lanstr_trustees" 100Mb $trustee_delay]
+
+tb-set-ip-lan $relay $lanclients 10.0.0.254
+tb-set-ip-lan $relay $lantrustees 10.0.1.254
+
+for {set i 0} {$i < $n_clients} {incr i} {
+    set ip 10.0.0.[expr {$i + 1}]
+    tb-set-ip-lan $client($i) $lanclients $ip
+}
+
+for {set i 0} {$i < $n_trustees} {incr i} {
+    set ip 10.0.1.[expr {$i + 1}]
+    tb-set-ip-lan $trustee($i) $lantrustees $ip
+}
+
+tb-set-node-lan-delay $relay $lanclients $relay_delay
+
+set remote [$ns node]
+tb-set-node-os $remote Ubuntu1404-64-STD
+$ns duplex-link $relay $remote 1000Mb $remote_delay DropTail
+
+$ns rtproto Static
+$ns run
+
