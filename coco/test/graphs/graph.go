@@ -186,7 +186,6 @@ var ErrNoHosts = errors.New("Can't have 0 hosts per node")
 // Also returns a list of the host names created and their ports
 func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...string) (
 	*Tree, []string, error) {
-
 	if len(nodeNames) < 1 {
 		return nil, nil, ErrNoNodesGiven
 	}
@@ -222,11 +221,11 @@ func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...
 		startM = nodeNames[0]
 	}
 
-	tnodes, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp)
+	tnodes, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp, maxdepth)
 	return tnodes, usedHostAddr, err
 }
 
-func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, startM string, mp map[string][]string) (
+func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, startM string, mp map[string][]string, maxdepth int) (
 	*Tree, []string, error) {
 
 	if hostsPerNode <= 0 {

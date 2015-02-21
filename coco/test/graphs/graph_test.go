@@ -3,6 +3,8 @@ package graphs
 import (
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -49,4 +51,38 @@ func TestTreeFromList(t *testing.T) {
 	// machine1:32610
 	// 	 machine2:32610
 	// machine2:32610
+}
+
+func checkColoring(t *Tree) bool {
+	p := strings.Split(t.Name, ":")[0]
+	for _, c := range t.Children {
+		h := strings.Split(c.Name, ":")[0]
+		if h == p {
+			return false
+		}
+		if !checkColoring(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func TestTreeFromListColoring(t *testing.T) {
+	nodes := make([]string, 0)
+	for i := 0; i < 30; i++ {
+		nodes = append(nodes, "host"+strconv.Itoa(i))
+	}
+	for hpn := 1; hpn < 10; hpn++ {
+		for bf := 1; bf <= hpn*len(nodes); bf++ {
+			t.Log("generating tree:", hpn, bf)
+			root, hosts, err := TreeFromList(nodes, hpn, bf)
+			if err != nil {
+				panic(err)
+			}
+			if !checkColoring(root) {
+				t.Fatal("failed to properly color:", nodes, hpn, bf)
+			}
+			t.Log("able to use:", len(hosts), " of: ", hpn*len(nodes))
+		}
+	}
 }

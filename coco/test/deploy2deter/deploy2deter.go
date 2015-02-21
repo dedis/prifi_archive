@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/dedis/prifi/coco/test/cliutils"
@@ -57,6 +58,27 @@ func main() {
 	}
 	// killssh processes on users
 	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh; killall scp")
+	// parse the hosts.txt file to create a separate list (and file)
+	// of physical nodes and virtual nodes. Such that each host on line i, in phys.txt
+	// corresponds to each host on line i, in virt.txt.
+	physVirt, err := cliutils.ReadLines("hosts.txt")
+	physIn := make([]string, 0, len(physVirt)/2)
+	virtIn := make([]string, 0, len(physVirt)/2)
+	for i := 0; i < len(physVirt); i += 2 {
+		physIn = append(physIn, physVirt[i])
+		virtIn = append(virtIn, physVirt[i+1])
+	}
+	physOut := strings.Join(physIn, "\n")
+	virtOut := strings.Join(virtIn, "\n")
+	err = ioutil.WriteFile("phys.txt", []byte(physOut), 0666)
+	if err != nil {
+		log.Fatal("failed to write physical nodes file", err)
+	}
+	err = ioutil.WriteFile("virt.txt", []byte(virtOut), 0666)
+	if err != nil {
+		log.Fatal("failed to write virtual nodes file", err)
+	}
+
 	// read in the hosts config and create the graph topology that we will be using
 	// reserve the final host for the logging package
 	phys, err := cliutils.ReadLines("phys.txt")
