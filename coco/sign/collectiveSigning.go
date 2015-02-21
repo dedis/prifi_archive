@@ -114,13 +114,11 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 		sn.Round = am.Round
 	}
 	// set up commit and response channels for the new round
-	log.Println("getting round lock")
 	sn.roundLock.Lock()
 	sn.Rounds[am.Round] = NewRound()
 	sn.ComCh[am.Round] = make(chan *SigningMessage, 1)
 	sn.RmCh[am.Round] = make(chan *SigningMessage, 1)
 	sn.roundLock.Unlock()
-	log.Println("releasing round lock")
 
 	// Inform all children of announcement
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
@@ -472,7 +470,7 @@ func (sn *Node) VerifyResponses(Round int) error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(round.Log.V_hat) || (sn.IsRoot() && !round.c.Equal(c2)) {
-		log.Println(sn.Name(), "reports ElGamal Collective Signature failed for Round", Round)
+		log.Errorln(sn.Name(), "reports ElGamal Collective Signature failed for Round", Round)
 		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
 	}
 

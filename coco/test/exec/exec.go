@@ -12,7 +12,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -40,7 +39,7 @@ func init() {
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
 	flag.StringVar(&logger, "logger", "", "remote logger")
 	flag.StringVar(&app, "app", "time", "application to run [sign|time]")
-	flag.IntVar(&nrounds, "nrounds", math.MaxInt32, "number of rounds to run")
+	flag.IntVar(&nrounds, "nrounds", 100, "number of rounds to run")
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 }
 

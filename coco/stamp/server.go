@@ -143,7 +143,7 @@ func (s *Server) ListenToClients() {
 				}
 				switch tsm.Type {
 				default:
-					log.Println("Message of unknown type")
+					log.Errorln("Message of unknown type")
 				case StampRequestType:
 					// log.Println("STAMP REQUEST")
 					s.mux.Lock()
@@ -175,9 +175,7 @@ func (s *Server) Run(role string, nRounds int) {
 				break
 			}
 			start := time.Now()
-			log.Infoln("starting signing round")
 			s.StartSigningRound()
-			log.Infoln("signing round complete")
 			elapsed := time.Since(start)
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),

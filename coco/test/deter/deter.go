@@ -119,7 +119,7 @@ func main() {
 		h, p, _ := net.SplitHostPort(host)
 		pn, _ := strconv.Atoi(p)
 		hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
-		go cliutils.SshRunStdout("", h, "./timeclient -rate=5000 -name=client@"+hp+" -server="+hp)
+		go cliutils.SshRunStdout("", h, "./timeclient -rate=100 -name=client@"+hp+" -server="+hp)
 	}
 	// now start up each timestamping server
 	fmt.Println("starting up timestampers")
