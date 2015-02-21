@@ -23,6 +23,18 @@ import (
 
 var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
+// Start listening for messages coming from parent(up)
+func (sn *Node) Listen() error {
+	sn.setPool()
+
+	if !sn.IsRoot() {
+		go sn.getUp()
+	}
+	go sn.getDown()
+
+	return nil
+}
+
 // Determine type of message coming from the parent
 // Pass the duty of acting on it to another function
 func (sn *Node) getUp() {
@@ -95,16 +107,31 @@ func (sn *Node) getDown() {
 	}
 }
 
-// Start listening for messages coming from parent(up)
-func (sn *Node) Listen() error {
-	sn.setPool()
+// Used in Commit and Respond when waiting for children Commits and Responses
+// The commits and responses are read from the commit and respond channel
+// as they are put there by the getDown function
+func (sn *Node) waitOn(ch chan *SigningMessage, timeout time.Duration, what string) []*SigningMessage {
+	nChildren := len(sn.Children())
+	messgs := make([]*SigningMessage, 0)
+	received := 0
+	if nChildren > 0 {
+		for {
 
-	if !sn.IsRoot() {
-		go sn.getUp()
+			select {
+			case sm := <-ch:
+				messgs = append(messgs, sm)
+				received += 1
+				if received == nChildren {
+					return messgs
+				}
+			case <-time.After(timeout):
+				log.Warnln(sn.Name(), "timeouted on", what, timeout)
+				return messgs
+			}
+		}
 	}
-	go sn.getDown()
 
-	return nil
+	return messgs
 }
 
 // initiated by root, propagated by all others
@@ -112,6 +139,7 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 	// the root is the only node that keeps track of round # internally
 	if sn.IsRoot() {
 		sn.Round = am.Round
+		sn.LastSeenRound = sn.Round
 	}
 	// set up commit and response channels for the new round
 	sn.roundLock.Lock()
@@ -151,35 +179,9 @@ func (sn *Node) initCommitCrypto(Round int) {
 	sn.add(round.X_hat, sn.PubKey)
 }
 
-// Used in Commit and Respond when waiting for children Commits and Responses
-// The commits and responses are read from the commit and respond channel
-// as they are put there by the getDown function
-func (sn *Node) waitOn(ch chan *SigningMessage, timeout time.Duration, what string) []*SigningMessage {
-	nChildren := len(sn.Children())
-	messgs := make([]*SigningMessage, 0)
-	received := 0
-	if nChildren > 0 {
-		for {
-
-			select {
-			case sm := <-ch:
-				messgs = append(messgs, sm)
-				received += 1
-				if received == nChildren {
-					return messgs
-				}
-			case <-time.After(timeout):
-				log.Warnln(sn.Name(), "timeouted on", what, timeout)
-				return messgs
-			}
-		}
-	}
-
-	return messgs
-}
-
 func (sn *Node) Commit(Round int) error {
 	round := sn.Rounds[Round]
+	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	sn.initCommitCrypto(Round)
 
 	// wait on commits from children
@@ -266,6 +268,7 @@ func (sn *Node) actOnCommits(Round int) (err error) {
 func (sn *Node) Challenge(chm *ChallengeMessage) error {
 	// register challenge
 	round := sn.Rounds[chm.Round]
+	sn.LastSeenRound = max(chm.Round, sn.LastSeenRound)
 	round.c = chm.C
 
 	if sn.Type == PubKey {
@@ -324,6 +327,7 @@ func (sn *Node) initResponseCrypto(Round int) {
 func (sn *Node) Respond(Round int) error {
 	var err error
 	round := sn.Rounds[Round]
+	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	sn.initResponseCrypto(Round)
 
 	// wait on responses from children
