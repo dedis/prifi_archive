@@ -74,7 +74,7 @@ var clientNumber int = 0
 // than the Signer that is beneath it
 func (s *Server) Listen() error {
 	log.Println("Listening @ ", s.name)
-	ln, err := net.Listen("tcp", s.name)
+	ln, err := net.Listen("tcp4", s.name)
 	if err != nil {
 		log.Println("failed to listen:", err)
 		panic(err)
@@ -103,7 +103,7 @@ func (s *Server) Listen() error {
 				go func(c coconet.Conn) {
 					for {
 						tsm := TimeStampMessage{}
-						err := <-c.Get(&tsm)
+						err := c.Get(&tsm)
 						if err != nil {
 							log.Errorln("Failed to get from child:", err)
 							c.Close()
@@ -135,7 +135,7 @@ func (s *Server) ListenToClients() {
 		go func(c coconet.Conn) {
 			for {
 				tsm := TimeStampMessage{}
-				err := <-c.Get(&tsm)
+				err := c.Get(&tsm)
 				if err != nil {
 					log.WithFields(log.Fields{
 						"file": logutils.File(),
@@ -167,14 +167,17 @@ func (s *Server) Run(role string, nRounds int) {
 
 	case "root":
 		// count only productive rounds
-		ticker := time.Tick(1000 * time.Millisecond)
+		ticker := time.Tick(5000 * time.Millisecond)
 		for _ = range ticker {
 			s.nRounds++
 			if s.nRounds > nRounds {
+				log.Errorln("exceeded the max round: terminating")
 				break
 			}
 			start := time.Now()
+			log.Infoln("starting signing round")
 			s.StartSigningRound()
+			log.Infoln("signing round complete")
 			elapsed := time.Since(start)
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),
@@ -202,14 +205,14 @@ func (s *Server) Run(role string, nRounds int) {
 
 func (s *Server) OnAnnounce() coco.CommitFunc {
 	return func() []byte {
+		log.Println("Aggregating Commits")
 		return s.AggregateCommits()
 	}
 }
 
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
-		// log.Println("DONE")
-		start := time.Now()
+		log.Println("DONE")
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -230,19 +233,11 @@ func (s *Server) OnDone() coco.DoneFunc {
 			s.PutToClient(msg.To, respMessg)
 		}
 		s.mux.Unlock()
-		elapsed := time.Since(start)
-		log.WithFields(log.Fields{
-			"file":  logutils.File(),
-			"type":  "on_done",
-			"round": s.nRounds,
-			"time":  elapsed,
-		}).Info("root round")
 	}
 
 }
 
 func (s *Server) AggregateCommits() []byte {
-	start := time.Now()
 	// log.Println("Aggregateing Commits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
@@ -289,13 +284,6 @@ func (s *Server) AggregateCommits() []byte {
 		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
 	}
 
-	elapsed := time.Since(start)
-	log.WithFields(log.Fields{
-		"file":  logutils.File(),
-		"type":  "aggregate_commits",
-		"round": s.nRounds,
-		"time":  elapsed,
-	}).Info("root round")
 	return s.Root
 }
 

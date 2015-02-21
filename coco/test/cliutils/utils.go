@@ -22,7 +22,7 @@ func Scp(username, host, file, dest string) error {
 	if username != "" {
 		addr = username + "@" + addr
 	}
-	cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-r", "-C", file, addr)
+	cmd := exec.Command("rsync", "-az", file, addr)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -54,7 +54,8 @@ func SshRunStdout(username, host, command string) error {
 }
 
 func Build(path, goarch, goos string) error {
-	cmd := exec.Command("go", "build", "-v", path)
+	var cmd *exec.Cmd
+	cmd = exec.Command("go", "build", "-v", path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = append([]string{"GOOS=" + goos, "GOARCH=" + goarch}, os.Environ()...)

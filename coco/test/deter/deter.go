@@ -36,31 +36,34 @@ import (
 func main() {
 	fmt.Println("running deter")
 	// fs defines the list of files that are needed to run the timestampers.
-	fs := []string{"exec", "timeclient", "cfg.json", "hosts.txt"}
+	fs := []string{"exec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
 
 	// read in the hosts file.
-	hosts, err := cliutils.ReadLines("hosts.txt")
+	virt, err := cliutils.ReadLines("virt.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
-	logger := hosts[len(hosts)-1]
-	hosts = hosts[:len(hosts)-1]
-
-	fmt.Println("copying over files")
-	// copy the files over to all the host machines.
-	var wg sync.WaitGroup
-	for _, f := range fs {
-		for _, h := range hosts {
-			wg.Add(1)
-			go func(h string, f string) {
-				defer wg.Done()
-				cliutils.Scp("", h, f, f)
-			}(h, f)
-		}
+	phys, err := cliutils.ReadLines("phys.txt")
+	if err != nil {
+		log.Fatal(err)
 	}
-	cliutils.SshRunStdout("", logger, "killall exec logserver")
-
-	cliutils.Scp("", logger, "logserver", "")
+	vpmap := make(map[string]string)
+	for i := range virt {
+		vpmap[virt[i]] = phys[i]
+	}
+	// kill old processes
+	var wg sync.WaitGroup
+	for _, h := range phys {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			cliutils.SshRun("", h, "killall exec logserver timeclient scp ssh")
+		}(h)
+	}
+	wg.Wait()
+	logger := phys[len(phys)-1]
+	phys = phys[:len(phys)-1]
+	virt = virt[:len(virt)-1]
 
 	// Read in and parse the configuration file
 	file, e := ioutil.ReadFile("cfg.json")
@@ -71,7 +74,7 @@ func main() {
 	var tree graphs.Tree
 	json.Unmarshal(file, &tree)
 
-	hostnames := make([]string, 0, len(hosts))
+	hostnames := make([]string, 0, len(virt))
 	tree.TraverseTree(func(t *graphs.Tree) {
 		hostnames = append(hostnames, t.Name)
 	})
@@ -81,18 +84,36 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// write out a true configuration file
+	log.Println(string(cfb))
 	err = ioutil.WriteFile("cfg.json", cfb, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println("copying over files")
+	// copy the files over to all the host machines.
+	for _, f := range fs {
+		for _, h := range phys {
+			wg.Add(1)
+			go func(h string, f string) {
+				defer wg.Done()
+				cliutils.Scp("", h, f, f)
+			}(h, f)
+		}
+	}
+
+	cliutils.Scp("", logger, "logserver", "")
+
 	wg.Wait()
 
 	// start up the logging server on the final host at port 10000
 	fmt.Println("starting up logserver")
-	logger = hosts[len(hosts)-1] + ":10000"
-	go cliutils.SshRunStdout("", hosts[len(hosts)-1], "cd logserver; ./logserver -addr="+logger)
+	loggerport := logger + ":10000"
+	go cliutils.SshRunStdout("", logger, "cd logserver; ./logserver -addr="+loggerport)
 	// wait a little bit for the logserver to start up
-	time.Sleep(5 * time.Second)
+	time.Sleep(2 * time.Second)
 	fmt.Println("starting time clients")
 	for _, host := range hostnames {
 		h, p, _ := net.SplitHostPort(host)
@@ -107,12 +128,15 @@ func main() {
 		if err != nil {
 			log.Fatal("improperly formatted host. must be host:port")
 		}
+		// get the physical node this is associated with
+		phys := vpmap[h]
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			// run the timestampers
-			log.Println("running timestamp at @", t.Name, "listening to logger:", logger)
-			cliutils.SshRunStdout("", h, "./exec -hostname="+t.Name+" -logger="+logger)
+			log.Println("ssh timestamper at:", phys)
+			log.Println("running timestamp at @", t.Name, "listening to logger:", loggerport)
+			cliutils.SshRunStdout("", phys, "./exec -hostname="+t.Name+" -logger="+loggerport)
 		}()
 	})
 	// wait for the servers to finish before stopping

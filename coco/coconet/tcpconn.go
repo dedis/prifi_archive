@@ -81,41 +81,31 @@ func (c *TCPConn) PubKey() abstract.Point {
 var ConnectionNotEstablished error = errors.New("connection not established")
 
 // blocks until the put is availible
-func (tc *TCPConn) Put(bm BinaryMarshaler) chan error {
-	errchan := make(chan error, 1)
-
+func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 	for tc.enc == nil {
 		log.Println("Conn not established")
-		errchan <- ConnectionNotEstablished
-		return errchan
+		return ConnectionNotEstablished
 	}
 
 	err := tc.enc.Encode(bm)
 	if err != nil {
 		log.Errorln("failed to put/encode:", err)
 	}
-	errchan <- err
-	return errchan
+	return err
 }
 
 // blocks until we get something
-func (tc *TCPConn) Get(bum BinaryUnmarshaler) chan error {
-	errchan := make(chan error, 1)
+func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 	for tc.dec == nil {
 		// panic("no decoder yet")
-		errchan <- ConnectionNotEstablished
-		return errchan
+		return ConnectionNotEstablished
 	}
 
-	go func(bum BinaryUnmarshaler) {
-		err := tc.dec.Decode(bum)
-		if err != nil {
-			log.Errorln("failed to decode:", err)
-		}
-		errchan <- err
-	}(bum)
-
-	return errchan
+	err := tc.dec.Decode(bum)
+	if err != nil {
+		log.Errorln("failed to decode:", err)
+	}
+	return err
 }
 
 func (tc *TCPConn) Close() {

@@ -101,8 +101,7 @@ func (c *GoConn) PubKey() abstract.Point {
 }
 
 // Put sends data to the goConn through the channel.
-func (c *GoConn) Put(data BinaryMarshaler) chan error {
-	errchan := make(chan error, 1)
+func (c *GoConn) Put(data BinaryMarshaler) error {
 	fromto := c.FromTo()
 	c.dir.Lock()
 	ch := c.dir.channel[fromto]
@@ -112,20 +111,14 @@ func (c *GoConn) Put(data BinaryMarshaler) chan error {
 	c.dir.Unlock()
 	b, err := data.MarshalBinary()
 	if err != nil {
-		errchan <- err
-		return errchan
+		return err
 	}
 	ch <- b
-	errchan <- nil
-	return errchan
+	return nil
 }
 
 // Get receives data from the sender.
-func (c *GoConn) Get(bum BinaryUnmarshaler) chan error {
-	// log.Println("GOCONN GET")
-	// since the channel is owned by the sender, we flip around the ordering of
-	// the fromto key to indicate that we want to receive from this instead of
-	// send.
+func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	tofrom := c.ToFrom()
 	c.dir.Lock()
 	ch := c.dir.channel[tofrom]
@@ -133,16 +126,14 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) chan error {
 	// their send lines.
 	c.dir.Unlock()
 
-	errchan := make(chan error, 1)
-	go func() {
-		data := <-ch
-		err := bum.UnmarshalBinary(data)
-		if err != nil {
-			fmt.Println("failed to unmarshal binary: ", ch, data)
-			fmt.Printf("\tinto: %#v\n", bum)
-		}
-		errchan <- err
-	}()
-
-	return errchan
+	data := <-ch
+	err := bum.UnmarshalBinary(data)
+	if err != nil {
+		fmt.Println("failed to unmarshal binary from ", tofrom, ch, data)
+		fmt.Printf("\tinto: %#v\n", bum)
+		bum = nil
+	} else {
+		// fmt.Println("correct unmarshal binary from ", tofrom, ch, data)
+	}
+	return err
 }

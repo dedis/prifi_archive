@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"html/template"
 	"math/rand"
 	"net/http"
@@ -88,7 +89,10 @@ func logHandler(ws *websocket.Conn) {
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("HOME HANDLER: ", r.URL)
-	err := homePage.Execute(w, Home{"ws://" + addr + "/log"})
+	host := r.Host
+	fmt.Println(host)
+	ws := "ws://" + host + "/log"
+	err := homePage.Execute(w, Home{ws})
 	if err != nil {
 		panic(err)
 		log.Fatal(err)

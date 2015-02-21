@@ -6,7 +6,9 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
     <script src="./bower_components/Chart.js/Chart.min.js"></script>
     <style>
-      #log {font-size: 12px}
+      #log {font-size: 14px}
+      .error {color: red}
+      .warn {color: orange}
     </style>
 </head>
 
@@ -14,9 +16,6 @@
     <div width="820px" height="409px">
       <canvas id="announce_chart" width="818px" height="409px"></canvas>
     </div>
-    <div width="820px" height="409px">
-      <canvas id="client_chart" width="818px" height="409px"></canvas>
-    <div width="820px" height="409px">
     <div id="log"></div>
 </body>
 <script>
@@ -38,40 +37,31 @@
         }]
     };
     var achart = new Chart(actx).Line(adata, {bezierCurveTension : 0.1, pointDotRadius : 2, pointHitDetectionRadius : 2});
-    var cdata = {
-        labels: [],
-        datasets: [{
-            label: "",
-            fillColor: "rgba(220,220,220,0.2)",
-            strokeColor: "rgba(220,220,220,1)",
-            pointColor: "rgba(220,220,220,1)",
-            pointStrokeColor: "#fff",
-            pointHighlightFill: "#fff",
-            pointHighlightStroke: "rgba(220,220,220,1)",
-            data: []
-        }]
-    };
-    var cchart = new Chart(cctx).Line(cdata, {bezierCurveTension : 0.1, pointDotRadius : 2, pointHitDetectionRadius : 2});
     // var i = 0;
     var first = true;
     $(function() {
         var ws = new WebSocket({{.LogServer}});
         ws.onmessage = function(event) {
-            $('#log').prepend(event.data + '<br>');
+	    var logline = '<class>'+event.data+'<div><br>';
             var obj = JSON.parse(event.data);
+	    if (obj.elevel == "error") {
+                logline = '<div class="error">'+event.data+'<div>';
+	    }
+	    if (obj.elevel == "warning") {
+                logline = '<div class="warn">'+event.data+'<div>';
+	    }
+
+	    $('#log').append(logline);
             if (obj.type == "root_round") {
               if (first === true) {
                 first = false;
                 return;
               }
-              achart.addData([obj.time/(1000000000)], obj.round);
-            }
-            if (obj.type == "client_round") {
-              if (first === true) {
-                first = false;
-                return;
-              }
-              cchart.addData([obj.time/(1000000000)], obj.round);
+	      var label = "";
+	      if (obj.round % 10 == 0) {
+	      	label = obj.round;
+	      }
+              achart.addData([obj.time/(1000000000)], label);
             }
         }
     });

@@ -74,7 +74,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	}
 
 	for _, fh := range faultyNodes {
-		h[fh].(*coconet.FaultyHost).SetDeadFor("commit", true)
+		h[fh].(*coconet.FaultyHost).SetDeadFor("response", true)
 	}
 
 	// Create Signing Nodes out of the hosts
@@ -153,7 +153,7 @@ func runTreeSmallConfig(signType sign.Type, faultyNodes ...int) error {
 
 	for _, fh := range faultyNodes {
 		fmt.Println("Setting", hostConfig.SNodes[fh].Name(), "as faulty")
-		hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("commit", true)
+		hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("response", true)
 	}
 
 	if len(faultyNodes) > 0 {

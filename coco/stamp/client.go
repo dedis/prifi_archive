@@ -10,7 +10,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/coco/test/logutils"
 )
 
 type Client struct {
@@ -57,7 +56,7 @@ func (c *Client) handleServer(s coconet.Conn) error {
 	for {
 		tsm := &TimeStampMessage{}
 		// log.Println("connection:", s)
-		err := <-s.Get(tsm)
+		err := s.Get(tsm)
 		if err != nil {
 			return err
 		}
@@ -109,13 +108,13 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 	defer c.Mux.Unlock()
 	conn := c.Servers[name]
 	if conn == nil {
-		log.WithFields(log.Fields{
+		/*	log.WithFields(log.Fields{
 			"file": logutils.File(),
-		}).Warnln("Server is nil:", c.Servers, "with: ", name)
+		}).Warnln("Server is nil:", c.Servers, "with: ", name)*/
 		return errors.New("INVALID SERVER/NOT CONNECTED")
 	}
 	// log.Println("PUT CONN: ", conn)
-	return <-conn.Put(data)
+	return conn.Put(data)
 }
 
 // When client asks for val to be timestamped
