@@ -38,9 +38,10 @@ type Node struct {
 	PubKey  abstract.Point  // long lasting public key
 	PrivKey abstract.Secret // long lasting private key
 
-	nRounds int
-	Rounds  map[int]*Round
-	Round   int // *only* used by Root( by annoucer)
+	nRounds       int
+	Rounds        map[int]*Round
+	Round         int // *only* used by Root( by annoucer)
+	LastSeenRound int // largest round number I have seen
 
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc
@@ -105,6 +106,10 @@ func (sn *Node) Suite() abstract.Suite {
 	return sn.suite
 }
 
+func (sn *Node) LastRound() int {
+	return sn.LastSeenRound
+}
+
 func (sn *Node) UpdateTimeout(t ...time.Duration) {
 	if len(t) > 0 {
 		sn.SetTimeout(t[0])
@@ -140,4 +145,11 @@ func (sn *Node) sub(a abstract.Point, b abstract.Point) {
 		a.Sub(a, b)
 	}
 
+}
+
+func max(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
