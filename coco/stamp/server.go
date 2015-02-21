@@ -74,7 +74,7 @@ var clientNumber int = 0
 // than the Signer that is beneath it
 func (s *Server) Listen() error {
 	log.Println("Listening @ ", s.name)
-	ln, err := net.Listen("tcp", s.name)
+	ln, err := net.Listen("tcp4", s.name)
 	if err != nil {
 		log.Println("failed to listen:", err)
 		panic(err)
@@ -167,14 +167,17 @@ func (s *Server) Run(role string, nRounds int) {
 
 	case "root":
 		// count only productive rounds
-		ticker := time.Tick(1000 * time.Millisecond)
+		ticker := time.Tick(5000 * time.Millisecond)
 		for _ = range ticker {
 			s.nRounds++
 			if s.nRounds > nRounds {
+				log.Errorln("exceeded the max round: terminating")
 				break
 			}
 			start := time.Now()
+			log.Infoln("starting signing round")
 			s.StartSigningRound()
+			log.Infoln("signing round complete")
 			elapsed := time.Since(start)
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),

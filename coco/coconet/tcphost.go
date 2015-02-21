@@ -91,7 +91,7 @@ func (s *Smarsh) UnmarshalBinary(b []byte) error {
 
 func (h *TCPHost) Listen() error {
 	var err error
-	ln, err := net.Listen("tcp", h.name)
+	ln, err := net.Listen("tcp4", h.name)
 	if err != nil {
 		log.Println("failed to listen:", err)
 		return err

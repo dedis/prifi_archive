@@ -59,13 +59,19 @@ func main() {
 	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh; killall scp")
 	// read in the hosts config and create the graph topology that we will be using
 	// reserve the final host for the logging package
-	hosts, err := cliutils.ReadLines("hosts.txt")
+	phys, err := cliutils.ReadLines("phys.txt")
 	if err != nil {
-		log.Fatal("error reading hosts file:", err)
+		log.Fatal("error reading physical hosts file:", err)
 	}
-	logger := hosts[len(hosts)-1]
-	hosts = hosts[:len(hosts)-1]
-	t, _, err := graphs.TreeFromList(hosts, hpn, bf)
+	virt, err := cliutils.ReadLines("virt.txt")
+	if err != nil {
+		log.Fatal("error reading virtual hosts file:", err)
+	}
+
+	logger := phys[len(phys)-1]
+	virt = virt[:len(virt)-1]
+	phys = phys[:len(phys)-1]
+	t, _, err := graphs.TreeFromList(virt, hpn, bf)
 
 	// after constructing the tree generate a configuration file
 	// for deployment on each of the nodes
@@ -86,7 +92,7 @@ func main() {
 		log.Fatal("failed to copy logserver")
 	}
 	// scp the files that we need over to the boss node
-	files := []string{"timeclient", "exec", "deter", "cfg.json", "hosts.txt"}
+	files := []string{"timeclient", "exec", "deter", "cfg.json", "phys.txt", "virt.txt"}
 	cliutils.Scp("dvisher", "users.isi.deterlab.net", "../logserver", "")
 	for _, f := range files {
 		wg.Add(1)

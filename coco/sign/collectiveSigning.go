@@ -114,11 +114,13 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 		sn.Round = am.Round
 	}
 	// set up commit and response channels for the new round
+	log.Println("getting round lock")
 	sn.roundLock.Lock()
 	sn.Rounds[am.Round] = NewRound()
 	sn.ComCh[am.Round] = make(chan *SigningMessage, 1)
 	sn.RmCh[am.Round] = make(chan *SigningMessage, 1)
 	sn.roundLock.Unlock()
+	log.Println("releasing round lock")
 
 	// Inform all children of announcement
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())

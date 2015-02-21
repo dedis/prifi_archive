@@ -54,7 +54,8 @@ func SshRunStdout(username, host, command string) error {
 }
 
 func Build(path, goarch, goos string) error {
-	cmd := exec.Command("go", "build", "-v", path)
+	var cmd *exec.Cmd
+	cmd = exec.Command("go", "build", "-v", path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = append([]string{"GOOS=" + goos, "GOARCH=" + goarch}, os.Environ()...)

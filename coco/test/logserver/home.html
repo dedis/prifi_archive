@@ -16,9 +16,6 @@
     <div width="820px" height="409px">
       <canvas id="announce_chart" width="818px" height="409px"></canvas>
     </div>
-    <div width="820px" height="409px" display="none">
-      <canvas id="client_chart" width="818px" height="409px" display="none"></canvas>
-    <div width="820px" height="409px">
     <div id="log"></div>
 </body>
 <script>
@@ -40,20 +37,6 @@
         }]
     };
     var achart = new Chart(actx).Line(adata, {bezierCurveTension : 0.1, pointDotRadius : 2, pointHitDetectionRadius : 2});
-    var cdata = {
-        labels: [],
-        datasets: [{
-            label: "",
-            fillColor: "rgba(220,220,220,0.2)",
-            strokeColor: "rgba(220,220,220,1)",
-            pointColor: "rgba(220,220,220,1)",
-            pointStrokeColor: "#fff",
-            pointHighlightFill: "#fff",
-            pointHighlightStroke: "rgba(220,220,220,1)",
-            data: []
-        }]
-    };
-    var cchart = new Chart(cctx).Line(cdata, {bezierCurveTension : 0.1, pointDotRadius : 2, pointHitDetectionRadius : 2});
     // var i = 0;
     var first = true;
     $(function() {
@@ -79,13 +62,6 @@
 	      	label = obj.round;
 	      }
               achart.addData([obj.time/(1000000000)], label);
-            }
-            if (obj.type == "client_round") {
-              if (first === true) {
-                first = false;
-                return;
-              }
-              cchart.addData([obj.time/(1000000000)], obj.round);
             }
         }
     });

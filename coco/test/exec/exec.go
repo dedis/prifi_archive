@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"time"
 
+	_ "expvar"
+
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/prifi/coco/sign"
