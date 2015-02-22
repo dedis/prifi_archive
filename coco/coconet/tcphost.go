@@ -120,7 +120,7 @@ func (h *TCPHost) Listen() error {
 				continue
 			}
 			name := string(mname)
-			log.Infoln("successfully received name:", name)
+			// log.Infoln("successfully received name:", name)
 
 			// create connection
 			tp.SetName(name)

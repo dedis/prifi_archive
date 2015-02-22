@@ -277,7 +277,7 @@ func (s *Server) AggregateCommits() []byte {
 	// create Merkle tree for this round's messages and check corectness
 	s.Root, s.Proofs = proof.ProofTree(s.Suite().Hash, s.Leaves)
 	if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
-		log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
+		// log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
 	} else {
 		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
 	}

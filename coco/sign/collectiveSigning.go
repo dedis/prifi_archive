@@ -2,7 +2,6 @@ package sign
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -102,7 +101,7 @@ func (sn *Node) getDown() {
 			sn.roundLock.Unlock()
 			rmch <- sm
 		case Error:
-			log.Println(sn.Name(), "error", ErrUnknownMessageType, sm, sm.Err)
+			// log.Println(sn.Name(), "error", ErrUnknownMessageType, sm, sm.Err)
 		}
 	}
 }
@@ -353,7 +352,7 @@ func (sn *Node) Respond(Round int) error {
 		switch sm.Type {
 		default:
 			// default == no response from child
-			log.Println(sn.Name(), "default in respose for child", from, sm)
+			// log.Println(sn.Name(), "default in respose for child", from, sm)
 			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
 
 			// remove public keys and point commits from subtree of faild child
@@ -368,7 +367,7 @@ func (sn *Node) Respond(Round int) error {
 				continue
 			}
 
-			log.Println(sn.Name(), "accepts response from", from, sm.Type)
+			// log.Println(sn.Name(), "accepts response from", from, sm.Type)
 			round.r_hat.Add(round.r_hat, sm.Rm.R_hat)
 
 			someExceptions = true
@@ -380,7 +379,7 @@ func (sn *Node) Respond(Round int) error {
 		case Error:
 			log.Println(sn.Name(), "Error in respose for child", from, sm)
 			if sm.Err == nil {
-				log.Println("Error but no error set in respond for child", from, err)
+				// log.Println("Error but no error set in respond for child", from, err)
 				// ignore if no error is actually set
 				continue
 			}
@@ -400,7 +399,7 @@ func (sn *Node) Respond(Round int) error {
 		if sn.TestingFailures == true &&
 			(sn.Host.(*coconet.FaultyHost).IsDead() ||
 				sn.Host.(*coconet.FaultyHost).IsDeadFor("response")) {
-			fmt.Println(sn.Name(), "dead for response")
+			// fmt.Println(sn.Name(), "dead for response")
 			return nil
 		}
 		// report verify response error
@@ -483,7 +482,9 @@ func (sn *Node) VerifyResponses(Round int) error {
 		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
 	}
 
-	log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
+	if sn.IsRoot() {
+		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
+	}
 	return nil
 }
 
