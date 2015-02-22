@@ -68,6 +68,11 @@ func main() {
 		physIn = append(physIn, physVirt[i])
 		virtIn = append(virtIn, physVirt[i+1])
 	}
+	// select 33 of the nodes: 32 for running timestampers, 1 for running the logger
+	log.Println(len(physIn), physIn)
+	log.Println(len(virtIn), virtIn)
+	physIn = physIn[:18]
+	virtIn = virtIn[:18]
 	physOut := strings.Join(physIn, "\n")
 	virtOut := strings.Join(virtIn, "\n")
 	err = ioutil.WriteFile("phys.txt", []byte(physOut), 0666)

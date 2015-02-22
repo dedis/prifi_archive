@@ -53,6 +53,17 @@ func TestTreeFromList(t *testing.T) {
 	// machine2:32610
 }
 
+func depth(t *Tree) int {
+	md := 0
+	for _, c := range t.Children {
+		dc := depth(c)
+		if dc > md {
+			md = dc
+		}
+	}
+	return md + 1
+}
+
 func checkColoring(t *Tree) bool {
 	p := strings.Split(t.Name, ":")[0]
 	for _, c := range t.Children {
@@ -83,6 +94,7 @@ func TestTreeFromListColoring(t *testing.T) {
 				t.Fatal("failed to properly color:", nodes, hpn, bf)
 			}
 			t.Log("able to use:", len(hosts), " of: ", hpn*len(nodes))
+			t.Log("depth:", depth(root))
 		}
 	}
 }

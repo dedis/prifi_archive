@@ -102,7 +102,7 @@ func main() {
 
 			for i := 0; i < iters; i++ {
 				start = time.Now()
-				fmt.Println("ANNOUNCING")
+				//fmt.Println("ANNOUNCING")
 				hc.SNodes[0].LogTest = []byte("Hello World")
 				err = hc.SNodes[0].Announce(
 					&sign.AnnouncementMessage{

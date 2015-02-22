@@ -221,11 +221,11 @@ func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...
 		startM = nodeNames[0]
 	}
 
-	tnodes, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp, maxdepth)
+	tnodes, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp)
 	return tnodes, usedHostAddr, err
 }
 
-func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, startM string, mp map[string][]string, maxdepth int) (
+func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, startM string, mp map[string][]string) (
 	*Tree, []string, error) {
 
 	if hostsPerNode <= 0 {
