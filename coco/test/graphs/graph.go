@@ -256,7 +256,8 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 			var newHost string
 			nodesTouched, mp, newHost = GetFirstFreeNode(nodesTouched, mp, curNode)
 			if newHost == "" {
-				break
+				return rootTNode, hostsCreated, nil
+				// break
 			}
 
 			// create Tree Node for the new host
