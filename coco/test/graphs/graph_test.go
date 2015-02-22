@@ -53,6 +53,32 @@ func TestTreeFromList(t *testing.T) {
 	// machine2:32610
 }
 
+//        1
+//       /  \
+//      2    2
+//     / \  / \
+//    1  1  1
+// two 2s not used to avoid akward tree
+func TestTreeFromList2(t *testing.T) {
+	// 2 machines with 4 hosts each and branching factor of 2
+	// this means only 6 of the 8 hosts should be used, depth will be 2
+	nodeNames := make([]string, 0)
+	nodeNames = append(nodeNames, "machine0", "machine1")
+	hostsPerNode := 4
+	bf := 2
+
+	root, usedHosts, err := TreeFromList(nodeNames, hostsPerNode, bf)
+	if err != nil {
+		panic(err)
+	}
+
+	if len(usedHosts) != 6 {
+		t.Error("Should have been able to use only 6 hosts")
+	}
+	fmt.Println("used hosts", usedHosts)
+	root.TraverseTree(PrintTreeNode)
+}
+
 func checkColoring(t *Tree) bool {
 	p := strings.Split(t.Name, ":")[0]
 	for _, c := range t.Children {
