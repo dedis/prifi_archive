@@ -134,19 +134,24 @@ func (sn *Node) waitOn(ch chan *SigningMessage, timeout time.Duration, what stri
 	return messgs
 }
 
-// initiated by root, propagated by all others
 func (sn *Node) Announce(am *AnnouncementMessage) error {
+	// set up commit and response channels for the new round
+	Round := am.Round
+	sn.roundLock.Lock()
+	sn.Rounds[Round] = NewRound()
+	sn.ComCh[Round] = make(chan *SigningMessage, 1)
+	sn.RmCh[Round] = make(chan *SigningMessage, 1)
+	sn.roundLock.Unlock()
+
 	// the root is the only node that keeps track of round # internally
 	if sn.IsRoot() {
-		sn.Round = am.Round
-		sn.LastSeenRound = sn.Round
+		// sequential round number
+		sn.Round = Round
+		sn.LastSeenRound = Round
+
+		// round number that links this round to past rounds
+		sn.SetAccountableRound(Round)
 	}
-	// set up commit and response channels for the new round
-	sn.roundLock.Lock()
-	sn.Rounds[am.Round] = NewRound()
-	sn.ComCh[am.Round] = make(chan *SigningMessage, 1)
-	sn.RmCh[am.Round] = make(chan *SigningMessage, 1)
-	sn.roundLock.Unlock()
 
 	// Inform all children of announcement
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())

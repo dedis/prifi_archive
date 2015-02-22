@@ -1,7 +1,9 @@
 package sign
 
 import (
+	"bytes"
 	"crypto/cipher"
+	"encoding/binary"
 	"sync"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/hashid"
 )
 
 var ROUND_TIME time.Duration = 1 * time.Second
@@ -64,9 +67,9 @@ func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
 
 func (sn *Node) StartSigningRound() {
 	// send an announcement message to all other TSServers
+	sn.nRounds++
 	log.Println("root node sending announcement: ", sn.Name())
 	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
-	sn.nRounds++
 }
 
 func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {
@@ -110,12 +113,45 @@ func (sn *Node) LastRound() int {
 	return sn.LastSeenRound
 }
 
+func intToByteSlice(Round int) []byte {
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, Round)
+	return buf.Bytes()
+}
+
+// *only* called by root node
+func (sn *Node) SetAccountableRound(Round int) {
+	// Create my back link to previous round
+	sn.SetBackLink(Round)
+
+	h := sn.suite.Hash()
+	h.Write(intToByteSlice(Round))
+	h.Write(sn.Rounds[Round].BackLink)
+	sn.Rounds[Round].AccRound = h.Sum(nil)
+
+	// here I could concatenate sn.Round after the hash for easy keeping track of round
+	// todo: check this
+}
+
 func (sn *Node) UpdateTimeout(t ...time.Duration) {
 	if len(t) > 0 {
 		sn.SetTimeout(t[0])
 	} else {
 		tt := time.Duration(sn.Height)*sn.DefaultTimeout() + 1000*time.Millisecond
 		sn.SetTimeout(tt)
+	}
+}
+
+func (sn *Node) SetBackLink(Round int) {
+	prevRound := Round - 1
+	sn.Rounds[Round].BackLink = hashid.HashId(make([]byte, hashid.Size))
+	if prevRound >= FIRST_ROUND {
+		// My Backlink = Hash(prevRound, sn.Rounds[prevRound].BackLink, sn.Rounds[prevRound].MTRoot)
+		h := sn.suite.Hash()
+		h.Write(intToByteSlice(prevRound))
+		h.Write(sn.Rounds[prevRound].BackLink)
+		h.Write(sn.Rounds[prevRound].MTRoot)
+		sn.Rounds[Round].BackLink = h.Sum(nil)
 	}
 }
 
