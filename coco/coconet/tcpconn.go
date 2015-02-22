@@ -3,6 +3,7 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
+	"io"
 	"net"
 	"sync"
 
@@ -103,6 +104,9 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 
 	err := tc.dec.Decode(bum)
 	if err != nil {
+		if err == io.EOF {
+			log.Println("io.EOF")
+		}
 		log.Errorln("failed to decode:", err)
 	}
 	return err

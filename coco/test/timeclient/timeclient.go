@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +26,9 @@ var rate int
 
 func init() {
 	addr, _ := oldconfig.GetAddress()
-	flag.StringVar(&server, "server", "", "the timestamping server to contact")
+	// TODO: change to take in list of servers: comma separated no spaces
+	//   -server=s1,s2,s3,...
+	flag.StringVar(&server, "server", "", "the timestamping servers to contact")
 	flag.IntVar(&nmsgs, "nmsgs", 100, "messages per round")
 	flag.StringVar(&name, "name", addr, "name for the client")
 	flag.StringVar(&logger, "logger", "", "remote logger")
@@ -67,21 +70,34 @@ func main() {
 	c.AddServer(server, conn)
 	msgs := genRandomMessages(nmsgs)
 
+	servers := strings.Split(server, ",")
 	// if the rate has been specified then send out one message every
 	// rate milliseconds
 	if rate != -1 {
 		ticker := time.Tick(time.Duration(rate) * time.Millisecond)
-		for {
-			go func() {
-				e := c.TimeStamp(msgs[0], server)
-				if e != nil {
-					/*log.WithFields(log.Fields{
-						"clientname": name,
-						"server":     server,
-					}).Errorln("error timesamping:", e)*/
-				}
-			}()
-			<-ticker
+		for _ = range ticker {
+			// every tick send a time stamp request to every server specified
+			var err error
+			var m sync.Mutex
+			for _, s := range servers {
+				go func() {
+					e := c.TimeStamp(msgs[0], s)
+					if e != nil {
+						m.Lock()
+						err = e
+						m.Unlock()
+						/*log.WithFields(log.Fields{
+							"clientname": name,
+							"server":     server,
+						}).Errorln("error timesamping:", e)*/
+					}
+
+				}()
+			}
+			if err == io.EOF {
+				log.Errorln("EOF: terminating time client")
+				return
+			}
 		}
 		return
 	}

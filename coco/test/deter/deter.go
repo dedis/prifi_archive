@@ -24,7 +24,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -68,8 +68,10 @@ func main() {
 	// Read in and parse the configuration file
 	file, e := ioutil.ReadFile("cfg.json")
 	if e != nil {
-		log.Fatal("Error Reading Configuration File: %v\n", e)
+		log.Fatal("deter.go: error reading configuration file: %v\n", e)
 	}
+
+	cliutils.Scp("", logger, "cfg.json", "logserver/cfg.json")
 
 	var tree graphs.Tree
 	json.Unmarshal(file, &tree)
@@ -92,7 +94,19 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// mapping from physical node name to the timestamp servers that are running there
+	// essentially a reverse mapping of vpmap except ports are also used
+	physToServer := make(map[string][]string)
+	for _, virt := range hostnames {
+		v, _, _ := net.SplitHostPort(virt)
+		p := vpmap[v]
+		ss := physToServer[p]
+		ss = append(ss, virt)
+		physToServer[p] = ss
+	}
+
 	fmt.Println("copying over files")
+	cliutils.Scp("", logger, "logserver", "")
 	// copy the files over to all the host machines.
 	for _, f := range fs {
 		for _, h := range phys {
@@ -102,9 +116,11 @@ func main() {
 				cliutils.Scp("", h, f, f)
 			}(h, f)
 		}
+		// cfg.json on logger should be in tree format
+		if f != "cfg.json" {
+			cliutils.Scp("", logger, f, "logserver/"+f)
+		}
 	}
-
-	cliutils.Scp("", logger, "logserver", "")
 
 	wg.Wait()
 
@@ -115,11 +131,15 @@ func main() {
 	// wait a little bit for the logserver to start up
 	time.Sleep(2 * time.Second)
 	fmt.Println("starting time clients")
-	for _, host := range hostnames {
-		h, p, _ := net.SplitHostPort(host)
-		pn, _ := strconv.Atoi(p)
-		hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
-		go cliutils.SshRunStdout("", h, "./timeclient -rate=100 -name=client@"+hp+" -server="+hp)
+
+	// start up one timeclient per physical machine
+	// it requests timestamps from all the servers on that machine
+	for p, ss := range physToServer {
+		if len(ss) == 0 {
+			continue
+		}
+		servers := strings.Join(ss, ",")
+		go cliutils.SshRunBackground("", p, "./timeclient -rate=100 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
 	}
 	// now start up each timestamping server
 	fmt.Println("starting up timestampers")
@@ -136,7 +156,7 @@ func main() {
 			// run the timestampers
 			log.Println("ssh timestamper at:", phys)
 			log.Println("running timestamp at @", t.Name, "listening to logger:", loggerport)
-			cliutils.SshRunStdout("", phys, "./exec -hostname="+t.Name+" -logger="+loggerport)
+			cliutils.SshRunBackground("", phys, "GOGC=300 ./exec -physaddr="+phys+" -hostname="+t.Name+" -logger="+loggerport)
 		}()
 	})
 	// wait for the servers to finish before stopping

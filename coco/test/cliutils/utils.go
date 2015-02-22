@@ -53,6 +53,20 @@ func SshRunStdout(username, host, command string) error {
 	return cmd.Run()
 }
 
+func SshRunBackground(username, host, command string) error {
+	addr := host
+	if username != "" {
+		addr = username + "@" + addr
+	}
+
+	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", addr,
+		"eval '"+command+" &'")
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	return cmd.Run()
+
+}
+
 func Build(path, goarch, goos string) error {
 	var cmd *exec.Cmd
 	cmd = exec.Command("go", "build", "-v", path)

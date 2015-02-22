@@ -6,6 +6,9 @@
 //
 // -config points to the file that holds the configuration.
 //     This configuration must be in terms of the final hostnames.
+//
+// pprof runs on the physical address space [if there is a virtual and physical network layer]
+// and if one is specified.
 
 package main
 
@@ -33,7 +36,9 @@ var logger string
 var app string
 var nrounds int
 var pprofaddr string
+var physaddr string
 
+// TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
 	flag.StringVar(&hostname, "hostname", "", "the hostname of this node")
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
@@ -41,26 +46,12 @@ func init() {
 	flag.StringVar(&app, "app", "time", "application to run [sign|time]")
 	flag.IntVar(&nrounds, "nrounds", 100, "number of rounds to run")
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
+	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")
 }
 
 func main() {
 	flag.Parse()
-	go func() {
-		host, port, err := net.SplitHostPort(hostname)
-		if err != nil {
-			log.Fatal("improperly formatted hostname: should be host:port")
-		}
-		p, _ := strconv.Atoi(port)
-		//runtime.MemProfileRate = 1
-		log.Println(http.ListenAndServe(net.JoinHostPort(host, strconv.Itoa(p+2)), nil))
-	}()
-	//log.SetPrefix(hostname + ":")
-	//log.SetFlags(log.Lshortfile)
-	fmt.Println("Execing: @"+hostname, " logger: ", logger)
-	if hostname == "" {
-		fmt.Println("hostname is empty")
-		log.Fatal("no hostname given")
-	}
+
 	// connect with the logging server
 	if logger != "" {
 		// blocks until we can connect to the logger
@@ -73,6 +64,33 @@ func main() {
 		log.AddHook(lh)
 		log.Println("Log Test")
 		fmt.Println("exiting logger block")
+	}
+
+	if physaddr == "" {
+		h, _, err := net.SplitHostPort(hostname)
+		if err != nil {
+			log.Fatal("improperly formatted hostname")
+		}
+		physaddr = h
+	}
+
+	// run an http server to serve the cpu and memory profiles
+	go func() {
+		_, port, err := net.SplitHostPort(hostname)
+		if err != nil {
+			log.Fatal("improperly formatted hostname: should be host:port")
+		}
+		p, _ := strconv.Atoi(port)
+		// uncomment if more fine grained memory debuggin is needed
+		//runtime.MemProfileRate = 1
+		log.Println(http.ListenAndServe(net.JoinHostPort(physaddr, strconv.Itoa(p+2)), nil))
+	}()
+	//log.SetPrefix(hostname + ":")
+	//log.SetFlags(log.Lshortfile)
+	fmt.Println("Execing: @"+hostname, " logger: ", logger)
+	if hostname == "" {
+		fmt.Println("hostname is empty")
+		log.Fatal("no hostname given")
 	}
 
 	// load the configuration
@@ -127,7 +145,7 @@ func main() {
 	} else if app == "time" {
 		log.Println("RUNNING TIMESTAMPER")
 		stampers, _, err := hc.RunTimestamper(0, hostname)
-		// get rid of the hc information so it can be GC
+		// get rid of the hc information so it can be GC'ed
 		hc = nil
 		if err != nil {
 			log.Fatal(err)
@@ -136,6 +154,7 @@ func main() {
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
 				if s.IsRoot() {
+					// wait for the other nodes to get set up
 					time.Sleep(30 * time.Second)
 					s.Run("root", nrounds)
 					fmt.Println("\n\nROOT DONE\n\n")
