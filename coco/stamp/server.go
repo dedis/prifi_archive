@@ -203,14 +203,14 @@ func (s *Server) Run(role string, nRounds int) {
 
 func (s *Server) OnAnnounce() coco.CommitFunc {
 	return func() []byte {
-		log.Println("Aggregating Commits")
+		//log.Println("Aggregating Commits")
 		return s.AggregateCommits()
 	}
 }
 
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
-		log.Println("DONE")
+		//log.Println("DONE")
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root

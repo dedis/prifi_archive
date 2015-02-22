@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -108,6 +109,10 @@ func main() {
 			}(i)
 		}
 		wg.Wait()
+		if err == io.EOF {
+			log.Errorln("EOF: terminating time client")
+			return
+		}
 		if err != nil {
 			log.Errorln("client error detected returning:", err)
 			time.Sleep(3 * time.Second)

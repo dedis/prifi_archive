@@ -136,6 +136,7 @@ func main() {
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
 				if s.IsRoot() {
+					time.Sleep(30 * time.Second)
 					s.Run("root", nrounds)
 					fmt.Println("\n\nROOT DONE\n\n")
 
