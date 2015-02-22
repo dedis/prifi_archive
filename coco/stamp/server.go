@@ -174,8 +174,21 @@ func (s *Server) Run(role string, nRounds int) {
 				log.Errorln("exceeded the max round: terminating")
 				break
 			}
+
 			start := time.Now()
-			s.StartSigningRound()
+			err := s.StartSigningRound()
+			if err != nil {
+				log.Errorln(err)
+				return
+			}
+
+			lr := s.LastRound()
+			if lr != s.nRounds {
+				log.Errorln("Signer and Stamper rounds out of sync:")
+				log.Errorln(strconv.Itoa(lr) + "," + strconv.Itoa(s.nRounds))
+				return
+			}
+
 			elapsed := time.Since(start)
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),
@@ -221,7 +234,9 @@ func (s *Server) OnDone() coco.DoneFunc {
 			combProof = append(combProof, s.Proofs[i]...)
 
 			// proof that i can get from a leaf message to the big root
-			proof.CheckProof(s.Signer.(*sign.Node).Suite().Hash, SNRoot, s.Leaves[i], combProof)
+			if coco.DEBUG == true {
+				proof.CheckProof(s.Signer.(*sign.Node).Suite().Hash, SNRoot, s.Leaves[i], combProof)
+			}
 
 			respMessg := TimeStampMessage{
 				Type:  StampReplyType,
@@ -276,10 +291,12 @@ func (s *Server) AggregateCommits() []byte {
 
 	// create Merkle tree for this round's messages and check corectness
 	s.Root, s.Proofs = proof.ProofTree(s.Suite().Hash, s.Leaves)
-	if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
-		// log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
-	} else {
-		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
+	if coco.DEBUG == true {
+		if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
+			// log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
+		} else {
+			panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
+		}
 	}
 
 	return s.Root

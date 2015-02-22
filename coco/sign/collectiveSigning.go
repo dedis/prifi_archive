@@ -2,6 +2,7 @@ package sign
 
 import (
 	"errors"
+	"io"
 	"strconv"
 	"time"
 
@@ -40,8 +41,10 @@ func (sn *Node) getUp() {
 	for {
 		sm := SigningMessage{}
 		if err := sn.GetUp(&sm); err != nil {
-			if err == coconet.ErrorConnClosed {
+			if err == coconet.ErrorConnClosed ||
+				err == io.EOF {
 				// stop getting up if the connection is closed
+				sn.closedChan <- err
 				return
 			}
 		}
@@ -75,6 +78,10 @@ func (sn *Node) getDown() {
 
 	for {
 		nm, err := sn.waitDownOnNM(ch, errch)
+		if err == io.EOF {
+			sn.closedChan <- err
+			return
+		}
 		if err == coconet.ErrorConnClosed {
 			continue
 		}
