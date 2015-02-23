@@ -12,7 +12,7 @@ type Shuffle interface {
 
 // Information collectively aggreed upon beforehand
 type Info struct {
-	Seed       []byte
+	Seed       int64
 	NumNodes   int
 	NumGroups  int
 	NumRounds  int
