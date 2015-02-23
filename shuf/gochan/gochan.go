@@ -35,10 +35,8 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs [][]byte) {
 				input := <-shuffleChans[i]
 				output, next := s.ShuffleStep(input, i, inf)
 				if next == nil {
-					fmt.Printf("%v done shuffling\n", i)
 					for m := range result {
 						go func(m int) {
-							fmt.Printf("notifying %v\n", m)
 							result[m] <- output
 						}(m)
 					}
@@ -56,13 +54,11 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs [][]byte) {
 			go func(i int) {
 				for collect {
 					cm := <-initChans[i]
-					fmt.Printf("Got a message\n")
 					collection = append(collection, cm.msg)
 					*(cm.ack) = true
 				}
 			}(i)
-			time.Sleep(inf.RoundTime)
-			fmt.Printf("Done collecting\n")
+			time.Sleep(inf.CollectTime)
 			collect = false
 			shuffleChans[i] <- collection
 		}(i)
@@ -74,15 +70,14 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs [][]byte) {
 		go func(m int) {
 			ack := false
 			msg := initMsg{msg: msgs[m], ack: &ack}
-			fmt.Printf("Sending %v\n", msgs[m])
 			sendTo := s.InitialNode(msgs[m], inf)
 			initChans[sendTo] <- msg
 			time.Sleep(inf.ResendTime)
 			if ack {
-				fmt.Printf("Acknowledged\n")
-				fmt.Printf("Received: %v\n", <-result[m])
+				fmt.Printf("Client %v acknowledged\n", m)
+				fmt.Printf("Client %v received: %v\n", m, <-result[m])
 			} else {
-				fmt.Printf("Not Acknowledged\n")
+				fmt.Printf("Client %v not Acknowledged\n", m)
 			}
 		}(m)
 	}

@@ -12,11 +12,11 @@ type Shuffle interface {
 
 // Information collectively aggreed upon beforehand
 type Info struct {
-	Seed       int64
-	NumNodes   int
-	NumGroups  int
-	NumRounds  int
-	MsgSize    int
-	ResendTime time.Duration
-	RoundTime  time.Duration
+	Seed        int64
+	NumNodes    int
+	NumGroups   int
+	NumRounds   int
+	MsgSize     int
+	ResendTime  time.Duration
+	CollectTime time.Duration
 }

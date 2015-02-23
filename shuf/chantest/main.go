@@ -33,7 +33,6 @@ func (d dumbShuffle) ShuffleStep(msgs [][]byte, node int,
 	rand.Seed(inf.Seed)
 	p := rand.Perm(len(msgs))
 	for i := range p {
-		fmt.Printf("Index is %v\n", p[i])
 		newMsgs[i] = msgs[p[i]]
 	}
 	return newMsgs, nil
@@ -42,13 +41,13 @@ func (d dumbShuffle) ShuffleStep(msgs [][]byte, node int,
 func main() {
 
 	defaultOpts := shuf.Info{
-		Seed:       2,
-		NumNodes:   1,
-		NumGroups:  1,
-		NumRounds:  1,
-		MsgSize:    1,
-		ResendTime: time.Second,
-		RoundTime:  time.Second}
+		Seed:        2,
+		NumNodes:    1,
+		NumGroups:   1,
+		NumRounds:   1,
+		MsgSize:     1,
+		ResendTime:  time.Second,
+		CollectTime: time.Second}
 
 	messages := make([][]byte, 2)
 	messages[0] = []byte("hello")
