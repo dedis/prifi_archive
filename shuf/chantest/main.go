@@ -2,30 +2,25 @@ package main
 
 import (
 	"fmt"
-	"github.com/dedis/prifi/shuffle"
-	"github.com/dedis/prifi/shuffle/goroutine"
+	"github.com/dedis/prifi/shuf"
+	"github.com/dedis/prifi/shuf/gochan"
 	"time"
 )
 
 type idShuffle struct{}
 
 func (i idShuffle) ShuffleStep(msg [][]byte, node int,
-	inf *shuffle.SharedInfo) ([][]byte, *int) {
+	inf *shuf.Info) ([][]byte, *int) {
 	return msg, nil
 }
 
-func (id idShuffle) NextNode(msg []byte, node *int, inf *shuffle.SharedInfo) *int {
-	if node == nil {
-		i := 0
-		return &i
-	} else {
-		return nil
-	}
+func (id idShuffle) InitialNode(msg []byte, inf *shuf.Info) int {
+	return 0
 }
 
 func main() {
 
-	defaultOpts := shuffle.SharedInfo{
+	defaultOpts := shuf.Info{
 		Seed:       nil,
 		NumNodes:   1,
 		NumGroups:  1,
@@ -40,7 +35,7 @@ func main() {
 
 	var s idShuffle
 
-	goroutine.ChanShuffle(s, s, &defaultOpts, messages)
+	gochan.ChanShuffle(s, &defaultOpts, messages)
 	time.Sleep(time.Second * 5)
-	fmt.Printf("done")
+	fmt.Printf("done\n")
 }
