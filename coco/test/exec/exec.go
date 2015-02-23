@@ -108,7 +108,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	defer hc.SNodes[0].Close()
+	defer func(sn *sign.Node) {
+		log.Errorln("program has terminated")
+		sn.Close()
+	}(hc.SNodes[0])
 
 	if app == "sign" {
 		log.Println("RUNNING Node")
@@ -154,8 +157,9 @@ func main() {
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
 				if s.IsRoot() {
+					log.Println("RUNNING ROOT SERVER AT:", hostname)
 					// wait for the other nodes to get set up
-					time.Sleep(30 * time.Second)
+					time.Sleep(15 * time.Second)
 					s.Run("root", nrounds)
 					fmt.Println("\n\nROOT DONE\n\n")
 

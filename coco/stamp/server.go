@@ -223,7 +223,7 @@ func (s *Server) OnAnnounce() coco.CommitFunc {
 
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
-		//log.Println("DONE")
+		log.Debug("calling OnDone")
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -251,7 +251,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 }
 
 func (s *Server) AggregateCommits() []byte {
-	// log.Println("Aggregateing Commits")
+	log.Debug("calling  AggregateCommits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
 	Queue := s.Queue

@@ -60,9 +60,7 @@ func SshRunBackground(username, host, command string) error {
 	}
 
 	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", addr,
-		"eval '"+command+" &'")
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
+		"eval '"+command+" > /dev/null 2>/dev/null < /dev/null &' > /dev/null 2>/dev/null < /dev/null &")
 	return cmd.Run()
 
 }

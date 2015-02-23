@@ -129,7 +129,7 @@ func main() {
 	loggerport := logger + ":10000"
 	go cliutils.SshRunStdout("", logger, "cd logserver; ./logserver -addr="+loggerport)
 	// wait a little bit for the logserver to start up
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 	fmt.Println("starting time clients")
 
 	// start up one timeclient per physical machine
@@ -139,7 +139,7 @@ func main() {
 			continue
 		}
 		servers := strings.Join(ss, ",")
-		go cliutils.SshRunBackground("", p, "./timeclient -rate=100 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
+		go cliutils.SshRunBackground("", p, "./timeclient -rate=1000 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
 	}
 	// now start up each timestamping server
 	fmt.Println("starting up timestampers")
@@ -161,4 +161,5 @@ func main() {
 	})
 	// wait for the servers to finish before stopping
 	wg.Wait()
+	time.Sleep(10 * time.Minute)
 }

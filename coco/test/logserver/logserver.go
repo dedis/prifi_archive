@@ -125,7 +125,7 @@ func NewReverseProxy(target *url.URL) *httputil.ReverseProxy {
 		// remove the first two components /d/short_name
 		pathComp = pathComp[3:]
 		r.URL.Path = target.Path + "/" + strings.Join(pathComp, "/")
-		log.Println("destination URL:", r.URL.Path)
+		log.Println("redirected to: ", r.URL.String())
 	}
 	log.Println("setup reverse proxy for destination url:", target.Host, target.Path)
 	return &httputil.ReverseProxy{Director: director}
@@ -138,13 +138,17 @@ func proxyDebugHandler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http
 	}
 }
 
+var timesSeen = make(map[string]int)
+
 func reverseProxy(server string) {
 	remote, err := url.Parse("http://" + server)
 	if err != nil {
 		panic(err)
 	}
 	// get the short name of this remote
-	short := strings.Split(server, ".")[0]
+	s := strings.Split(server, ".")[0]
+	short := s + "-" + strconv.Itoa(timesSeen[s])
+	timesSeen[s] = timesSeen[s] + 1
 
 	// setup a reverse proxy s.t.
 	//

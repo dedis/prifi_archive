@@ -5,6 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +54,7 @@ func genRandomMessages(n int) [][]byte {
 
 func main() {
 	flag.Parse()
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	if logger != "" {
 		// blocks until we can connect to the logger
 		lh, err := logutils.NewLoggerHook(logger, name, "timeclient")
@@ -66,11 +70,18 @@ func main() {
 	log.Println("TIMESTAMP CLIENT")
 	c := stamp.NewClient(name)
 	log.Println("SERVER: ", server)
-	conn := coconet.NewTCPConn(server)
-	c.AddServer(server, conn)
 	msgs := genRandomMessages(nmsgs)
 
 	servers := strings.Split(server, ",")
+	log.Println("connecting to servers:", servers)
+	for _, s := range servers {
+		h, p, err := net.SplitHostPort(s)
+		if err != nil {
+			log.Fatal("improperly formatted host")
+		}
+		pn, _ := strconv.Atoi(p)
+		c.AddServer(s, coconet.NewTCPConn(net.JoinHostPort(h, strconv.Itoa(pn+1))))
+	}
 	// if the rate has been specified then send out one message every
 	// rate milliseconds
 	if rate != -1 {

@@ -13,7 +13,7 @@ import (
 )
 
 // Default timeout for any network operation
-const DefaultTCPTimeout time.Duration = 500 * time.Millisecond
+const DefaultTCPTimeout time.Duration = 1000 * time.Millisecond
 
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
@@ -37,7 +37,7 @@ type TCPHost struct {
 }
 
 func (h *TCPHost) DefaultTimeout() time.Duration {
-	return DefaultTCPTimeout
+	return DefaultTCPTimeout + 500*time.Millisecond
 }
 
 func (h *TCPHost) SetTimeout(t time.Duration) {
@@ -168,7 +168,7 @@ func (h *TCPHost) Connect() error {
 	}
 	conn, err := net.Dial("tcp", h.parent)
 	if err != nil {
-		log.Errorln(err)
+		log.Warnln("tcphost: failed to connect to parent:", err)
 		return err
 	}
 	tp := NewTCPConnFromNet(conn)
@@ -224,6 +224,7 @@ func (h *TCPHost) AddChildren(cs ...string) {
 			h.peers[c] = nil
 		} else {
 			// skip children that we have already added
+			h.rlock.Unlock()
 			continue
 		}
 		h.rlock.Unlock()
@@ -339,6 +340,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 		h.rlock.Lock()
 		if !h.ready[c] {
 			err = errors.New("child is not ready")
+			h.rlock.Unlock()
 			continue
 		}
 		conn := h.peers[c]

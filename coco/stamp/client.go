@@ -80,10 +80,16 @@ func (c *Client) handleResponse(tsm *TimeStampMessage) {
 func (c *Client) AddServer(name string, conn coconet.Conn) {
 	//c.Servers[name] = conn
 	go func(conn coconet.Conn) {
+		maxwait := 5 * time.Second
+		curWait := 500 * time.Millisecond
 		for {
 			err := conn.Connect()
 			if err != nil {
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(curWait)
+				curWait = curWait * 2
+				if curWait > maxwait {
+					curWait = maxwait
+				}
 				continue
 			} else {
 				c.Mux.Lock()
