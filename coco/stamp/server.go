@@ -252,7 +252,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 }
 
 func (s *Server) AggregateCommits() []byte {
-	log.Infoln("calling AggregateCommits")
+	//log.Infoln("calling AggregateCommits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
 	Queue := s.Queue

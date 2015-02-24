@@ -57,7 +57,7 @@ func main() {
 		}(p)
 	}
 	// killssh processes on users
-	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh; killall scp")
+	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh scp deter")
 	// parse the hosts.txt file to create a separate list (and file)
 	// of physical nodes and virtual nodes. Such that each host on line i, in phys.txt
 	// corresponds to each host on line i, in virt.txt.
