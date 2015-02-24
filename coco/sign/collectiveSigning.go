@@ -145,8 +145,8 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 	Round := am.Round
 	sn.roundLock.Lock()
 	sn.Rounds[Round] = NewRound()
-	sn.ComCh[Round] = make(chan *SigningMessage, 1)
-	sn.RmCh[Round] = make(chan *SigningMessage, 1)
+	sn.ComCh[Round] = make(chan *SigningMessage, sn.NChildren())
+	sn.RmCh[Round] = make(chan *SigningMessage, sn.NChildren())
 	sn.roundLock.Unlock()
 
 	// the root is the only node that keeps track of round # internally
@@ -201,6 +201,10 @@ func (sn *Node) Commit(Round int) error {
 	messgs := sn.waitOn(sn.ComCh[Round], sn.Timeout(), "commits")
 	elapsed := time.Since(start)
 	log.WithFields(log.Fields{"commits": len(messgs), "time": elapsed}).Infoln("received commits")
+	sn.roundLock.Lock()
+	delete(sn.ComCh, Round)
+	sn.roundLock.Unlock()
+
 	// prepare to handle exceptions
 	round.ExceptionList = make([]abstract.Point, 0)
 	round.ChildV_hat = make(map[string]abstract.Point, len(sn.Children()))
