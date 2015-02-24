@@ -58,6 +58,10 @@ func (c *Client) handleServer(s coconet.Conn) error {
 		// log.Println("connection:", s)
 		err := s.Get(tsm)
 		if err != nil {
+			if err != coconet.ConnectionNotEstablished {
+				log.Warn(err)
+			}
+
 			return err
 		}
 		c.handleResponse(tsm)
@@ -140,6 +144,9 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 			ReqNo: myReqno,
 			Sreq:  &StampRequest{Val: val}})
 	if err != nil {
+		if err != coconet.ConnectionNotEstablished {
+			log.Warn(err)
+		}
 		return err
 	}
 
