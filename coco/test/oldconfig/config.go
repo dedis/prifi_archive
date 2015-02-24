@@ -465,12 +465,14 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	for _, sn := range hostnames {
 		var err error
 		// exponential backoff for attempting to connect to parent
-		startTime := 200 * time.Millisecond
-		maxTime := 10000 * time.Millisecond
-		for i := 0; i < 200; i++ {
+		startTime := time.Duration(200)
+		maxTime := time.Duration(2000)
+		for i := 0; i < 2000; i++ {
 			// log.Println("attempting to connect to parent")
+			// connect with the parent
 			err = sn.Connect()
 			if err == nil {
+				log.Infoln("hostconfig: connected to parent:")
 				break
 			}
 
@@ -482,6 +484,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 		}
 		// log.Println("Succssfully connected to parent")
 		if err != nil {
+			log.Fatal("failed to connect to parent")
 			return errors.New("failed to connect")
 		}
 	}

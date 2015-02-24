@@ -166,7 +166,7 @@ func (s *Server) Run(role string, nRounds int) {
 	switch role {
 
 	case "root":
-		// count only productive rounds
+		// every 5 seconds start a new round
 		ticker := time.Tick(5000 * time.Millisecond)
 		for _ = range ticker {
 			s.nRounds++
@@ -176,6 +176,7 @@ func (s *Server) Run(role string, nRounds int) {
 			}
 
 			start := time.Now()
+			log.Println("stamp server starting signing round for:", s.nRounds)
 			err := s.StartSigningRound()
 			if err != nil {
 				log.Errorln(err)
@@ -223,7 +224,7 @@ func (s *Server) OnAnnounce() coco.CommitFunc {
 
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
-		log.Debug("calling OnDone")
+		//log.Println("calling OnDone")
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -251,7 +252,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 }
 
 func (s *Server) AggregateCommits() []byte {
-	log.Debug("calling  AggregateCommits")
+	log.Infoln("calling AggregateCommits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
 	Queue := s.Queue
@@ -293,7 +294,7 @@ func (s *Server) AggregateCommits() []byte {
 	s.Root, s.Proofs = proof.ProofTree(s.Suite().Hash, s.Leaves)
 	if coco.DEBUG == true {
 		if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
-			// log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
+			log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
 		} else {
 			panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
 		}

@@ -139,7 +139,7 @@ func main() {
 			continue
 		}
 		servers := strings.Join(ss, ",")
-		go cliutils.SshRunBackground("", p, "./timeclient -rate=1000 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
+		go cliutils.SshRunBackground("", p, "./timeclient -rate=100 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
 	}
 	// now start up each timestamping server
 	fmt.Println("starting up timestampers")

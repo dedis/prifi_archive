@@ -197,8 +197,10 @@ func (sn *Node) Commit(Round int) error {
 
 	// wait on commits from children
 	sn.UpdateTimeout()
+	start := time.Now()
 	messgs := sn.waitOn(sn.ComCh[Round], sn.Timeout(), "commits")
-
+	elapsed := time.Since(start)
+	log.WithFields(log.Fields{"commits": len(messgs), "time": elapsed}).Infoln("received commits")
 	// prepare to handle exceptions
 	round.ExceptionList = make([]abstract.Point, 0)
 	round.ChildV_hat = make(map[string]abstract.Point, len(sn.Children()))
@@ -250,7 +252,7 @@ func (sn *Node) Commit(Round int) error {
 func (sn *Node) actOnCommits(Round int) (err error) {
 	round := sn.Rounds[Round]
 	if sn.IsRoot() {
-		err = sn.FinalizeCommits()
+		err = sn.FinalizeCommits(Round)
 	} else {
 		// create and putup own commit message
 		com := &CommitmentMessage{
@@ -439,8 +441,8 @@ func (sn *Node) Respond(Round int) error {
 }
 
 // Called *only* by root node after receiving all commits
-func (sn *Node) FinalizeCommits() error {
-	Round := sn.Round // *only* in root
+func (sn *Node) FinalizeCommits(Round int) error {
+	//Round := sn.Round // *only* in root
 	round := sn.Rounds[Round]
 
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
@@ -491,6 +493,7 @@ func (sn *Node) VerifyResponses(Round int) error {
 
 	if sn.IsRoot() {
 		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
+		log.Println(round.MTRoot)
 	}
 	return nil
 }

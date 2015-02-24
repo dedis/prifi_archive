@@ -13,7 +13,7 @@ import (
 )
 
 // Default timeout for any network operation
-const DefaultTCPTimeout time.Duration = 1000 * time.Millisecond
+const DefaultTCPTimeout time.Duration = 1 * time.Minute
 
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
@@ -37,7 +37,7 @@ type TCPHost struct {
 }
 
 func (h *TCPHost) DefaultTimeout() time.Duration {
-	return DefaultTCPTimeout + 500*time.Millisecond
+	return DefaultTCPTimeout
 }
 
 func (h *TCPHost) SetTimeout(t time.Duration) {
@@ -304,6 +304,7 @@ func (h *TCPHost) PutUp(data BinaryMarshaler) error {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
 	}
+	//log.Println("Putting Up:")
 	return parent.Put(data)
 }
 

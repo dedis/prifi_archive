@@ -72,7 +72,7 @@ func (sn *Node) StartSigningRound() error {
 	default:
 		// send an announcement message to all other TSServers
 		sn.nRounds++
-		log.Println("root node sending announcement: ", sn.Name())
+		log.Infoln("root starting signing round for round: ", sn.nRounds)
 		sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
 		return nil
 	case err := <-sn.closedChan:
@@ -149,7 +149,7 @@ func (sn *Node) UpdateTimeout(t ...time.Duration) {
 	if len(t) > 0 {
 		sn.SetTimeout(t[0])
 	} else {
-		tt := time.Duration(sn.Height)*sn.DefaultTimeout() + 1000*time.Millisecond
+		tt := time.Duration(sn.Height)*sn.DefaultTimeout() + sn.DefaultTimeout()
 		sn.SetTimeout(tt)
 	}
 }

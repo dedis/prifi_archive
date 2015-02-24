@@ -90,9 +90,10 @@ func main() {
 			// every tick send a time stamp request to every server specified
 			var err error
 			var m sync.Mutex
+			msg := genRandomMessages(1)[0]
 			for _, s := range servers {
 				go func() {
-					e := c.TimeStamp(msgs[0], s)
+					e := c.TimeStamp(msg, s)
 					if e != nil {
 						m.Lock()
 						err = e
