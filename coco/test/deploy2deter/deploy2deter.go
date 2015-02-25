@@ -98,7 +98,9 @@ func main() {
 	logger := phys[len(phys)-1]
 	virt = virt[:len(virt)-1]
 	phys = phys[:len(phys)-1]
-	t, _, err := graphs.TreeFromList(virt, hpn, bf)
+	t, temphosts, depth, err := graphs.TreeFromList(virt, hpn, bf)
+	log.Println("DEPTH:", depth)
+	log.Println("TOTAL HOSTS:", len(temphosts))
 
 	// after constructing the tree generate a configuration file
 	// for deployment on each of the nodes

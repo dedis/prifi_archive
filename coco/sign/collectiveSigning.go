@@ -41,10 +41,14 @@ func (sn *Node) getUp() {
 	for {
 		sm := SigningMessage{}
 		if err := sn.GetUp(&sm); err != nil {
+			if err != coconet.ConnectionNotEstablished {
+				log.Warn(err)
+			}
+
 			if err == coconet.ErrorConnClosed ||
 				err == io.EOF {
 				// stop getting up if the connection is closed
-				sn.closedChan <- err
+				sn.closed <- err
 				return
 			}
 		}
@@ -78,12 +82,19 @@ func (sn *Node) getDown() {
 
 	for {
 		nm, err := sn.waitDownOnNM(ch, errch)
-		if err == io.EOF {
-			sn.closedChan <- err
-			return
-		}
-		if err == coconet.ErrorConnClosed {
-			continue
+		if err != nil {
+			if err == coconet.ConnectionNotEstablished {
+				continue
+			}
+
+			log.Warn(err)
+			if err == io.EOF {
+				sn.closed <- err
+				return
+			}
+			if err == coconet.ErrorConnClosed {
+				continue
+			}
 		}
 
 		// interpret network message as Siging Message
@@ -407,6 +418,11 @@ func (sn *Node) Respond(Round int) error {
 		sn.sub(round.X_hat, exceptionX_hat)
 	}
 	err = sn.VerifyResponses(Round)
+
+	// root reports round is done
+	if sn.IsRoot() {
+		sn.done <- err
+	}
 
 	if !sn.IsRoot() {
 		if sn.TestingFailures == true &&

@@ -185,7 +185,7 @@ var ErrNoHosts = errors.New("Can't have 0 hosts per node")
 // has no two adjacent nodes in the Tree running as hosts on the same machine
 // Also returns a list of the host names created and their ports
 func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...string) (
-	*Tree, []string, error) {
+	*Tree, []string, int, error) {
 	if len(nodeNames) < 1 {
 		return nil, nil, ErrNoNodesGiven
 	}
@@ -221,8 +221,8 @@ func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...
 		startM = nodeNames[0]
 	}
 
-	tnodes, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp)
-	return tnodes, usedHostAddr, err
+	root, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp)
+	return root, usedHostAddr, depth(root), err
 }
 
 func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, startM string, mp map[string][]string) (

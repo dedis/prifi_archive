@@ -56,7 +56,8 @@ type Node struct {
 	LogTest   []byte                       // for testing purposes
 	peerKeys  map[string]abstract.Point    // map of all peer public keys
 
-	closedChan chan error
+	closed chan error // error sent when connection closed
+	done   chan error // nil sent when round done
 }
 
 func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -68,14 +69,15 @@ func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
 }
 
 func (sn *Node) StartSigningRound() error {
+	// send an announcement message to all other TSServers
+	sn.nRounds++
+	log.Infoln("root starting signing round for round: ", sn.nRounds)
+	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+
 	select {
-	default:
-		// send an announcement message to all other TSServers
-		sn.nRounds++
-		log.Infoln("root starting signing round for round: ", sn.nRounds)
-		sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
-		return nil
-	case err := <-sn.closedChan:
+	case err := <-sn.done:
+		return err
+	case err := <-sn.closed:
 		return err
 	}
 }
@@ -90,7 +92,8 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closedChan = make(chan error, 2)
+	sn.closed = make(chan error, 2)
+	sn.done = make(chan error, 10)
 
 	sn.TestingFailures = false
 	return sn
@@ -106,7 +109,8 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closedChan = make(chan error, 2)
+	sn.closed = make(chan error, 2)
+	sn.done = make(chan error, 10)
 
 	sn.TestingFailures = false
 	return sn
@@ -119,6 +123,10 @@ func (sn *Node) AddPeer(conn string, PubKey abstract.Point) {
 
 func (sn *Node) Suite() abstract.Suite {
 	return sn.suite
+}
+
+func (sn *Node) Done() chan error {
+	return sn.done
 }
 
 func (sn *Node) LastRound() int {
