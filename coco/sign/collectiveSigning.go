@@ -48,7 +48,7 @@ func (sn *Node) getUp() {
 			if err == coconet.ErrorConnClosed ||
 				err == io.EOF {
 				// stop getting up if the connection is closed
-				sn.closedChan <- err
+				sn.closed <- err
 				return
 			}
 		}
@@ -89,7 +89,7 @@ func (sn *Node) getDown() {
 
 			log.Warn(err)
 			if err == io.EOF {
-				sn.closedChan <- err
+				sn.closed <- err
 				return
 			}
 			if err == coconet.ErrorConnClosed {
@@ -418,6 +418,11 @@ func (sn *Node) Respond(Round int) error {
 		sn.sub(round.X_hat, exceptionX_hat)
 	}
 	err = sn.VerifyResponses(Round)
+
+	// root reports round is done
+	if sn.IsRoot() {
+		sn.done <- err
+	}
 
 	if !sn.IsRoot() {
 		if sn.TestingFailures == true &&
