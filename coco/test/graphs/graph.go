@@ -197,7 +197,7 @@ func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...
 
 	// Hosts on one machine get ports starting with StartPort
 	// and distanced 10 away
-	StartPort := 3000
+	StartPort := 2000
 
 	// Map from nodes to their hosts
 	mp := make(map[string][]string)
