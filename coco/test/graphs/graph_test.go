@@ -53,17 +53,6 @@ func TestTreeFromList(t *testing.T) {
 	// machine2:32610
 }
 
-func depth(t *Tree) int {
-	md := 0
-	for _, c := range t.Children {
-		dc := depth(c)
-		if dc > md {
-			md = dc
-		}
-	}
-	return md + 1
-}
-
 //        1
 //       /  \
 //      2    2
