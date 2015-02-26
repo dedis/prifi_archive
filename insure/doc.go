@@ -1,6 +1,6 @@
 package insure
 
-/* 
+/*
  * This package will implement an insurance policy for the coco collective
  * consensus signing protocol.
  *

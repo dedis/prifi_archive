@@ -83,7 +83,7 @@ func (gcm *ChanConnManager) GetDir() *coconet.GoDirectory {
  * Returns:
  * 	An error denoting whether the put was successfull
  */
-func (gcm * ChanConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
+func (gcm *ChanConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
 	return gcm.peerMap[p.String()].Put(data)
 }
 

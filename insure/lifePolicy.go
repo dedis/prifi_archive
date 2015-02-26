@@ -3,12 +3,12 @@ package insure
 import (
 	"container/list"
 	"errors"
-	
+
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly"
 	"github.com/dedis/crypto/random"
-	
+
 	"github.com/dedis/prifi/coco/connMan"
 )
 
@@ -49,16 +49,15 @@ type LifePolicy struct {
 
 	// Denotes the current status of the policy.
 	policyStatus PolicyStatus
-	
+
 	// This stores the secrets of other nodes this server is insuring.
 	// The map is:
 	//    PublicKeyOfInsured.String() + MyPrivateShare.String() => RequestInsuranceMessage
 	insuredClients map[string]*RequestInsuranceMessage
-	
+
 	// The connection manager to use for this policy
 	cman connMan.ConnManager
 }
-
 
 /* This method initializes a policy. This function should be called first before
  * using the policy in any manner. After being initialize, the policy will be
@@ -70,10 +69,10 @@ type LifePolicy struct {
  *   cmann    = the connection manager to handle requests.
  */
 func (lp *LifePolicy) Init(kp *config.KeyPair, cman connMan.ConnManager) *LifePolicy {
-	lp.keyPair        = kp
-	lp.policyStatus   = PolicyUninitialized
+	lp.keyPair = kp
+	lp.policyStatus = PolicyUninitialized
 	lp.insuredClients = make(map[string]*RequestInsuranceMessage)
-	lp.cman           = cman
+	lp.cman = cman
 	return lp
 }
 
@@ -88,7 +87,7 @@ func (lp *LifePolicy) GetInsurers() []abstract.Point {
 }
 
 // Returns the certificates of the insurers for each policy.
-func (lp *LifePolicy) GetPolicyProof()  *list.List {
+func (lp *LifePolicy) GetPolicyProof() *list.List {
 	return lp.proofList
 }
 
@@ -96,7 +95,6 @@ func (lp *LifePolicy) GetPolicyProof()  *list.List {
 func (lp *LifePolicy) GetStatus() PolicyStatus {
 	return lp.policyStatus
 }
-
 
 /* This function selects a set of servers to serve as insurers. This is an
  * extremely rudimentary version that selects the first n servers from the list.
@@ -116,7 +114,6 @@ func selectInsurersBasic(serverList []abstract.Point, n int) []abstract.Point {
 
 	return serverList[:n]
 }
-
 
 /* This method is responsible for "taking out" the insurance policy. The
  * function takes the server's private key, divides it up into
@@ -153,7 +150,7 @@ func (lp *LifePolicy) TakeOutPolicy(serverList []abstract.Point,
 	if selectInsurers == nil {
 		selectInsurers = selectInsurersBasic
 	}
-	
+
 	lp.insurersList = selectInsurers(serverList, n)
 	if lp.insurersList == nil || len(lp.insurersList) < n {
 		return lp, false
@@ -165,7 +162,7 @@ func (lp *LifePolicy) TakeOutPolicy(serverList []abstract.Point,
 	// Create a new polynomial from the private key where t shares are
 	// needed to reconstruct the secret. Then, split it into secret shares
 	// and create the public polynomial.
-	pripoly := new(poly.PriPoly).Pick(g,t, lp.keyPair.Secret, random.Stream)
+	pripoly := new(poly.PriPoly).Pick(g, t, lp.keyPair.Secret, random.Stream)
 	prishares := new(poly.PriShares).Split(pripoly, n)
 	pubPoly := new(poly.PubPoly)
 	pubPoly.Init(g, n, nil)
@@ -178,9 +175,9 @@ func (lp *LifePolicy) TakeOutPolicy(serverList []abstract.Point,
 	// Send each share off to the appropriate server.
 	for i := 0; i < n; i++ {
 		requestMsg := new(RequestInsuranceMessage).createMessage(
-			lp.keyPair.Public, i, prishares.Share(i), pubPoly)	
+			lp.keyPair.Public, i, prishares.Share(i), pubPoly)
 		lp.cman.Put(lp.insurersList[i],
-			new(PolicyMessage).createRIMessage(requestMsg))	
+			new(PolicyMessage).createRIMessage(requestMsg))
 	}
 
 	receivedList := make([]bool, len(lp.insurersList))
@@ -197,11 +194,11 @@ func (lp *LifePolicy) TakeOutPolicy(serverList []abstract.Point,
 			if receivedList[i] == true {
 				continue
 			}
-		
+
 			msg := new(PolicyMessage)
 			lp.cman.Get(lp.insurersList[i], msg)
 			msgType, err := lp.handlePolicyMessage(msg)
-						
+
 			// Merely for efficiency, to update the receive list.
 			if msgType == PolicyApproved {
 				receivedList[i] = (err == nil)
@@ -209,10 +206,9 @@ func (lp *LifePolicy) TakeOutPolicy(serverList []abstract.Point,
 		}
 	}
 
-	lp.policyStatus = PolicyReady 
+	lp.policyStatus = PolicyReady
 	return lp, true
 }
-
 
 /* This function handles policy messages received. This function will handle
  * updating the life policy appropriately. Simply give it the policy message
@@ -228,12 +224,12 @@ func (lp *LifePolicy) TakeOutPolicy(serverList []abstract.Point,
  * NOTE: An error need not be alarming. For example, if one node sends a
  * duplicate request, the policy can simply ignore the duplicate.
  */
-func (lp *LifePolicy) handlePolicyMessage(msg * PolicyMessage) (MessageType, error) {		
+func (lp *LifePolicy) handlePolicyMessage(msg *PolicyMessage) (MessageType, error) {
 	switch msg.Type {
-		case RequestInsurance:
-			return RequestInsurance, lp.handleRequestInsuranceMessage(msg.getRIM())
-		case PolicyApproved:
-			return PolicyApproved, lp.handlePolicyApproveMessage(msg.getPAM())
+	case RequestInsurance:
+		return RequestInsurance, lp.handleRequestInsuranceMessage(msg.getRIM())
+	case PolicyApproved:
+		return PolicyApproved, lp.handlePolicyApproveMessage(msg.getPAM())
 	}
 	return Error, errors.New("Invald message type")
 }
@@ -248,7 +244,7 @@ func (lp *LifePolicy) handlePolicyMessage(msg * PolicyMessage) (MessageType, err
  * Returns:
  *	the error status (possibly nil)
  */
-func (lp *LifePolicy) handleRequestInsuranceMessage(msg * RequestInsuranceMessage) error {
+func (lp *LifePolicy) handleRequestInsuranceMessage(msg *RequestInsuranceMessage) error {
 
 	// Return an error if the polict has not been initialized yet.
 	if lp.policyStatus == PolicyError {
@@ -256,9 +252,9 @@ func (lp *LifePolicy) handleRequestInsuranceMessage(msg * RequestInsuranceMessag
 	}
 
 	if !msg.PubCommit.Check(int(msg.ShareNumber.V.Int64()), msg.Share) {
-		return errors.New("The private share failed PubPoly.Check.")		      
+		return errors.New("The private share failed PubPoly.Check.")
 	}
-		
+
 	// If we are already insuring this key, fail.
 	keyValue := msg.PubKey.String() + msg.Share.String()
 	if _, exists := lp.insuredClients[keyValue]; exists {
@@ -284,11 +280,11 @@ func (lp *LifePolicy) handleRequestInsuranceMessage(msg * RequestInsuranceMessag
  * Returns:
  *	Whether or not the request was accepted.
  */
-func (lp *LifePolicy) handlePolicyApproveMessage(msg * PolicyApprovedMessage) error {
-	
+func (lp *LifePolicy) handlePolicyApproveMessage(msg *PolicyApprovedMessage) error {
+
 	// If the policy has not been taken out yet, ignore the message.
 	if lp.policyStatus == PolicyUninitialized ||
-	   lp.policyStatus == PolicyError {
+		lp.policyStatus == PolicyError {
 		return errors.New("Policy not yet initialized.")
 	}
 
@@ -297,14 +293,14 @@ func (lp *LifePolicy) handlePolicyApproveMessage(msg * PolicyApprovedMessage) er
 		return errors.New("The digital signature failed to be validated.")
 	}
 
-	// If this server has already received an approval message from the 
-	// sender, ignore it	
+	// If this server has already received an approval message from the
+	// sender, ignore it
 	for nextElt := lp.proofList.Front(); nextElt != nil; nextElt = nextElt.Next() {
 		if msg.PubKey.Equal(nextElt.Value.(*PolicyApprovedMessage).PubKey) {
-			return errors.New("Duplicate approval message.")	
+			return errors.New("Duplicate approval message.")
 		}
 	}
-	
+
 	// Ignore the message if not sent from an insurer.
 	fromInsurer := false
 	for i := 0; i < len(lp.insurersList); i++ {
@@ -316,8 +312,7 @@ func (lp *LifePolicy) handlePolicyApproveMessage(msg * PolicyApprovedMessage) er
 		return errors.New("Unsolicited approval message received.")
 	}
 
-	// Otherwise, add it to the list	
+	// Otherwise, add it to the list
 	lp.proofList.PushBack(msg)
 	return nil
 }
-

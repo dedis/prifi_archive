@@ -19,4 +19,3 @@ var INSURE_GROUP abstract.Group = new(edwards.ExtendedCurve).Init(
 
 // The group to be used for all public/private key pairs and should be constant.
 var KEY_SUITE abstract.Suite = nist.NewAES128SHA256P256()
-

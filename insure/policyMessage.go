@@ -1,9 +1,9 @@
 package insure
 
 import (
+	"bytes"
 	"math"
 	"math/big"
-	"bytes"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/anon"
@@ -11,7 +11,7 @@ import (
 	"github.com/dedis/crypto/nist"
 	"github.com/dedis/crypto/poly"
 	"github.com/dedis/crypto/random"
-	
+
 	"github.com/dedis/protobuf"
 )
 
@@ -43,7 +43,7 @@ type PolicyMessage struct {
  */
 func (pm *PolicyMessage) createRIMessage(m *RequestInsuranceMessage) *PolicyMessage {
 	pm.Type = RequestInsurance
-	pm.rim  = m
+	pm.rim = m
 	return pm
 }
 
@@ -57,7 +57,7 @@ func (pm *PolicyMessage) createRIMessage(m *RequestInsuranceMessage) *PolicyMess
  */
 func (pm *PolicyMessage) createPAMessage(m *PolicyApprovedMessage) *PolicyMessage {
 	pm.Type = PolicyApproved
-	pm.pam  = m
+	pm.pam = m
 	return pm
 }
 
@@ -105,14 +105,13 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
-
 // These messages are used to send insurance requests. A node looking for an
 // insurance policy will send these to other nodes to ask them to become
 // insurers.
 type RequestInsuranceMessage struct {
 	// The public key of the insured.
 	PubKey abstract.Point
-	
+
 	// The number of the share being sent.
 	ShareNumber *nist.Int
 
@@ -135,8 +134,7 @@ type RequestInsuranceMessage struct {
 func (msg *RequestInsuranceMessage) createMessage(p abstract.Point, shareNum int,
 	s abstract.Secret, pc *poly.PubPoly) *RequestInsuranceMessage {
 	msg.PubKey = p
-	msg.ShareNumber = nist.NewInt(int64(shareNum),
-		big.NewInt(int64(math.MaxInt64)))
+	msg.ShareNumber = nist.NewInt(int64(shareNum), big.NewInt(int64(math.MaxInt64)))
 	msg.Share = s
 	msg.PubCommit = pc
 	return msg
@@ -147,7 +145,7 @@ func (msg *RequestInsuranceMessage) MarshalBinary() ([]byte, error) {
 	b := bytes.Buffer{}
 	abstract.Write(&b, msg, INSURE_GROUP)
 	return b.Bytes(), nil
-//	return protobuf.Encode(msg);
+	//	return protobuf.Encode(msg);
 }
 
 // Decodes a message received.
@@ -165,16 +163,16 @@ func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsura
 		panic(err)
 	}
 	return msg, err
-//	return 	msg, protobuf.Decode(data, msg)
+	//	return 	msg, protobuf.Decode(data, msg)
 
 }
 
 // Compares two messages to see if they are equal
 func (msg *RequestInsuranceMessage) Equal(otherMsg *RequestInsuranceMessage) bool {
-	return msg.PubKey.Equal(otherMsg.PubKey)  &&
-	       msg.ShareNumber.V.Sign() == otherMsg.ShareNumber.V.Sign() &&
-	       msg.Share.Equal(otherMsg.Share) &&
-	       msg.PubCommit.Equal(otherMsg.PubCommit)
+	return msg.PubKey.Equal(otherMsg.PubKey) &&
+		msg.ShareNumber.V.Sign() == otherMsg.ShareNumber.V.Sign() &&
+		msg.Share.Equal(otherMsg.Share) &&
+		msg.PubCommit.Equal(otherMsg.PubCommit)
 }
 
 type PolicyApprovedMessage struct {
@@ -209,7 +207,7 @@ func (msg *PolicyApprovedMessage) createMessage(kp *config.KeyPair,
 
 	set := anon.Set{kp.Public}
 	approveMsg := kp.Public.String() + " insures " + theirKey.String()
-	msg.PubKey  = kp.Public
+	msg.PubKey = kp.Public
 	msg.Message = []byte(approveMsg)
 	msg.Signature = anon.Sign(kp.Suite, random.Stream, msg.Message,
 		set, nil, 0, kp.Secret)
@@ -218,13 +216,13 @@ func (msg *PolicyApprovedMessage) createMessage(kp *config.KeyPair,
 
 // Encodes a policy message for sending over the Internet
 func (msg *PolicyApprovedMessage) MarshalBinary() ([]byte, error) {
-	return protobuf.Encode(msg);
+	return protobuf.Encode(msg)
 }
 
 // Decodes a policy message for sending over the Internet
 func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) (*PolicyApprovedMessage, error) {
 	msg.PubKey = KEY_SUITE.Point()
-	return msg, protobuf.Decode(data, msg);
+	return msg, protobuf.Decode(data, msg)
 }
 
 /* Verifies that a PolicyApproveMessage has been properly constructed.
@@ -248,8 +246,7 @@ func (msg *PolicyApprovedMessage) verifyCertificate(su abstract.Suite,
 
 // Compares two messages to see if they are equal
 func (msg *PolicyApprovedMessage) Equal(otherMsg *PolicyApprovedMessage) bool {
-	return msg.PubKey.Equal(otherMsg.PubKey)  &&
-	       string(msg.Message) == string(otherMsg.Message) &&
-	       string(msg.Signature) == string(otherMsg.Signature)
+	return msg.PubKey.Equal(otherMsg.PubKey) &&
+		string(msg.Message) == string(otherMsg.Message) &&
+		string(msg.Signature) == string(otherMsg.Signature)
 }
-
