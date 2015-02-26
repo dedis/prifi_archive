@@ -267,6 +267,7 @@ func (sn *Node) Commit(Round int) error {
 func (sn *Node) actOnCommits(Round int) (err error) {
 	round := sn.Rounds[Round]
 	if sn.IsRoot() {
+		sn.commitsDone <- Round
 		err = sn.FinalizeCommits(Round)
 	} else {
 		// create and putup own commit message
@@ -417,7 +418,7 @@ func (sn *Node) actOnResponses(Round int, exceptionV_hat abstract.Point, excepti
 	err := sn.VerifyResponses(Round)
 	// root reports round is done
 	if sn.IsRoot() {
-		sn.done <- err
+		sn.done <- Round
 	}
 
 	if !sn.IsRoot() {

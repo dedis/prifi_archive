@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"sync"
 	"time"
 
@@ -56,8 +57,9 @@ type Node struct {
 	LogTest   []byte                       // for testing purposes
 	peerKeys  map[string]abstract.Point    // map of all peer public keys
 
-	closed chan error // error sent when connection closed
-	done   chan error // nil sent when round done
+	closed      chan error // error sent when connection closed
+	done        chan int   // round number sent when round done
+	commitsDone chan int   // round number sent when announce/commit phase done
 }
 
 func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -72,11 +74,31 @@ func (sn *Node) StartSigningRound() error {
 	// send an announcement message to all other TSServers
 	sn.nRounds++
 	log.Infoln("root starting signing round for round: ", sn.nRounds)
-	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
 
+	go func() {
+		sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+	}()
+
+	// 1st Phase succeeded or connection error
 	select {
-	case err := <-sn.done:
+	case rn := <-sn.commitsDone:
+		if rn != sn.nRounds {
+			log.Fatal("1st Phase round number mix up")
+			return errors.New("1st Phase round number mix up")
+		}
+		break
+	case err := <-sn.closed:
 		return err
+	}
+
+	// 2nd Phase succeeded or connection error
+	select {
+	case rn := <-sn.done:
+		if rn != sn.nRounds {
+			log.Fatal("2nd Phase round number mix up")
+			return errors.New("2nd Phase round number mix up")
+		}
+		return nil
 	case err := <-sn.closed:
 		return err
 	}
@@ -93,7 +115,8 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closed = make(chan error, 2)
-	sn.done = make(chan error, 10)
+	sn.done = make(chan int, 10)
+	sn.commitsDone = make(chan int, 10)
 
 	sn.TestingFailures = false
 	return sn
@@ -110,7 +133,8 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closed = make(chan error, 2)
-	sn.done = make(chan error, 10)
+	sn.done = make(chan int, 10)
+	sn.commitsDone = make(chan int, 10)
 
 	sn.TestingFailures = false
 	return sn
@@ -125,7 +149,7 @@ func (sn *Node) Suite() abstract.Suite {
 	return sn.suite
 }
 
-func (sn *Node) Done() chan error {
+func (sn *Node) Done() chan int {
 	return sn.done
 }
 
