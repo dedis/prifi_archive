@@ -15,14 +15,14 @@ var goDir = coconet.NewGoDirectory()
 
 // Variables for the server to take out the policy.
 var keyPairT  = produceKeyPairT()
-var goConn    = produceGoConn(keyPairT)
+var goConn    = produceChanConn(keyPairT)
 
 // Alter this to easily scale the number of servers to test with. This
 // represents the number of other servers waiting to approve policies.
 var numServers int = 10
 
 // Variables for the servers to accept the policy
-var serverKeys         = produceServerKeys()
+var serverKeys          = produceServerKeys()
 var insurerList         = produceInsuredList()
 var connectionManagers  = produceGoConnArray()
 var setupOkay           = setupConn()
@@ -33,8 +33,8 @@ func produceKeyPairT() *config.KeyPair {
 	return keyPair
 }
 
-func produceGoConn(k *config.KeyPair) *connMan.GoConnManager {
-	return new(connMan.GoConnManager).Init(k.Public, goDir)
+func produceChanConn(k *config.KeyPair) *connMan.ChanConnManager {
+	return new(connMan.ChanConnManager).Init(k.Public, goDir)
 }
 
 func produceServerKeys() []*config.KeyPair {
@@ -53,10 +53,10 @@ func produceInsuredList() []abstract.Point {
 	return newArray
 }
 
-func produceGoConnArray() []*connMan.GoConnManager {
-	newArray := make([]*connMan.GoConnManager, numServers, numServers)
+func produceGoConnArray() []*connMan.ChanConnManager {
+	newArray := make([]*connMan.ChanConnManager, numServers, numServers)
 	for i := 0; i < numServers; i++ {
-		newArray[i] = produceGoConn(serverKeys[i])
+		newArray[i] = produceChanConn(serverKeys[i])
 	}
 	return newArray
 }

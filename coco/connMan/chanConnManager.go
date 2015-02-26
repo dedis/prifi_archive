@@ -10,7 +10,7 @@ import (
  * keys map to which connections. It also keeps track of the GoDirectory for
  * testing purposes.
  */
-type GoConnManager struct {
+type ChanConnManager struct {
 	// Tracks the connections to various peers
 	peerMap map[string]*coconet.GoConn
 	// This directory facilitates using go channels for testing purposes.
@@ -19,7 +19,8 @@ type GoConnManager struct {
 	pubKey abstract.Point
 }
 
-
+// TODO: Prototypes to consider for the future
+//
 //type ConnManager struct {
 //	peerMap map[string]coconet.Conn
 //}
@@ -29,9 +30,7 @@ type GoConnManager struct {
 //	peerMap[to] = conn
 //}
 
-
-
-/* Initializes a new GoConnManager
+/* Initializes a new ChanConnManager
  *
  * Arguments:
  * 	goDir = the GoDirectory to use for creating new connections. Enter nil
@@ -39,9 +38,9 @@ type GoConnManager struct {
  * 	key = the public key of the owner of this manager
  *
  * Returns:
- * 	An initialized GoConnManager
+ * 	An initialized ChanConnManager
  */
-func (gcm *GoConnManager) Init(key abstract.Point, goDir *coconet.GoDirectory) *GoConnManager {
+func (gcm *ChanConnManager) Init(key abstract.Point, goDir *coconet.GoDirectory) *ChanConnManager {
 	gcm.pubKey = key
 	gcm.peerMap = make(map[string]*coconet.GoConn)
 	if goDir == nil {
@@ -60,8 +59,9 @@ func (gcm *GoConnManager) Init(key abstract.Point, goDir *coconet.GoDirectory) *
  * Returns:
  * 	An error denoting whether creating the new connection was successful.
  */
-func (gcm *GoConnManager) AddConn(theirKey abstract.Point) error {
-	newConn, err := coconet.NewGoConn(gcm.dir, gcm.pubKey.String(), theirKey.String())
+func (gcm *ChanConnManager) AddConn(theirKey abstract.Point) error {
+	newConn, err := coconet.NewGoConn(gcm.dir, gcm.pubKey.String(),
+		theirKey.String())
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (gcm *GoConnManager) AddConn(theirKey abstract.Point) error {
 }
 
 // Returns the GoDirectory of the manager.
-func (gcm *GoConnManager) GetDir() *coconet.GoDirectory {
+func (gcm *ChanConnManager) GetDir() *coconet.GoDirectory {
 	return gcm.dir
 }
 
@@ -83,7 +83,7 @@ func (gcm *GoConnManager) GetDir() *coconet.GoDirectory {
  * Returns:
  * 	An error denoting whether the put was successfull
  */
-func (gcm * GoConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
+func (gcm * ChanConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) error {
 	return gcm.peerMap[p.String()].Put(data)
 }
 
@@ -96,6 +96,6 @@ func (gcm * GoConnManager) Put(p abstract.Point, data coconet.BinaryMarshaler) e
  * Returns:
  *	An error denoting whether the get to the buffer was successfull
  */
-func (gcm GoConnManager) Get(p abstract.Point, bum coconet.BinaryUnmarshaler) error {
+func (gcm ChanConnManager) Get(p abstract.Point, bum coconet.BinaryUnmarshaler) error {
 	return gcm.peerMap[p.String()].Get(bum)
 }
