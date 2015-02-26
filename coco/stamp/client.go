@@ -59,9 +59,9 @@ func (c *Client) handleServer(s coconet.Conn) error {
 		err := s.Get(tsm)
 		if err != nil {
 			if err != coconet.ConnectionNotEstablished {
-				log.Warn(err)
+				log.Warn("error getting from connection:", err)
+				continue
 			}
-
 			return err
 		}
 		c.handleResponse(tsm)
@@ -84,8 +84,8 @@ func (c *Client) handleResponse(tsm *TimeStampMessage) {
 func (c *Client) AddServer(name string, conn coconet.Conn) {
 	//c.Servers[name] = conn
 	go func(conn coconet.Conn) {
-		maxwait := 5 * time.Second
-		curWait := 500 * time.Millisecond
+		maxwait := 1 * time.Second
+		curWait := 100 * time.Millisecond
 		for {
 			err := conn.Connect()
 			if err != nil {
@@ -145,7 +145,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 			Sreq:  &StampRequest{Val: val}})
 	if err != nil {
 		if err != coconet.ConnectionNotEstablished {
-			log.Warn(err)
+			log.Warn("error timestamping: ", err)
 		}
 		return err
 	}

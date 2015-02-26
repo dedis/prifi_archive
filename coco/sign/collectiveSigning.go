@@ -42,7 +42,7 @@ func (sn *Node) getUp() {
 		sm := SigningMessage{}
 		if err := sn.GetUp(&sm); err != nil {
 			if err != coconet.ConnectionNotEstablished {
-				log.Warn(err)
+				log.Warn("error getting up:", err)
 			}
 
 			if err == coconet.ErrorConnClosed ||
@@ -87,7 +87,7 @@ func (sn *Node) getDown() {
 				continue
 			}
 
-			log.Warn(err)
+			log.Warn("error getting down:", err)
 			if err == io.EOF {
 				sn.closed <- err
 				return
@@ -208,10 +208,8 @@ func (sn *Node) Commit(Round int) error {
 
 	// wait on commits from children
 	sn.UpdateTimeout()
-	start := time.Now()
 	messgs := sn.waitOn(sn.ComCh[Round], sn.Timeout(), "commits")
-	elapsed := time.Since(start)
-	log.WithFields(log.Fields{"commits": len(messgs), "time": elapsed}).Infoln("received commits")
+
 	sn.roundLock.Lock()
 	delete(sn.ComCh, Round)
 	sn.roundLock.Unlock()

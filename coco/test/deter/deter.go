@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,14 @@ import (
 	"github.com/dedis/prifi/coco/test/config"
 	"github.com/dedis/prifi/coco/test/graphs"
 )
+
+func GenExecCmd(phys string, names []string, loggerport, rootwait string) string {
+	total := ""
+	for _, n := range names {
+		total += "(./exec -rootwait=" + rootwait + " -physaddr=" + phys + " -hostname=" + n + " -logger=" + loggerport + " </dev/null 2>/dev/null 1>/dev/null &); "
+	}
+	return total
+}
 
 func main() {
 	fmt.Println("running deter")
@@ -81,6 +90,8 @@ func main() {
 		hostnames = append(hostnames, t.Name)
 	})
 
+	depth := graphs.Depth(&tree)
+	log.Println("depth of tree:", depth)
 	cf := config.ConfigFromTree(&tree, hostnames)
 	cfb, err := json.Marshal(cf)
 	if err != nil {
@@ -121,7 +132,6 @@ func main() {
 			cliutils.Scp("", logger, f, "logserver/"+f)
 		}
 	}
-
 	wg.Wait()
 
 	// start up the logging server on the final host at port 10000
@@ -139,26 +149,25 @@ func main() {
 			continue
 		}
 		servers := strings.Join(ss, ",")
-		go cliutils.SshRunBackground("", p, "./timeclient -rate=1000 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
+		go cliutils.SshRunBackground("", p, "./timeclient -nmsgs=1 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
 	}
-	// now start up each timestamping server
-	fmt.Println("starting up timestampers")
-	tree.TraverseTree(func(t *graphs.Tree) {
-		h, _, err := net.SplitHostPort(t.Name)
-		if err != nil {
-			log.Fatal("improperly formatted host. must be host:port")
+
+	rootwait := strconv.Itoa(30 + len(hostnames)/10)
+	for phys, virts := range physToServer {
+		if len(virts) == 0 {
+			continue
 		}
-		// get the physical node this is associated with
-		phys := vpmap[h]
+		cmd := GenExecCmd(phys, virts, loggerport, rootwait)
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// run the timestampers
-			log.Println("ssh timestamper at:", phys)
-			log.Println("running timestamp at @", t.Name, "listening to logger:", loggerport)
-			cliutils.SshRunBackground("", phys, "GOGC=300 ./exec -physaddr="+phys+" -hostname="+t.Name+" -logger="+loggerport)
-		}()
-	})
+		//time.Sleep(500 * time.Millisecond)
+		go func(phys, cmd string) {
+			log.Println("running on ", phys, cmd)
+			err := cliutils.SshRunBackground("", phys, cmd)
+			if err != nil {
+				log.Fatal("ERROR STARTING TIMESTAMPER:", err)
+			}
+		}(phys, cmd)
+	}
 	// wait for the servers to finish before stopping
 	wg.Wait()
 	time.Sleep(10 * time.Minute)

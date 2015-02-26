@@ -59,7 +59,7 @@ func SshRunBackground(username, host, command string) error {
 		addr = username + "@" + addr
 	}
 
-	cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", addr,
+	cmd := exec.Command("ssh", "-v", "-o", "StrictHostKeyChecking=no", addr,
 		"eval '"+command+" > /dev/null 2>/dev/null < /dev/null &' > /dev/null 2>/dev/null < /dev/null &")
 	return cmd.Run()
 

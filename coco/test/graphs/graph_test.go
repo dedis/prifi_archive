@@ -20,7 +20,7 @@ func TestTreeFromList(t *testing.T) {
 	hostsPerNode := 2
 	bf := 2
 
-	root, usedHosts, err := TreeFromList(nodeNames, hostsPerNode, bf)
+	root, usedHosts, _, err := TreeFromList(nodeNames, hostsPerNode, bf)
 	if err != nil {
 		panic(err)
 	}
@@ -67,7 +67,7 @@ func TestTreeFromList2(t *testing.T) {
 	hostsPerNode := 4
 	bf := 2
 
-	root, usedHosts, err := TreeFromList(nodeNames, hostsPerNode, bf)
+	root, usedHosts, _, err := TreeFromList(nodeNames, hostsPerNode, bf)
 	if err != nil {
 		panic(err)
 	}
@@ -101,7 +101,7 @@ func TestTreeFromListColoring(t *testing.T) {
 	for hpn := 1; hpn < 10; hpn++ {
 		for bf := 1; bf <= hpn*len(nodes); bf++ {
 			t.Log("generating tree:", hpn, bf)
-			root, hosts, err := TreeFromList(nodes, hpn, bf)
+			root, hosts, _, err := TreeFromList(nodes, hpn, bf)
 			if err != nil {
 				panic(err)
 			}
@@ -109,7 +109,7 @@ func TestTreeFromListColoring(t *testing.T) {
 				t.Fatal("failed to properly color:", nodes, hpn, bf)
 			}
 			t.Log("able to use:", len(hosts), " of: ", hpn*len(nodes))
-			t.Log("depth:", depth(root))
+			t.Log("depth:", Depth(root))
 		}
 	}
 }

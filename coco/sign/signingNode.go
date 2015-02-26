@@ -13,6 +13,7 @@ import (
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/test/logutils"
 )
 
 var ROUND_TIME time.Duration = 1 * time.Second
@@ -72,10 +73,23 @@ func (sn *Node) StartSigningRound() error {
 	// send an announcement message to all other TSServers
 	sn.nRounds++
 	log.Infoln("root starting signing round for round: ", sn.nRounds)
+	start := time.Now()
 	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
-
+	ns := time.Now()
+	log.WithFields(log.Fields{
+		"file":  logutils.File(),
+		"type":  "root_announce",
+		"round": sn.nRounds,
+		"time":  time.Since(start),
+	}).Info("root announce")
 	select {
 	case err := <-sn.done:
+		log.WithFields(log.Fields{
+			"file":  logutils.File(),
+			"type":  "root_challenge",
+			"round": sn.nRounds,
+			"time":  time.Since(ns),
+		}).Info("root challenge")
 		return err
 	case err := <-sn.closed:
 		return err

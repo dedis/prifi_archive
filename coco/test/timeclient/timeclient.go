@@ -103,6 +103,8 @@ func main() {
 	// rounds based messaging
 	r := 0
 	s := 0
+
+	log.Println("timeclient using rounds")
 	for {
 		//start := time.Now()
 		var wg sync.WaitGroup
