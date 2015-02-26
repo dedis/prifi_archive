@@ -2,6 +2,7 @@ package insure
 
 import (
 	"testing"
+	"encoding/hex"
 
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/random"
@@ -101,6 +102,8 @@ func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
 		t.Error("Unmarshalling failed!", err2)
 		t.FailNow()
 	}
+	
+
 	if  !keyPair.Public.Equal(msg.PubKey) || !share.Equal(msg.Share) ||
 	    !pubCommit.Equal(msg.PubCommit) ||
 	    !msg.Share.Equal(newMsg.Share) || !keyPair.Public.Equal(newMsg.PubKey) ||
@@ -108,7 +111,34 @@ func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
 	    msg.ShareNumber.V.Int64() != newMsg.ShareNumber.V.Int64() ||
 	    !msg.PubCommit.Check(int(msg.ShareNumber.V.Int64()), msg.Share) ||
 	    !newMsg.PubCommit.Check(int(newMsg.ShareNumber.V.Int64()), newMsg.Share) {
+		
+	
+	    	secbytesz, _ := msg.Share.MarshalBinary()
+	    	secbytesz2, _ := newMsg.Share.MarshalBinary()
 	    
+	    	orgSecButesz, _ := share.MarshalBinary()
+	
+		if hex.Dump(secbytesz) != hex.Dump(secbytesz2) {
+	    		t.Error("The private share was not preserved.")
+	    	}
+	    	
+		if hex.Dump(secbytesz) != hex.Dump(orgSecButesz) {
+	    		t.Error("The private share is not the share I put in.")
+	    	}
+
+
+	    	bytesz, _ := msg.PubCommit.MarshalBinary()
+	    	bytesz2, _ := newMsg.PubCommit.MarshalBinary()
+	    	orgBytesz, _ := pubCommit.MarshalBinary()
+	
+		if hex.Dump(bytesz) != hex.Dump(bytesz2) {
+	    		t.Error("The private pubcommit was not preserved.")
+	    	}
+	    	
+		if hex.Dump(bytesz) != hex.Dump(orgBytesz) {
+	    		t.Error("The private pubcommit is not the share I put in.")
+	    	}
+	    	    
 	    
 	    	if !msg.PubCommit.Check(int(newMsg.ShareNumber.V.Int64()), newMsg.Share) {
 	    		t.Error("Share and number of new message corrupted")
@@ -118,9 +148,20 @@ func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
 	    		t.Error("New pub poly failed to verify old share")
 	    	}
 
+
+	    	if !newMsg.PubCommit.Check(int(newMsg.ShareNumber.V.Int64()), newMsg.Share) {
+	    		t.Error("New message failed to verify new stuff")
+	    	}
+
 	    	if !msg.PubCommit.Equal(newMsg.PubCommit) {
 	    		t.Error("Polynomials are not equal.")
 	    	}
+	    	
+	    	if !msg.Share.Equal(newMsg.Share) {
+	    		t.Error("Shares are not equal.")
+	    	}
+	    	
+	  //  	t.Fatal("Done")
 	    
 	    
 	    	t.Error("Share Number Original", int(msg.ShareNumber.V.Int64()))
