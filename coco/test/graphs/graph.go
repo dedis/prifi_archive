@@ -237,8 +237,10 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 	nodesTouched = append(nodesTouched, startM)
 
 	hostsCreated := make([]string, 0)
+	depth := make([]string, 0)
 	rootHost := mp[startM][0]
 	hostsCreated = append(hostsCreated, rootHost)
+	depth = append(depth, 0)
 	mp[startM] = mp[startM][1:]
 
 	hostTNodes := make([]*Tree, 0)
@@ -247,6 +249,7 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 
 	for i := 0; i < len(hostsCreated); i++ {
 		curHost := hostsCreated[i]
+		curDepth := depth[i]
 		curTNode := hostTNodes[i]
 		curNode, _, _ := net.SplitHostPort(curHost)
 
@@ -256,6 +259,7 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 			var newHost string
 			nodesTouched, mp, newHost = GetFirstFreeNode(nodesTouched, mp, curNode)
 			if newHost == "" {
+				rootTNode, hostsCreated = TrimLastIncompleteLevel(rootTNode, hostsCreated, depth, bf)
 				return rootTNode, hostsCreated, nil
 				// break
 			}
@@ -266,6 +270,7 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 
 			// keep track of created hosts and nodes
 			hostsCreated = append(hostsCreated, newHost)
+			depth = append(hostsCreated, curDepth+1)
 			hostTNodes = append(hostTNodes, newHostTNode)
 
 			// keep track of machines used in FIFO order
@@ -275,6 +280,7 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 		// fmt.Println(i, hostsCreated)
 	}
 
+	rootTNode, hostsCreated = TrimLastIncompleteLevel(rootTNode, hostsCreated, depth, bf)
 	return rootTNode, hostsCreated, nil
 }
 
@@ -334,4 +340,59 @@ func GetFirstFreeNode(nodes []string, mp map[string][]string, curNode string) (
 	}
 
 	return uNodes, mp, chosen
+}
+
+func TrimLastIncompleteLevel(root *Tree, hosts []string, depths []string, bf int) (*Tree, []string) {
+	log.Erroln("Trimming")
+	treed = Depth(root)
+
+	var sj, j int
+	n := len(hosts)
+
+	expectedNNodes := 1
+	// if there is any incomplete tree level it should be treed
+	// if it's not treed, then the tree should be fully filled for its depth
+	// we check that this is the case and if treed is incomplete
+	// we remove the nodes and hosts from the treed level
+	lastLevel := 0
+	for d := 0; d < treed; d++ {
+		nNodes := 0
+		sj = j
+		for ; j < n; j++ {
+			if depths[j] == d {
+				nNodes++
+			}
+		}
+
+		if nNodes != expectedNNodes {
+			lastLevel = d
+			break
+		}
+		expectedNNodes *= bf
+	}
+
+	if lastLevel != treed {
+		panic("Incomplete level is not last tree level")
+	}
+
+	badHosts := hosts[sj:]
+	newRoot := &Tree{Name: root.Name}
+	TrimTree(newRoot, root, badHosts)
+
+	log.Errorln("Trimmed", n-sj, "nodes")
+	return newRoot, hosts[:sj]
+
+}
+
+func TrimTree(newRoot *Tree, oldRoot *Tree, badHosts []string) {
+	for _, c := range oldRoot.Children {
+		for bh := range badHosts {
+			if c.Name != bh {
+				newNode := &Tree{Name: c.Name}
+				newRoot.Children = append(newRoot.Children, newNode)
+
+				TrimTree(newNode, c, badHosts)
+			}
+		}
+	}
 }
