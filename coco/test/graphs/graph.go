@@ -187,12 +187,12 @@ var ErrNoHosts = errors.New("Can't have 0 hosts per node")
 func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...string) (
 	*Tree, []string, int, error) {
 	if len(nodeNames) < 1 {
-		return nil, nil, ErrNoNodesGiven
+		return nil, nil, 0, ErrNoNodesGiven
 	}
 
 	if hostsPerNode <= 0 {
 		// TODO: maybe something else is desired here
-		return nil, nil, ErrNoHosts
+		return nil, nil, 0, ErrNoHosts
 	}
 
 	// Hosts on one machine get ports starting with StartPort
@@ -222,7 +222,7 @@ func TreeFromList(nodeNames []string, hostsPerNode int, bf int, startMachine ...
 	}
 
 	root, usedHostAddr, err := ColorTree(nodeNames, hostAddr, hostsPerNode, bf, startM, mp)
-	return root, usedHostAddr, depth(root), err
+	return root, usedHostAddr, Depth(root), err
 }
 
 func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, startM string, mp map[string][]string) (
@@ -236,12 +236,13 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 	nodesTouched := make([]string, 0)
 	nodesTouched = append(nodesTouched, startM)
 
-	hostsCreated := make([]string, 0)
-	depth := make([]string, 0)
 	rootHost := mp[startM][0]
-	hostsCreated = append(hostsCreated, rootHost)
-	depth = append(depth, 0)
 	mp[startM] = mp[startM][1:]
+
+	hostsCreated := make([]string, 0)
+	hostsCreated = append(hostsCreated, rootHost)
+	depth := make([]int, 0)
+	depth = append(depth, 1)
 
 	hostTNodes := make([]*Tree, 0)
 	rootTNode := &Tree{Name: rootHost}
@@ -270,7 +271,7 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 
 			// keep track of created hosts and nodes
 			hostsCreated = append(hostsCreated, newHost)
-			depth = append(hostsCreated, curDepth+1)
+			depth = append(depth, curDepth+1)
 			hostTNodes = append(hostTNodes, newHostTNode)
 
 			// keep track of machines used in FIFO order
@@ -342,9 +343,8 @@ func GetFirstFreeNode(nodes []string, mp map[string][]string, curNode string) (
 	return uNodes, mp, chosen
 }
 
-func TrimLastIncompleteLevel(root *Tree, hosts []string, depths []string, bf int) (*Tree, []string) {
-	log.Erroln("Trimming")
-	treed = Depth(root)
+func TrimLastIncompleteLevel(root *Tree, hosts []string, depths []int, bf int) (*Tree, []string) {
+	treed := Depth(root)
 
 	var sj, j int
 	n := len(hosts)
@@ -354,14 +354,12 @@ func TrimLastIncompleteLevel(root *Tree, hosts []string, depths []string, bf int
 	// if it's not treed, then the tree should be fully filled for its depth
 	// we check that this is the case and if treed is incomplete
 	// we remove the nodes and hosts from the treed level
-	lastLevel := 0
-	for d := 0; d < treed; d++ {
+	lastLevel := treed
+	for d := 1; d <= treed; d++ {
 		nNodes := 0
 		sj = j
-		for ; j < n; j++ {
-			if depths[j] == d {
-				nNodes++
-			}
+		for ; j < n && depths[j] == d; j++ {
+			nNodes++
 		}
 
 		if nNodes != expectedNNodes {
@@ -372,27 +370,41 @@ func TrimLastIncompleteLevel(root *Tree, hosts []string, depths []string, bf int
 	}
 
 	if lastLevel != treed {
-		panic("Incomplete level is not last tree level")
+		panic("Incomplete level is not last tree level" + strconv.Itoa(lastLevel) + " " + strconv.Itoa(treed))
 	}
 
+	bhMap := make(map[string]bool)
 	badHosts := hosts[sj:]
+	for _, bh := range badHosts {
+		bhMap[bh] = true
+	}
 	newRoot := &Tree{Name: root.Name}
-	TrimTree(newRoot, root, badHosts)
+	TrimTree(newRoot, root, bhMap)
 
-	log.Errorln("Trimmed", n-sj, "nodes")
+	d := Depth(newRoot)
+	if len(badHosts) != 0 && d != treed-1 {
+		fmt.Println(d, "!=", treed-1)
+		panic("TrimTree return wrong result")
+	} else {
+		if len(badHosts) == 0 && d != treed {
+			fmt.Println(d, "!=", treed)
+			panic("TrimTree return wrong result")
+		}
+	}
+
+	// log.Println("			Trimmed", n-sj, "nodes")
 	return newRoot, hosts[:sj]
 
 }
 
-func TrimTree(newRoot *Tree, oldRoot *Tree, badHosts []string) {
+func TrimTree(newRoot *Tree, oldRoot *Tree, bhMap map[string]bool) {
 	for _, c := range oldRoot.Children {
-		for bh := range badHosts {
-			if c.Name != bh {
-				newNode := &Tree{Name: c.Name}
-				newRoot.Children = append(newRoot.Children, newNode)
+		if _, bad := bhMap[c.Name]; !bad {
+			newNode := &Tree{Name: c.Name}
+			newRoot.Children = append(newRoot.Children, newNode)
 
-				TrimTree(newNode, c, badHosts)
-			}
+			TrimTree(newNode, c, bhMap)
 		}
 	}
+
 }
