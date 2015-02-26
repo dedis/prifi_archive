@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"sync"
 	"time"
 
@@ -57,8 +58,9 @@ type Node struct {
 	LogTest   []byte                       // for testing purposes
 	peerKeys  map[string]abstract.Point    // map of all peer public keys
 
-	closed chan error // error sent when connection closed
-	done   chan error // nil sent when round done
+	closed      chan error // error sent when connection closed
+	done        chan int   // round number sent when round done
+	commitsDone chan int   // round number sent when announce/commit phase done
 }
 
 func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -69,31 +71,82 @@ func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
 	sn.DoneFunc = df
 }
 
-func (sn *Node) StartSigningRound() error {
-	// send an announcement message to all other TSServers
-	sn.nRounds++
-	log.Infoln("root starting signing round for round: ", sn.nRounds)
-	start := time.Now()
-	sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
-	ns := time.Now()
+func (sn *Node) logFirstPhase(firstRoundTime time.Duration) {
 	log.WithFields(log.Fields{
 		"file":  logutils.File(),
 		"type":  "root_announce",
 		"round": sn.nRounds,
-		"time":  time.Since(start),
+		"time":  firstRoundTime,
 	}).Info("root announce")
+}
+
+func (sn *Node) logSecondPhase(secondRoundTime time.Duration) {
+	log.WithFields(log.Fields{
+		"file":  logutils.File(),
+		"type":  "root_challenge",
+		"round": sn.nRounds,
+		"time":  secondRoundTime,
+	}).Info("root challenge")
+}
+
+func (sn *Node) logTotalTime(totalTime time.Duration) {
+	log.WithFields(log.Fields{
+		"file":  logutils.File(),
+		"type":  "root_challenge",
+		"round": sn.nRounds,
+		"time":  totalTime,
+	}).Info("root challenge")
+}
+
+func (sn *Node) StartSigningRound() error {
+	// send an announcement message to all other TSServers
+	sn.nRounds++
+	log.Infoln("root starting signing round for round: ", sn.nRounds)
+
+	first := time.Now()
+	total := time.Now()
+	var firstRoundTime time.Duration
+	var totalTime time.Duration
+	go func() {
+		sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+	}()
+
+	// 1st Phase succeeded or connection error
 	select {
-	case err := <-sn.done:
-		log.WithFields(log.Fields{
-			"file":  logutils.File(),
-			"type":  "root_challenge",
-			"round": sn.nRounds,
-			"time":  time.Since(ns),
-		}).Info("root challenge")
-		return err
+	case rn := <-sn.commitsDone:
+		// check for correctness
+		if rn != sn.nRounds {
+			log.Fatal("1st Phase round number mix up")
+			return errors.New("1st Phase round number mix up")
+		}
+
+		// log time it took for first round to complete
+		firstRoundTime = time.Since(first)
+		sn.logFirstPhase(firstRoundTime)
+		break
+
 	case err := <-sn.closed:
 		return err
 	}
+
+	// 2nd Phase succeeded or connection error
+	select {
+	case rn := <-sn.done:
+		// check for correctness
+		if rn != sn.nRounds {
+			log.Fatal("2nd Phase round number mix up")
+			return errors.New("2nd Phase round number mix up")
+		}
+
+		// log time it took for second round to complete
+		totalTime = time.Since(total)
+		sn.logSecondPhase(totalTime - firstRoundTime)
+		sn.logTotalTime(totalTime)
+		return nil
+	case err := <-sn.closed:
+		return err
+	}
+
 }
 
 func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {
@@ -107,7 +160,8 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closed = make(chan error, 2)
-	sn.done = make(chan error, 10)
+	sn.done = make(chan int, 10)
+	sn.commitsDone = make(chan int, 10)
 
 	sn.TestingFailures = false
 	return sn
@@ -124,7 +178,8 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closed = make(chan error, 2)
-	sn.done = make(chan error, 10)
+	sn.done = make(chan int, 10)
+	sn.commitsDone = make(chan int, 10)
 
 	sn.TestingFailures = false
 	return sn
@@ -139,7 +194,7 @@ func (sn *Node) Suite() abstract.Suite {
 	return sn.suite
 }
 
-func (sn *Node) Done() chan error {
+func (sn *Node) Done() chan int {
 	return sn.done
 }
 
