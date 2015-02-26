@@ -351,7 +351,6 @@ func (sn *Node) initResponseCrypto(Round int) {
 }
 
 func (sn *Node) Respond(Round int) error {
-	var err error
 	round := sn.Rounds[Round]
 	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	sn.initResponseCrypto(Round)
@@ -367,7 +366,6 @@ func (sn *Node) Respond(Round int) error {
 	nullPoint := sn.suite.Point().Null()
 	allmessgs := sn.FillInWithDefaultMessages(messgs)
 
-	var someExceptions bool
 	children := sn.Children()
 	for _, sm := range allmessgs {
 		from := sm.From
@@ -378,7 +376,6 @@ func (sn *Node) Respond(Round int) error {
 			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
 
 			// remove public keys and point commits from subtree of faild child
-			someExceptions = true
 			sn.add(exceptionX_hat, round.ChildX_hat[from])
 			sn.add(exceptionV_hat, round.ChildV_hat[from])
 			continue
@@ -392,7 +389,6 @@ func (sn *Node) Respond(Round int) error {
 			// log.Println(sn.Name(), "accepts response from", from, sm.Type)
 			round.r_hat.Add(round.r_hat, sm.Rm.R_hat)
 
-			someExceptions = true
 			sn.add(exceptionV_hat, sm.Rm.ExceptionV_hat)
 			sn.add(exceptionX_hat, sm.Rm.ExceptionX_hat)
 			round.ExceptionList = append(round.ExceptionList, sm.Rm.ExceptionList...)
@@ -401,22 +397,22 @@ func (sn *Node) Respond(Round int) error {
 		case Error:
 			log.Println(sn.Name(), "Error in respose for child", from, sm)
 			if sm.Err == nil {
-				// log.Println("Error but no error set in respond for child", from, err)
-				// ignore if no error is actually set
 				continue
 			}
 			return errors.New(sm.Err.Err)
 		}
 	}
 
-	// remove all Vs of nodes from subtree that failed
-	// fmt.Println(sn.Name(), exceptionX_hat, exceptionV_hat)
-	if someExceptions {
-		sn.sub(round.Log.V_hat, exceptionV_hat)
-		sn.sub(round.X_hat, exceptionX_hat)
-	}
-	err = sn.VerifyResponses(Round)
+	// remove exceptions from subtree that failed
+	sn.sub(round.Log.V_hat, exceptionV_hat)
+	sn.sub(round.X_hat, exceptionX_hat)
 
+	return sn.actOnResponses(Round, exceptionV_hat, exceptionX_hat)
+}
+
+func (sn *Node) actOnResponses(Round int, exceptionV_hat abstract.Point, exceptionX_hat abstract.Point) error {
+	round := sn.Rounds[Round]
+	err := sn.VerifyResponses(Round)
 	// root reports round is done
 	if sn.IsRoot() {
 		sn.done <- err
@@ -437,13 +433,6 @@ func (sn *Node) Respond(Round int) error {
 				Err:  &ErrorMessage{Err: err.Error()}})
 		}
 
-		if exceptionV_hat.Equal(sn.suite.Point().Null()) {
-			exceptionV_hat = nil
-		}
-		if exceptionX_hat.Equal(sn.suite.Point().Null()) {
-			exceptionX_hat = nil
-		}
-
 		rm := &ResponseMessage{
 			R_hat:          round.r_hat,
 			ExceptionList:  round.ExceptionList,
@@ -455,7 +444,7 @@ func (sn *Node) Respond(Round int) error {
 			Type: Response,
 			Rm:   rm})
 	}
-	return err
+	return nil
 }
 
 // Called *only* by root node after receiving all commits
