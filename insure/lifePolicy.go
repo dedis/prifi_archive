@@ -9,7 +9,7 @@ import (
 	"github.com/dedis/crypto/poly"
 	"github.com/dedis/crypto/random"
 
-	"github.com/dedis/prifi/coco/connMan"
+	"github.com/dedis/prifi/connMan"
 )
 
 type PolicyStatus int
