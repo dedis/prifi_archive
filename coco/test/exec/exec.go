@@ -25,7 +25,6 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/test/logutils"
 	"github.com/dedis/prifi/coco/test/oldconfig"
@@ -52,7 +51,7 @@ func init() {
 
 func main() {
 	flag.Parse()
-	coco.DEBUG = true
+	//coco.DEBUG = true
 	defer func() {
 		log.Errorln("TERMINATING HOST")
 	}()
@@ -148,7 +147,7 @@ func main() {
 
 		} else {
 			// otherwise wait a little bit (hopefully it finishes by the end of this)
-			time.Sleep(480 * time.Second)
+			time.Sleep(30 * time.Second)
 		}
 	} else if app == "time" {
 		log.Println("RUNNING TIMESTAMPER")
@@ -164,7 +163,7 @@ func main() {
 				if s.IsRoot() {
 					log.Println("RUNNING ROOT SERVER AT:", hostname)
 					// wait for the other nodes to get set up
-					time.Sleep(30 * time.Second)
+					time.Sleep(90 * time.Second)
 					s.Run("root", nrounds)
 					fmt.Println("\n\nROOT DONE\n\n")
 

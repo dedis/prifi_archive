@@ -36,7 +36,6 @@ func init() {
 	flag.StringVar(&name, "name", addr, "name for the client")
 	flag.StringVar(&logger, "logger", "", "remote logger")
 	flag.IntVar(&rate, "rate", -1, "milliseconds between timestamp requests")
-
 	//log.SetFormatter(&log.JSONFormatter{})
 }
 
@@ -86,55 +85,42 @@ func main() {
 	// rate milliseconds
 	if rate != -1 {
 		ticker := time.Tick(time.Duration(rate) * time.Millisecond)
+		i := 0
 		for _ = range ticker {
 			// every tick send a time stamp request to every server specified
-			var err error
-			var m sync.Mutex
 			msg := genRandomMessages(1)[0]
-			for _, s := range servers {
-				go func() {
-					e := c.TimeStamp(msg, s)
-					if e != nil {
-						m.Lock()
-						err = e
-						m.Unlock()
-						/*log.WithFields(log.Fields{
-							"clientname": name,
-							"server":     server,
-						}).Errorln("error timesamping:", e)*/
-					}
-
-				}()
-			}
+			s := servers[i]
+			err := c.TimeStamp(msg, s)
 			if err == io.EOF {
-				log.Errorln("EOF: terminating time client")
+				log.Errorln("EOF: termininating time client")
 				return
 			}
+			i += 1
 		}
 		return
 	}
 
 	// rounds based messaging
 	r := 0
+	s := 0
 	for {
-		start := time.Now()
+		//start := time.Now()
 		var wg sync.WaitGroup
 		var m sync.Mutex
 		var err error
 		for i := 0; i < nmsgs; i++ {
 			wg.Add(1)
-			go func(i int) {
+			go func(i, s int) {
 				defer wg.Done()
-				//log.Println("timestamping")
-				e := c.TimeStamp(msgs[i], server)
-				//log.Println("timestamped")
+				e := c.TimeStamp(msgs[i], servers[s])
 				if e != nil {
 					m.Lock()
 					err = e
 					m.Unlock()
 					return
 				}
-			}(i)
+			}(i, s)
+			s = (s + 1) % len(servers)
 		}
 		wg.Wait()
 		if err == io.EOF {
@@ -142,18 +128,18 @@ func main() {
 			return
 		}
 		if err != nil {
-			log.Errorln("client error detected returning:", err)
-			time.Sleep(3 * time.Second)
+			//log.Errorln("client error detected returning:", err)
+			time.Sleep(1 * time.Second)
 			continue
 		}
-		elapsed := time.Since(start)
+		//elapsed := time.Since(start)
 		// log.Println("client done with round: ", time.Since(start).Nanoseconds())
-		log.WithFields(log.Fields{
-			"file":  logutils.File(),
-			"type":  "client_round",
-			"round": r,
-			"time":  elapsed,
-		}).Info("client round")
+		//log.WithFields(log.Fields{
+		//"file":  logutils.File(),
+		//"type":  "client_round",
+		//"round": r,
+		//"time":  elapsed,
+		//}).Info("client round")
 		r++
 	}
 }

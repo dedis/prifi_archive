@@ -70,7 +70,7 @@ func logEntryHandler(ws *websocket.Conn) {
 		Log.Mlock.Unlock()
 		err = websocket.Message.Receive(ws, &data)
 	}
-	log.Println("log server client error")
+	log.Println("log server client error:", err)
 }
 
 func logHandler(ws *websocket.Conn) {
