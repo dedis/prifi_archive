@@ -21,4 +21,7 @@ package insure
  * server and carry out the work itself.
  *
  * This prelimary documentation will be updated as progress is made.
+ *
+ * DISCLAIMER: Life Policy is a work in progress. It's interface will change.
+ * Please contact WEB3-GForce before using this code.
  */
