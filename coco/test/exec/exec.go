@@ -15,6 +15,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -37,6 +38,7 @@ var app string
 var nrounds int
 var pprofaddr string
 var physaddr string
+var rootwait int
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -47,6 +49,7 @@ func init() {
 	flag.IntVar(&nrounds, "nrounds", 100, "number of rounds to run")
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")
+	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
 }
 
 func main() {
@@ -63,9 +66,10 @@ func main() {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"file": logutils.File(),
-			}).Errorln(err)
+			}).Errorln("ERROR SETTING UP LOGGING SERVER:", err)
 		}
 		log.AddHook(lh)
+		log.SetOutput(ioutil.Discard)
 		log.Println("Log Test")
 		fmt.Println("exiting logger block")
 	}
@@ -91,7 +95,7 @@ func main() {
 	}()
 	//log.SetPrefix(hostname + ":")
 	//log.SetFlags(log.Lshortfile)
-	fmt.Println("Execing: @"+hostname, " logger: ", logger)
+	fmt.Println("EXEC TIMESTAMPER: "+hostname, " logger: ", logger)
 	if hostname == "" {
 		fmt.Println("hostname is empty")
 		log.Fatal("no hostname given")
@@ -162,8 +166,10 @@ func main() {
 			if s.Name() == hostname {
 				if s.IsRoot() {
 					log.Println("RUNNING ROOT SERVER AT:", hostname)
+					log.Printf("Waiting: %d s\n", rootwait)
 					// wait for the other nodes to get set up
-					time.Sleep(90 * time.Second)
+					time.Sleep(time.Duration(rootwait) * time.Second)
+					log.Println("STARTING ROOT ROUND")
 					s.Run("root", nrounds)
 					fmt.Println("\n\nROOT DONE\n\n")
 

@@ -14,6 +14,7 @@ import (
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/test/logutils"
 )
 
 var ROUND_TIME time.Duration = 1 * time.Second
@@ -70,11 +71,42 @@ func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
 	sn.DoneFunc = df
 }
 
+func (sn *Node) logFirstPhase(firstRoundTime time.Duration) {
+	log.WithFields(log.Fields{
+		"file":  logutils.File(),
+		"type":  "root_announce",
+		"round": sn.nRounds,
+		"time":  firstRoundTime,
+	}).Info("root announce")
+}
+
+func (sn *Node) logSecondPhase(secondRoundTime time.Duration) {
+	log.WithFields(log.Fields{
+		"file":  logutils.File(),
+		"type":  "root_challenge",
+		"round": sn.nRounds,
+		"time":  secondRoundTime,
+	}).Info("root challenge")
+}
+
+func (sn *Node) logTotalTime(totalTime time.Duration) {
+	log.WithFields(log.Fields{
+		"file":  logutils.File(),
+		"type":  "root_challenge",
+		"round": sn.nRounds,
+		"time":  totalTime,
+	}).Info("root challenge")
+}
+
 func (sn *Node) StartSigningRound() error {
 	// send an announcement message to all other TSServers
 	sn.nRounds++
 	log.Infoln("root starting signing round for round: ", sn.nRounds)
 
+	first := time.Now()
+	total := time.Now()
+	var firstRoundTime time.Duration
+	var totalTime time.Duration
 	go func() {
 		sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
 	}()
@@ -82,11 +114,17 @@ func (sn *Node) StartSigningRound() error {
 	// 1st Phase succeeded or connection error
 	select {
 	case rn := <-sn.commitsDone:
+		// check for correctness
 		if rn != sn.nRounds {
 			log.Fatal("1st Phase round number mix up")
 			return errors.New("1st Phase round number mix up")
 		}
+
+		// log time it took for first round to complete
+		firstRoundTime = time.Since(first)
+		sn.logFirstPhase(firstRoundTime)
 		break
+
 	case err := <-sn.closed:
 		return err
 	}
@@ -94,14 +132,21 @@ func (sn *Node) StartSigningRound() error {
 	// 2nd Phase succeeded or connection error
 	select {
 	case rn := <-sn.done:
+		// check for correctness
 		if rn != sn.nRounds {
 			log.Fatal("2nd Phase round number mix up")
 			return errors.New("2nd Phase round number mix up")
 		}
+
+		// log time it took for second round to complete
+		totalTime = time.Since(total)
+		sn.logSecondPhase(totalTime - firstRoundTime)
+		sn.logTotalTime(totalTime)
 		return nil
 	case err := <-sn.closed:
 		return err
 	}
+
 }
 
 func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {
