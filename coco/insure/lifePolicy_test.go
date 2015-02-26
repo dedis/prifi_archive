@@ -13,37 +13,20 @@ import (
 
 var goDir = coconet.NewGoDirectory()
 
+// Variables for the server to take out the policy.
 var keyPairT  = produceKeyPairT()
-var keyPair2T = produceKeyPairT()
-var keyPair3T = produceKeyPairT()
-var keyPair4T = produceKeyPairT()
-var keyPair5T = produceKeyPairT()
-var keyPair6T = produceKeyPairT()
-var keyPair7T = produceKeyPairT()
-var keyPair8T = produceKeyPairT()
-var keyPair9T = produceKeyPairT()
-var keyPair10T = produceKeyPairT()
-var keyPair11T = produceKeyPairT()
+var goConn    = produceGoConn(keyPairT)
 
-var insurerList = []abstract.Point{keyPair2T.Public, keyPair3T.Public, keyPair4T.Public,
-                   	keyPair5T.Public, keyPair6T.Public, keyPair7T.Public, 
-		   	keyPair8T.Public, keyPair9T.Public, keyPair10T.Public,
-		   	keyPair11T.Public}
+// Alter this to easily scale the number of servers to test with. This
+// represents the number of other servers waiting to approve policies.
+var numServers int = 10
 
-var goConn  = produceGoConn(keyPairT)
-var goConn2  = produceGoConn(keyPair2T)
-var goConn3  = produceGoConn(keyPair3T)
-var goConn4  = produceGoConn(keyPair4T)
-var goConn5  = produceGoConn(keyPair5T)
-var goConn6  = produceGoConn(keyPair6T)
-var goConn7  = produceGoConn(keyPair7T)
-var goConn8  = produceGoConn(keyPair8T)
-var goConn9  = produceGoConn(keyPair9T)
-var goConn10  = produceGoConn(keyPair10T)
-var goConn11  = produceGoConn(keyPair11T)
-var setupOkay = setupConn()
+// Variables for the servers to accept the policy
+var serverKeys         = produceServerKeys()
+var insurerList         = produceInsuredList()
+var connectionManagers  = produceGoConnArray()
+var setupOkay           = setupConn()
 
-// Used to initialize the key pairs.
 func produceKeyPairT() *config.KeyPair {
 	keyPair := new(config.KeyPair)
 	keyPair.Gen(KEY_SUITE, random.Stream)
@@ -54,37 +37,50 @@ func produceGoConn(k *config.KeyPair) *connMan.GoConnManager {
 	return new(connMan.GoConnManager).Init(k.Public, goDir)
 }
 
+func produceServerKeys() []*config.KeyPair {
+	newArray := make([]*config.KeyPair, numServers, numServers)
+	for i := 0; i < numServers; i++ {
+		newArray[i] = produceKeyPairT()
+	}
+	return newArray
+}
+
+func produceInsuredList() []abstract.Point {
+	newArray := make([]abstract.Point, numServers, numServers)
+	for i := 0; i < numServers; i++ {
+		newArray[i] = serverKeys[i].Public
+	}
+	return newArray
+}
+
+func produceGoConnArray() []*connMan.GoConnManager {
+	newArray := make([]*connMan.GoConnManager, numServers, numServers)
+	for i := 0; i < numServers; i++ {
+		newArray[i] = produceGoConn(serverKeys[i])
+	}
+	return newArray
+}
+
+
 func setupConn() bool {
-	// Give #1 connections to everyone else.
-	goConn.AddConn(keyPair2T.Public)
-	goConn.AddConn(keyPair3T.Public)
-	goConn.AddConn(keyPair4T.Public)
-	goConn.AddConn(keyPair5T.Public)
-	goConn.AddConn(keyPair6T.Public)
-	goConn.AddConn(keyPair7T.Public)
-	goConn.AddConn(keyPair8T.Public)
-	goConn.AddConn(keyPair9T.Public)
-	goConn.AddConn(keyPair10T.Public)
-	goConn.AddConn(keyPair11T.Public)
+	// Give server #1 connections to everyone else.
+	for i := 0; i < numServers; i++ {
+		goConn.AddConn(insurerList[i])
+	}
 	
-	// Give everyone else connections to #1
-	goConn2.AddConn(keyPairT.Public)
-	goConn3.AddConn(keyPairT.Public)
-	goConn4.AddConn(keyPairT.Public)
-	goConn5.AddConn(keyPairT.Public)
-	goConn6.AddConn(keyPairT.Public)
-	goConn7.AddConn(keyPairT.Public)
-	goConn8.AddConn(keyPairT.Public)
-	goConn9.AddConn(keyPairT.Public)
-	goConn10.AddConn(keyPairT.Public)
-	goConn11.AddConn(keyPairT.Public)
+	// Give everyone else connections to server #1	
+	for i := 0; i < numServers; i++ {
+		connectionManagers[i].AddConn(keyPairT.Public)
+	}
 	
 	return true
 }
 
+// This function is the code ran by the insurers. The server listens for a
+// RequestInsuranceMessage, sends a response, and then exits.
 func insurers(t *testing.T, k * config.KeyPair, cm connMan.ConnManager) {
 
-	policy := new(LifePolicy).Init(k, cm) 
+	policy := new(LifePolicy).Init(k, cm)
 
 	for true {
 		msg := new(PolicyMessage)
@@ -92,13 +88,14 @@ func insurers(t *testing.T, k * config.KeyPair, cm connMan.ConnManager) {
 		
 		msgType, ok := policy.handlePolicyMessage(msg)
 			
-		// If a RequestInsuranceMessage, send an acceptance message and then
-		// exit.
-		if msgType == RequestInsurance && ok {
-		
-			if storedMsg, ok := policy.insuredClients[keyPairT.Public.String()]; !ok ||
-				!storedMsg.Equal(msg.getRIM()){			
-				t.Error("Request message failed to be properly stored.")
+		// If a RequestInsuranceMessage, send an acceptance message and
+		// then exit.
+		if msgType == RequestInsurance && ok == nil {
+			keyValue := msg.getRIM().PubKey.String() +
+				msg.getRIM().Share.String()
+			if storedMsg, ok := policy.insuredClients[keyValue];
+				!ok || !storedMsg.Equal(msg.getRIM()) {	
+				t.Error("Request message not stored.")
 			}
 			return
 		}
@@ -110,65 +107,64 @@ func TestTakeOutPolicy(t *testing.T) {
 	// ERROR CHECKING
 	
 	// Invalid n
-	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(insurerList, nil, 0)
+	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
+		insurerList, nil, INSURE_GROUP, TSHARES, 0)
 			
 	if ok1 {
 		t.Fatal("Policy should fail if n < TSHARES.")
 	}
 	
 	// Too small insurersList
-	
-	_, ok2 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy([]abstract.Point{keyPair2T.Public}, nil, 0)
+	_, ok2 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
+		[]abstract.Point{produceKeyPairT().Public}, nil, INSURE_GROUP,
+		TSHARES, 1)
 			
 	if ok2 {
 		t.Fatal("Policy should fail not enough servers are given.")
 	}
 	
 	// The function selection is bad
+	badFunc := func(sl []abstract.Point, n int)([]abstract.Point) {
+			return []abstract.Point{produceKeyPairT().Public,
+				produceKeyPairT().Public}
+		   }
 	
-	badFunc := func(sl []abstract.Point, n int)([]abstract.Point, bool) {return []abstract.Point{keyPair2T.Public, keyPair3T.Public}, true}
-	
-	_, ok3 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(insurerList, badFunc, 0)
+	_, ok3 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
+		insurerList, badFunc,  INSURE_GROUP, TSHARES, numServers)
 			
 	if ok3 {
 		t.Fatal("Policy should fail not enough servers are given.")
 	}
 	
 	
-	// Start up the other insurers.
-	go insurers(t, keyPair2T, goConn2)
-	go insurers(t, keyPair3T, goConn3)
-	go insurers(t, keyPair4T, goConn4)
-	go insurers(t, keyPair5T, goConn5)
-	go insurers(t, keyPair6T, goConn6)
-	go insurers(t, keyPair7T, goConn7)
-	go insurers(t, keyPair8T, goConn8)
-	go insurers(t, keyPair9T, goConn9)
-	go insurers(t, keyPair10T, goConn10)
-	go insurers(t, keyPair11T, goConn11)
+	// Success Cases
 	
-	n := 10
-
-	policy, ok := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(insurerList, nil, n)
+	// Start up the other insurers.
+	for i := 0; i < numServers; i++ {
+		go insurers(t, serverKeys[i], connectionManagers[i])
+	}
+	
+	policy, ok := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
+		insurerList, nil, INSURE_GROUP, TSHARES, numServers)
 				
 	if !ok {
 		t.Error("Policy failed to be created.")
 	}
 	
-	if keyPairT != policy.getKeyPair() {
+	if keyPairT != policy.GetKeyPair() {
 		t.Error("The key for the policy not properly set.")
 	}
 	
 	resultInsurerList := policy.GetInsurers()
 	
-	if len(resultInsurerList) != n {
+	if len(resultInsurerList) != numServers {
 		t.Error("The insurer list was not properly chosen.")
 	}
 	
-	for i := 0; i < n; i++ {
+	for i := 0; i < numServers; i++ {
 	
 		seen := false
-		for j :=0; j < n; j++ {
+		for j :=0; j < numServers; j++ {
 			if insurerList[i].Equal(resultInsurerList[j]) {
 				seen = true
 				break
@@ -182,7 +178,7 @@ func TestTakeOutPolicy(t *testing.T) {
 	}
 	
 	resultProofList := policy.GetPolicyProof()	
-	if resultProofList.Len() != n {
+	if resultProofList.Len() != numServers {
 		t.Error("Insufficient number of proofs.")
 	}
 	
@@ -191,7 +187,7 @@ func TestTakeOutPolicy(t *testing.T) {
 	for nextElt := resultProofList.Front(); nextElt != nil; nextElt = nextElt.Next() {
 	
 		newMessage := nextElt.Value.(*PolicyApprovedMessage)
-		for i :=0; i < n; i++ {
+		for i :=0; i <numServers; i++ {
 			if insurerList[i].Equal(newMessage.PubKey) {
 				seenList[i] = true
 				break
@@ -199,9 +195,9 @@ func TestTakeOutPolicy(t *testing.T) {
 		}
 	}
 	
-	for i :=0; i < n; i++ {
+	for i :=0; i < numServers; i++ {
 		if !seenList[i] {
-			t.Error("Proof list failed to include the proof from a server")
+			t.Error("All servers not included in proof list.")
 		}
 	}
 }
