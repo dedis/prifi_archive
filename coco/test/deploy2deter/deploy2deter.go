@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -30,9 +31,12 @@ var bf int
 // hpn is the replication factor of hosts per node: how many hosts do we want per node
 var hpn int
 
+var nmsgs int
+
 func init() {
 	flag.IntVar(&bf, "bf", 2, "branching factor: default binary")
 	flag.IntVar(&hpn, "hpn", 1, "hosts per node: default 1")
+	flag.IntVar(&nmsgs, "nmsgs", 100, "number of messages per round")
 }
 
 func main() {
@@ -57,7 +61,7 @@ func main() {
 		}(p)
 	}
 	// killssh processes on users
-	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh scp deter")
+	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh scp deter 2>/dev/null 1>/dev/null")
 	// parse the hosts.txt file to create a separate list (and file)
 	// of physical nodes and virtual nodes. Such that each host on line i, in phys.txt
 	// corresponds to each host on line i, in virt.txt.
@@ -69,8 +73,8 @@ func main() {
 		virtIn = append(virtIn, physVirt[i+1])
 	}
 	// select 33 of the nodes: 32 for running timestampers, 1 for running the logger
-	log.Println(len(physIn), physIn)
-	log.Println(len(virtIn), virtIn)
+	// log.Println(len(physIn), physIn)
+	// log.Println(len(virtIn), virtIn)
 	physIn = physIn[:18]
 	virtIn = virtIn[:18]
 	physOut := strings.Join(physIn, "\n")
@@ -150,5 +154,5 @@ func main() {
 	// run the deter lab boss nodes process
 	// it will be responsible for forwarding the files and running the individual
 	// timestamping servers
-	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "GOMAXPROCS=8 ./deter"))
+	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "GOMAXPROCS=8 ./deter -nmsgs="+strconv.Itoa(nmsgs)+" -hpn="+strconv.Itoa(hpn)))
 }

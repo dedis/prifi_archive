@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"html/template"
 	"io/ioutil"
 	"math/rand"
@@ -24,15 +23,25 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-var addr string
+var addr, hosts, depth, bf, hpn, nmsgs string
 var homePage *template.Template
 
 type Home struct {
-	LogServer string
+	LogServer        string
+	Hosts            string
+	Depth            string
+	BranchingFactor  string
+	HostsPerNode     string
+	NumberOfMessages string
 }
 
 func init() {
 	flag.StringVar(&addr, "addr", "", "the address of the logging server")
+	flag.StringVar(&hosts, "hosts", "", "number of hosts in config file")
+	flag.StringVar(&depth, "depth", "", "the depth of the tree")
+	flag.StringVar(&bf, "bf", "", "the branching factor of the tree")
+	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
+	flag.StringVar(&nmsgs, "nmsgs", "", "number of messages per round")
 }
 
 var Log Logger
@@ -105,9 +114,10 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("HOME HANDLER: ", r.URL)
 	host := r.Host
-	fmt.Println(host)
+	// fmt.Println(host)
 	ws := "ws://" + host + "/log"
-	err := homePage.Execute(w, Home{ws})
+
+	err := homePage.Execute(w, Home{ws, hosts, depth, bf, hpn, nmsgs})
 	if err != nil {
 		panic(err)
 		log.Fatal(err)
@@ -127,7 +137,7 @@ func NewReverseProxy(target *url.URL) *httputil.ReverseProxy {
 		r.URL.Path = target.Path + "/" + strings.Join(pathComp, "/")
 		log.Println("redirected to: ", r.URL.String())
 	}
-	log.Println("setup reverse proxy for destination url:", target.Host, target.Path)
+	//log.Println("setup reverse proxy for destination url:", target.Host, target.Path)
 	return &httputil.ReverseProxy{Director: director}
 }
 
@@ -156,7 +166,7 @@ func reverseProxy(server string) {
 	//
 	proxy := NewReverseProxy(remote)
 
-	log.Println("setup proxy for: /d/"+short+"/", " it points to : "+server)
+	//log.Println("setup proxy for: /d/"+short+"/", " it points to : "+server)
 	// register the reverse proxy forwarding for this server
 	http.HandleFunc("/d/"+short+"/", proxyDebugHandler(proxy))
 }
