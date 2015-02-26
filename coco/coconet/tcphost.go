@@ -155,7 +155,7 @@ func (h *TCPHost) Listen() error {
 			h.rlock.Lock()
 			h.ready[name] = true
 			h.peers[name] = tp
-			log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
+			// log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
 			h.rlock.Unlock()
 		}
 	}()
@@ -193,7 +193,7 @@ func (h *TCPHost) Connect() error {
 	h.peers[h.parent] = tp
 	h.rlock.Unlock()
 
-	log.Infoln("CONNECTED TO PARENT:", h.parent)
+	// log.Infoln("CONNECTED TO PARENT:", h.parent)
 	return nil
 }
 

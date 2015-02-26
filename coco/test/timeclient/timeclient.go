@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"flag"
-	"fmt"
 	"io"
 	"net"
 	"runtime"
@@ -61,18 +60,18 @@ func main() {
 			log.Fatal(err)
 		}
 		log.AddHook(lh)
-		log.Println("Log Test")
-		fmt.Println("exiting logger block")
+		// log.Println("Log Test")
+		// fmt.Println("exiting logger block")
 	}
 	//log.SetFlags(log.Lshortfile)
 	//log.SetPrefix(name + ":")
-	log.Println("TIMESTAMP CLIENT")
+	// log.Println("TIMESTAMP CLIENT")
 	c := stamp.NewClient(name)
-	log.Println("SERVER: ", server)
+	// log.Println("SERVER: ", server)
 	msgs := genRandomMessages(nmsgs)
 
 	servers := strings.Split(server, ",")
-	log.Println("connecting to servers:", servers)
+	// log.Println("connecting to servers:", servers)
 	for _, s := range servers {
 		h, p, err := net.SplitHostPort(s)
 		if err != nil {
@@ -104,7 +103,7 @@ func main() {
 	r := 0
 	s := 0
 
-	log.Println("timeclient using rounds")
+	// log.Println("timeclient using rounds")
 	for {
 		//start := time.Now()
 		var wg sync.WaitGroup

@@ -501,7 +501,7 @@ func (sn *Node) VerifyResponses(Round int) error {
 
 	if sn.IsRoot() {
 		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
-		log.Println(round.MTRoot)
+		//log.Println(round.MTRoot)
 	}
 	return nil
 }

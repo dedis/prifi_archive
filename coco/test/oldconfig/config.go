@@ -472,7 +472,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 			// connect with the parent
 			err = sn.Connect()
 			if err == nil {
-				log.Infoln("hostconfig: connected to parent:")
+				//log.Infoln("hostconfig: connected to parent:")
 				break
 			}
 
@@ -503,7 +503,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 
 // run each host in hostnameSlice with the number of clients given
 func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*stamp.Server, []*stamp.Client, error) {
-	log.Println("RunTimestamper")
+	//log.Println("RunTimestamper")
 	hostnames := make(map[string]*sign.Node)
 	// make a list of hostnames we want to run
 	if hostnameSlice == nil {
@@ -523,16 +523,16 @@ func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*
 	stampers := make([]*stamp.Server, 0, len(hostnames))
 	for _, sn := range hc.SNodes {
 		if _, ok := hostnames[sn.Name()]; !ok {
-			log.Println("signing node not in hostnmaes")
+			log.Errorln("signing node not in hostnmaes")
 			continue
 		}
 		stampers = append(stampers, stamp.NewServer(sn))
 		if hc.Dir == nil {
-			log.Println("listening for clients")
+			//log.Println("listening for clients")
 			stampers[len(stampers)-1].Listen()
 		}
 	}
-	log.Println("stampers:", stampers)
+	//log.Println("stampers:", stampers)
 	clientsLists := make([][]*stamp.Client, len(hc.SNodes[1:]))
 	for i, s := range stampers[1:] {
 		// cant assume the type of connection
@@ -551,7 +551,7 @@ func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*
 			log.Fatal("port is not valid integer")
 		}
 		hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
-		log.Println("client connecting to:", hp)
+		//log.Println("client connecting to:", hp)
 
 		for j := range clients {
 			clients[j] = stamp.NewClient("client" + strconv.Itoa((i-1)*len(stampers)+j))
@@ -560,10 +560,10 @@ func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*
 			// if we are using tcp connections
 			if hc.Dir == nil {
 				// the timestamp server serves at the old port + 1
-				log.Println("new tcp conn")
+				//log.Println("new tcp conn")
 				c = coconet.NewTCPConn(hp)
 			} else {
-				log.Println("new go conn")
+				//log.Println("new go conn")
 				c, _ = coconet.NewGoConn(hc.Dir, clients[j].Name(), s.Name())
 				stoc, _ := coconet.NewGoConn(hc.Dir, s.Name(), clients[j].Name())
 				s.Clients[clients[j].Name()] = stoc

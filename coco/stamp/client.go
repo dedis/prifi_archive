@@ -99,7 +99,7 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 				c.Mux.Lock()
 				c.Servers[name] = conn
 				c.Mux.Unlock()
-				log.Println("SUCCESS: connected to server:", conn)
+				//log.Println("SUCCESS: connected to server:", conn)
 				if c.handleServer(conn) == io.EOF {
 					c.Servers[name] = nil
 					return

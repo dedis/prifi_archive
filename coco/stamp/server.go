@@ -73,7 +73,7 @@ var clientNumber int = 0
 // this server needs to be running on a different port
 // than the Signer that is beneath it
 func (s *Server) Listen() error {
-	log.Println("Listening @ ", s.name)
+	// log.Println("Listening @ ", s.name)
 	ln, err := net.Listen("tcp4", s.name)
 	if err != nil {
 		log.Println("failed to listen:", err)
@@ -111,7 +111,7 @@ func (s *Server) Listen() error {
 						}
 						switch tsm.Type {
 						default:
-							log.Printf("Message of unknown type: %v\n", tsm.Type)
+							log.Errorf("Message of unknown type: %v\n", tsm.Type)
 						case StampRequestType:
 							// log.Println("RECEIVED STAMP REQUEST")
 							s.mux.Lock()
