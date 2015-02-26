@@ -28,9 +28,9 @@ const (
  * policy protocol, please see doc.go
  *
  * To create a policy:
- * newPolicy, ok := new(LifePolicy).TakeOutPolicy(MyKeyPair,
- *    ListOfPotentialServers, functionForSelectingServers,
- *    MinimumNumberOfSharesToReconstructSecret, NumberOfInsurers)
+ * newPolicy, ok := new(LifePolicy).Init(KeyPairOfServer, ConnectionManager).TakeOutPolicy(
+ *		ListOfInsurrers, OptionalMethodOfChoosingInsurers, GroupForPrivateShares,
+ *		MinimumNumberOfPrivateSharesNeededForReconstruction, TotalNumberOfShares)
  *
  * For safety measures, the function returns nil if the policy fails to be
  * created along with an updated status in ok.
