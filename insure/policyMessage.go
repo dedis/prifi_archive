@@ -135,7 +135,8 @@ type RequestInsuranceMessage struct {
 func (msg *RequestInsuranceMessage) createMessage(p abstract.Point, shareNum int,
 	s abstract.Secret, pc *poly.PubPoly) *RequestInsuranceMessage {
 	msg.PubKey = p
-	msg.ShareNumber = nist.NewInt(int64(shareNum), big.NewInt(int64(math.MaxInt64)))
+	msg.ShareNumber = nist.NewInt(int64(shareNum),
+		big.NewInt(int64(math.MaxInt64)))
 	msg.Share = s
 	msg.PubCommit = pc
 	return msg
