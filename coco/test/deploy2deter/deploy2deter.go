@@ -78,8 +78,10 @@ func main() {
 	// select 33 of the nodes: 32 for running timestampers, 1 for running the logger
 	// log.Println(len(physIn), physIn)
 	// log.Println(len(virtIn), virtIn)
-	physIn = physIn[:18]
-	virtIn = virtIn[:18]
+	// XXX: might have to create two aggregation loggers to speak to main logger
+	// 	if too many files are open
+	physIn = physIn[:36]
+	virtIn = virtIn[:36]
 	physOut := strings.Join(physIn, "\n")
 	virtOut := strings.Join(virtIn, "\n")
 	err = ioutil.WriteFile("phys.txt", []byte(physOut), 0666)
@@ -101,10 +103,11 @@ func main() {
 	if err != nil {
 		log.Fatal("error reading virtual hosts file:", err)
 	}
-
-	logger := phys[len(phys)-1]
-	virt = virt[:len(virt)-1]
-	phys = phys[:len(phys)-1]
+	masterLogger := phys[0]
+	// slaveLogger1 := phys[1]
+	// slaveLogger2 := phys[2]
+	virt = virt[3:]
+	phys = phys[3:]
 	t, temphosts, depth, err := graphs.TreeFromList(virt, hpn, bf)
 	log.Println("DEPTH:", depth)
 	log.Println("TOTAL HOSTS:", len(temphosts))
@@ -142,14 +145,14 @@ func main() {
 	// setup port forwarding for viewing log server
 	// ssh -L 8080:pcXXX:80 username@users.isi.deterlab.net
 	// ssh username@users.deterlab.net -L 8118:somenode.experiment.YourClass.isi.deterlab.net:80
-	fmt.Println("setup port forwarding for logger: ", logger)
+	fmt.Println("setup port forwarding for master logger: ", masterLogger)
 	cmd := exec.Command(
 		"ssh",
 		"-t",
 		"-t",
 		"dvisher@users.isi.deterlab.net",
 		"-L",
-		"8080:"+logger+":10000")
+		"8080:"+masterLogger+":10000")
 	cmd.Start()
 	if err != nil {
 		log.Fatal("failed to setup portforwarding for logging server")
