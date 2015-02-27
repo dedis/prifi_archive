@@ -20,6 +20,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -37,12 +38,21 @@ import (
 func GenExecCmd(phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
-		total += "(./exec -rootwait=" + rootwait + " -physaddr=" + phys + " -hostname=" + n + " -logger=" + loggerport + " </dev/null 2>/dev/null 1>/dev/null &); "
+		total += "(sudo ./exec -rootwait=" + rootwait + " -physaddr=" + phys + " -hostname=" + n + " -logger=" + loggerport + " </dev/null 2>/dev/null 1>/dev/null &); "
 	}
 	return total
 }
 
+var nmsgs string
+var hpn string
+
+func init() {
+	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
+	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
+}
+
 func main() {
+	flag.Parse()
 	fmt.Println("running deter")
 	// fs defines the list of files that are needed to run the timestampers.
 	fs := []string{"exec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
@@ -66,7 +76,7 @@ func main() {
 		wg.Add(1)
 		go func(h string) {
 			defer wg.Done()
-			cliutils.SshRun("", h, "sudo killall exec logserver timeclient scp ssh")
+			cliutils.SshRun("", h, "sudo killall exec logserver timeclient scp ssh 2>/dev/null >/dev/null")
 		}(h)
 	}
 	wg.Wait()
@@ -91,6 +101,7 @@ func main() {
 	})
 
 	depth := graphs.Depth(&tree)
+
 	log.Println("depth of tree:", depth)
 	cf := config.ConfigFromTree(&tree, hostnames)
 	cfb, err := json.Marshal(cf)
@@ -137,7 +148,12 @@ func main() {
 	// start up the logging server on the final host at port 10000
 	fmt.Println("starting up logserver")
 	loggerport := logger + ":10000"
-	go cliutils.SshRunStdout("", logger, "cd logserver; ./logserver -addr="+loggerport)
+	go cliutils.SshRunStdout("", logger, "cd logserver; sudo ./logserver -addr="+loggerport+
+		" -hosts="+strconv.Itoa(len(hostnames))+
+		" -depth="+strconv.Itoa(depth)+
+		" -bf="+strconv.Itoa(depth)+
+		" -hpn="+hpn+
+		" -nmsgs="+nmsgs)
 	// wait a little bit for the logserver to start up
 	time.Sleep(5 * time.Second)
 	fmt.Println("starting time clients")
@@ -149,10 +165,13 @@ func main() {
 			continue
 		}
 		servers := strings.Join(ss, ",")
-		go cliutils.SshRunBackground("", p, "./timeclient -nmsgs=1 -name=client@"+p+" -server="+servers+" -logger="+loggerport)
+		go cliutils.SshRunBackground("", p, "sudo ./timeclient -nmsgs="+nmsgs+
+			" -name=client@"+p+
+			" -server="+servers+
+			" -logger="+loggerport)
 	}
 
-	rootwait := strconv.Itoa(30 + len(hostnames)/10)
+	rootwait := strconv.Itoa(30)
 	for phys, virts := range physToServer {
 		if len(virts) == 0 {
 			continue
@@ -161,7 +180,7 @@ func main() {
 		wg.Add(1)
 		//time.Sleep(500 * time.Millisecond)
 		go func(phys, cmd string) {
-			log.Println("running on ", phys, cmd)
+			// log.Println("running on ", phys, cmd)
 			err := cliutils.SshRunBackground("", phys, cmd)
 			if err != nil {
 				log.Fatal("ERROR STARTING TIMESTAMPER:", err)

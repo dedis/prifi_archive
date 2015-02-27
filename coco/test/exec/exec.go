@@ -66,12 +66,12 @@ func main() {
 		if err != nil {
 			log.WithFields(log.Fields{
 				"file": logutils.File(),
-			}).Errorln("ERROR SETTING UP LOGGING SERVER:", err)
+			}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
 		}
 		log.AddHook(lh)
 		log.SetOutput(ioutil.Discard)
-		log.Println("Log Test")
-		fmt.Println("exiting logger block")
+		//log.Println("Log Test")
+		//fmt.Println("exiting logger block")
 	}
 
 	if physaddr == "" {
@@ -102,7 +102,7 @@ func main() {
 	}
 
 	// load the configuration
-	log.Println("loading configuration")
+	//log.Println("loading configuration")
 	hc, err := oldconfig.LoadConfig(configFile, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname})
 	if err != nil {
 		fmt.Println(err)
@@ -110,7 +110,7 @@ func main() {
 	}
 
 	// run this specific host
-	log.Println("RUNNING HOST CONFIG")
+	//log.Println("RUNNING HOST CONFIG")
 	err = hc.Run(sign.MerkleTree, hostname)
 	if err != nil {
 		log.Fatal(err)
@@ -122,7 +122,7 @@ func main() {
 	}(hc.SNodes[0])
 
 	if app == "sign" {
-		log.Println("RUNNING Node")
+		//log.Println("RUNNING Node")
 		// if I am root do the announcement message
 		if hc.SNodes[0].IsRoot() {
 			time.Sleep(3 * time.Second)
@@ -154,7 +154,7 @@ func main() {
 			time.Sleep(30 * time.Second)
 		}
 	} else if app == "time" {
-		log.Println("RUNNING TIMESTAMPER")
+		//log.Println("RUNNING TIMESTAMPER")
 		stampers, _, err := hc.RunTimestamper(0, hostname)
 		// get rid of the hc information so it can be GC'ed
 		hc = nil

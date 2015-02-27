@@ -2,7 +2,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <title>Sample of websocket with golang</title>
+    <title>Dissent: Coco: Logging Server</title>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
     <script src="./bower_components/Chart.js/Chart.min.js"></script>
     <style>
@@ -13,6 +13,11 @@
 </head>
 
 <body>
+	<div>Number of Hosts: {{.Hosts}}</div>
+	<div>Depth: {{.Depth}}</div>
+	<div>Branching Factor: {{.BranchingFactor}}</div>
+	<div>Hosts Per Node: {{.HostsPerNodes}}</div>
+	<div>Messages Per Client Per Round: {{.NumberOfMessages}}</div>
 	<div>Minimum Time: <span id="mintime"></span> ns</div>
 	<div>Maximum Time: <span id="maxtime"></span> ns</div>
 	<div>Average Time: <span id="avgtime"></span> ns</div>
@@ -90,10 +95,10 @@
 				k++; // increase round number
 				stddev = Math.sqrt(S/(k-1)); // assume all the samples are here
 
-				document.getElementById("mintime").textContent = mintime.toString();
-				document.getElementById("maxtime").textContent = maxtime.toString();
-				document.getElementById("avgtime").textContent = avgtime.toString();
-				document.getElementById("stddev").textContent = stddev.toString();
+				document.getElementById("mintime").textContent = (mintime/1000000000).toString();
+				document.getElementById("maxtime").textContent = (maxtime/1000000000).toString();
+				document.getElementById("avgtime").textContent = (avgtime/1000000000).toString();
+				document.getElementById("stddev").textContent = (stddev/1000000000).toString();
 			}
 		}
 	});
