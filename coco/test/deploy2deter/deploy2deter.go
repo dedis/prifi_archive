@@ -33,10 +33,13 @@ var hpn int
 
 var nmsgs int
 
+var debug bool
+
 func init() {
 	flag.IntVar(&bf, "bf", 2, "branching factor: default binary")
 	flag.IntVar(&hpn, "hpn", 1, "hosts per node: default 1")
 	flag.IntVar(&nmsgs, "nmsgs", 100, "number of messages per round")
+	flag.BoolVar(&debug, "debug", false, "run in debugging mode")
 }
 
 func main() {
@@ -151,8 +154,13 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to setup portforwarding for logging server")
 	}
+	log.Println("runnning deter with nmsgs:", nmsgs)
 	// run the deter lab boss nodes process
 	// it will be responsible for forwarding the files and running the individual
 	// timestamping servers
-	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "GOMAXPROCS=8 ./deter -nmsgs="+strconv.Itoa(nmsgs)+" -hpn="+strconv.Itoa(hpn)))
+	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net",
+		"GOMAXPROCS=8 ./deter -nmsgs="+strconv.Itoa(nmsgs)+
+			" -hpn="+strconv.Itoa(hpn)+
+			" -bf="+strconv.Itoa(bf)+
+			" -debug="+strconv.FormatBool(debug)))
 }

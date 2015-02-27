@@ -38,22 +38,31 @@ import (
 func GenExecCmd(phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
-		total += "(sudo ./exec -rootwait=" + rootwait + " -physaddr=" + phys + " -hostname=" + n + " -logger=" + loggerport + " </dev/null 2>/dev/null 1>/dev/null &); "
+		total += "(sudo ./exec -rootwait=" + rootwait +
+			" -physaddr=" + phys +
+			" -hostname=" + n +
+			" -logger=" + loggerport +
+			" -debug=" + debug +
+			" </dev/null 2>/dev/null 1>/dev/null &); "
 	}
 	return total
 }
 
 var nmsgs string
 var hpn string
+var bf string
+var debug string
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
 	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
+	flag.StringVar(&bf, "bf", "", "branching factor")
+	flag.StringVar(&debug, "debug", "false", "set debug mode")
 }
 
 func main() {
 	flag.Parse()
-	fmt.Println("running deter")
+	fmt.Println("running deter with nmsgs:", nmsgs)
 	// fs defines the list of files that are needed to run the timestampers.
 	fs := []string{"exec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
 
@@ -151,7 +160,7 @@ func main() {
 	go cliutils.SshRunStdout("", logger, "cd logserver; sudo ./logserver -addr="+loggerport+
 		" -hosts="+strconv.Itoa(len(hostnames))+
 		" -depth="+strconv.Itoa(depth)+
-		" -bf="+strconv.Itoa(depth)+
+		" -bf="+bf+
 		" -hpn="+hpn+
 		" -nmsgs="+nmsgs)
 	// wait a little bit for the logserver to start up
@@ -168,7 +177,8 @@ func main() {
 		go cliutils.SshRunBackground("", p, "sudo ./timeclient -nmsgs="+nmsgs+
 			" -name=client@"+p+
 			" -server="+servers+
-			" -logger="+loggerport)
+			" -logger="+loggerport+
+			" -debug="+debug)
 	}
 
 	rootwait := strconv.Itoa(30)

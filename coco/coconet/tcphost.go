@@ -10,6 +10,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/coco"
 )
 
 // Default timeout for any network operation
@@ -103,7 +104,7 @@ func (h *TCPHost) Listen() error {
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
-				log.Errorln("failed to accept connection")
+				log.Errorln("failed to accept connection: ", err)
 				continue
 			}
 			if conn == nil {
@@ -155,7 +156,9 @@ func (h *TCPHost) Listen() error {
 			h.rlock.Lock()
 			h.ready[name] = true
 			h.peers[name] = tp
-			// log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
+			if coco.DEBUG {
+				log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
+			}
 			h.rlock.Unlock()
 		}
 	}()
@@ -192,8 +195,9 @@ func (h *TCPHost) Connect() error {
 	h.ready[tp.Name()] = true
 	h.peers[h.parent] = tp
 	h.rlock.Unlock()
-
-	// log.Infoln("CONNECTED TO PARENT:", h.parent)
+	if coco.DEBUG {
+		log.Infoln("CONNECTED TO PARENT:", h.parent)
+	}
 	return nil
 }
 

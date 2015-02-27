@@ -107,32 +107,18 @@ func main() {
 	for {
 		//start := time.Now()
 		var wg sync.WaitGroup
-		var m sync.Mutex
-		var err error
 		for i := 0; i < nmsgs; i++ {
 			wg.Add(1)
 			go func(i, s int) {
 				defer wg.Done()
 				e := c.TimeStamp(msgs[i], servers[s])
-				if e != nil {
-					m.Lock()
-					err = e
-					m.Unlock()
-					return
+				if e == io.EOF {
+					log.Fatal("EOF: terminating time client")
 				}
 			}(i, s)
 			s = (s + 1) % len(servers)
 		}
 		wg.Wait()
-		if err == io.EOF {
-			log.Errorln("EOF: terminating time client")
-			return
-		}
-		if err != nil {
-			//log.Errorln("client error detected returning:", err)
-			time.Sleep(1 * time.Second)
-			continue
-		}
 		//elapsed := time.Since(start)
 		// log.Println("client done with round: ", time.Since(start).Nanoseconds())
 		//log.WithFields(log.Fields{

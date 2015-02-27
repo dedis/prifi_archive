@@ -35,6 +35,8 @@ type Home struct {
 	NumberOfMessages string
 }
 
+var Log Logger
+
 func init() {
 	flag.StringVar(&addr, "addr", "", "the address of the logging server")
 	flag.StringVar(&hosts, "hosts", "", "number of hosts in config file")
@@ -42,11 +44,7 @@ func init() {
 	flag.StringVar(&bf, "bf", "", "the branching factor of the tree")
 	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
 	flag.StringVar(&nmsgs, "nmsgs", "", "number of messages per round")
-}
 
-var Log Logger
-
-func init() {
 	Log = Logger{
 		Slock: sync.RWMutex{},
 		Sox:   make(map[*websocket.Conn]bool),
@@ -214,6 +212,7 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	// read in from flags the port I should be listening on
 	flag.Parse()
+	log.Println("running logserver with nmsgs branching factor:", nmsgs, bf)
 	var err error
 	homePage, err = template.ParseFiles("home.html")
 	if err != nil {
