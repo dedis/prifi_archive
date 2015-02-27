@@ -10,6 +10,8 @@ import (
 	"strconv"
 )
 
+var TRIM bool = false
+
 type Graph struct {
 	Names   []string
 	mem     []float64 // underlying memory for the weights matrix
@@ -260,7 +262,9 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 			var newHost string
 			nodesTouched, mp, newHost = GetFirstFreeNode(nodesTouched, mp, curNode)
 			if newHost == "" {
-				rootTNode, hostsCreated = TrimLastIncompleteLevel(rootTNode, hostsCreated, depth, bf)
+				if TRIM == true {
+					rootTNode, hostsCreated = TrimLastIncompleteLevel(rootTNode, hostsCreated, depth, bf)
+				}
 				return rootTNode, hostsCreated, nil
 				// break
 			}
@@ -281,7 +285,9 @@ func ColorTree(nodeNames []string, hostAddr []string, hostsPerNode int, bf int, 
 		// fmt.Println(i, hostsCreated)
 	}
 
-	rootTNode, hostsCreated = TrimLastIncompleteLevel(rootTNode, hostsCreated, depth, bf)
+	if TRIM == true {
+		rootTNode, hostsCreated = TrimLastIncompleteLevel(rootTNode, hostsCreated, depth, bf)
+	}
 	return rootTNode, hostsCreated, nil
 }
 

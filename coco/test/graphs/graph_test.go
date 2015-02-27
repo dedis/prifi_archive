@@ -72,7 +72,7 @@ func TestTreeFromList2(t *testing.T) {
 		panic(err)
 	}
 
-	if len(usedHosts) != 3 {
+	if len(usedHosts) != 6 {
 		t.Error("Should have been able to use only 6 hosts")
 	}
 	fmt.Println("used hosts", usedHosts)
