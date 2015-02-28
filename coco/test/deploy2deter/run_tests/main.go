@@ -3,11 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"math"
+	"net/http"
+	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -52,22 +56,27 @@ type RunStats struct {
 	MaxTime float64
 	AvgTime float64
 	StdDev  float64
+
+	SysTime  float64
+	UserTime float64
 }
 
 func (s RunStats) CSVHeader() []byte {
 	var buf bytes.Buffer
-	buf.WriteString("hosts, depth, min, max, avg, stddev\n")
+	buf.WriteString("hosts, depth, min, max, avg, stddev, systime, usertime\n")
 	return buf.Bytes()
 }
 func (s RunStats) CSV() []byte {
 	var buf bytes.Buffer
-	fmt.FPrintf(&buf, "%d, %d, %f, %f, %f, %f\n",
+	fmt.Fprintf(&buf, "%d, %d, %f, %f, %f, %f, %f, %f\n",
 		s.NHosts,
 		s.Depth,
 		s.MinTime,
 		s.MaxTime,
 		s.AvgTime,
-		s.StdDev)
+		s.StdDev,
+		s.SysTime,
+		s.UserTime)
 	return buf.Bytes()
 }
 
@@ -96,8 +105,60 @@ type StatsEntry struct {
 	Type    string  `json:"type"`
 }
 
+type ExpVar struct {
+	Cmdline  []string         `json:"cmdline"`
+	Memstats runtime.MemStats `json:"memstats"`
+}
+
+func Memstats(server string) (*ExpVar, error) {
+	url := "localhost:8080/d/" + server + "/debug/vars"
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	b, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	var evar ExpVar
+	err = json.Unmarshal(b, &evar)
+	if err != nil {
+		log.Println("failed to unmarshal expvar:", string(b))
+		return nil, err
+	}
+	return &evar, nil
+}
+
+func MonitorMemStats(server string, poll int, done chan struct{}, stats *[]*ExpVar) {
+	go func() {
+		ticker := time.NewTicker(time.Duration(poll) * time.Millisecond)
+		for {
+			select {
+			case <-ticker.C:
+				evar, err := Memstats(server)
+				if err != nil {
+					continue
+				}
+				*stats = append(*stats, evar)
+			case <-done:
+				return
+			}
+		}
+	}()
+}
+
+type SysStats struct {
+	File     string `json:"file"`
+	Type     string `json:"type"`
+	SysTime  int    `json:"systime"`
+	UserTime int    `json:"usertime"`
+}
+
 // Monitor: monitors log aggregates results into RunStats
 func Monitor() RunStats {
+	log.Println("MONITORING")
+	defer fmt.Println("DONE MONITORING")
 retry:
 	ws, err := websocket.Dial("ws://localhost:8080/log", "", "http://localhost/")
 	if err != nil {
@@ -107,7 +168,8 @@ retry:
 	// Get HTML of webpage for data (NHosts, Depth, ...)
 	doc, err := goquery.NewDocument("http://localhost:8080/")
 	if err != nil {
-		log.Fatal("unable to get log data")
+		log.Println("unable to get log data: retrying:", err)
+		goto retry
 	}
 	nhosts := doc.Find("#numhosts").First().Text()
 	log.Println("hosts:", nhosts)
@@ -123,14 +185,13 @@ retry:
 	}
 
 	var rs RunStats
-	rs.NHost = nh
+	rs.NHosts = nh
 	rs.Depth = d
 
 	var M, S float64
 	k := float64(1)
 	first := true
 	for {
-		var entry StatsEntry
 		var data []byte
 		err := websocket.Message.Receive(ws, &data)
 		if err != nil {
@@ -142,14 +203,17 @@ retry:
 			continue
 		}
 		if bytes.Contains(data, []byte("EOF")) || bytes.Contains(data, []byte("terminating")) {
-			break
+			log.Println("EOF/terminating Detected: need forkexec to report")
 		}
 		if bytes.Contains(data, []byte("root_round")) {
-			err := json.Unmarshal(data, entry)
+			var entry StatsEntry
+			err := json.Unmarshal(data, &entry)
 			if err != nil {
-				log.Fatal("json unmarshalled improperly")
+				log.Fatal("json unmarshalled improperly:", err)
 			}
+			log.Println("root_round:", entry)
 			if first {
+				first = false
 				rs.MinTime = entry.Time
 				rs.MaxTime = entry.Time
 			}
@@ -166,6 +230,16 @@ retry:
 			S += (entry.Time - tM) * (entry.Time - M)
 			k++
 			rs.StdDev = math.Sqrt(S / (k - 1))
+		} else if bytes.Contains(data, []byte{"forkexec"}) {
+			var ss SysStats
+			err := json.Unmarshal(data, &ss)
+			if err != nil {
+				log.Fatal("unable to unmarshal forkexec:", ss)
+			}
+			rs.SysTime = ss.SysTime
+			rs.UserTime = ss.UserTime
+			log.Println("FORKEXEC:", ss)
+			break
 		}
 	}
 	return rs
@@ -177,23 +251,39 @@ type T struct {
 	nmsgs int
 }
 
-// hpn, bf, nmsgs
+// hpn, bf, nmsgsG
 func RunTest(t T) RunStats {
-	cmdstr := fmt.Sprintf("./deploy2deter -hpn=%d -bf=%d -nmsgs=%d", t.hpn, t.bf, t.msgs)
-	cmd := exec.Command("bash -c \"" + cmdstr + "\"")
+	hpn := fmt.Sprintf("-hpn=%d", t.hpn)
+	bf := fmt.Sprintf("-bf=%d", t.bf)
+	nmsgs := fmt.Sprintf("-nmsgs=%d", t.nmsgs)
+	cmd := exec.Command("./deploy2deter", hpn, bf, nmsgs, "-debug=true")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	err := cmd.Start()
 	if err != nil {
 		log.Fatal(err)
 	}
+	// give it a while to start up
+	time.Sleep(3 * time.Minute)
 	rs := Monitor()
 	cmd.Process.Kill()
+	fmt.Println("TEST COMPLETE:", rs)
 	return rs
 }
 
-func TestFile(name string) string {
-	return "test_data/"
+func MkTestDir() {
+	err := os.MkdirAll("test_data/", 0777)
+	if err != nil {
+		log.Fatal("failed to make test directory")
+	}
 }
 
+func TestFile(name string) string {
+	return "test_data/" + name
+}
+
+// RunTests runs the given tests and puts the output into the
+// given file name. It outputs RunStats in a CSV format.
 func RunTests(name string, ts []T) {
 	rs := make([]RunStats, len(ts))
 	for i, t := range ts {
@@ -201,10 +291,44 @@ func RunTests(name string, ts []T) {
 	}
 	output := rs[0].CSVHeader()
 	for _, s := range rs {
-		output = append(output, s.CSV())
+		output = append(output, s.CSV()...)
 	}
-	err := ioutil.WriteFile(name, output, 0660)
+	err := ioutil.WriteFile(TestFile(name), output, 0660)
 	if err != nil {
 		log.Fatal("failed to write out test file:", name)
 	}
+}
+
+// hpn=1 bf=2 nmsgs=700
+var TestT = []T{
+	{1, 2, 700},
+}
+
+func LoadTest(hpn, bf, low, high, step int) []T {
+	n := (high - low) / step
+	ts := make([]T, 0, n)
+	for nmsgs := low; nmsgs <= high; nmsgs += step {
+		ts = append(ts, T{hpn, bf, nmsgs})
+	}
+	return ts
+}
+
+func DepthTest(hpn, low, high, step int) []T {
+	ts := make([]T, 0)
+	for bf := low; bf <= high; bf += step {
+		ts = append(ts, T{hpn, bf, 7000})
+	}
+}
+
+func main() {
+	os.Chdir("..")
+	MkTestDir()
+	//t := TestT
+	//RunTests("test", t)
+	t := LoadTest(40, 10, 0, 10000, 1000)
+	RunTests("load_test_bf10", t)
+	t = LoadTest(40, 50, 0, 10000, 1000)
+	RunTests("load_test_bf50", t)
+	t = DepthTest(40, 10, 50, 10)
+	RunTests("depth_test", t)
 }
