@@ -38,7 +38,7 @@ import (
 func GenExecCmd(phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
-		total += "(sudo ./exec -rootwait=" + rootwait +
+		total += "(sudo ./forkexec -rootwait=" + rootwait +
 			" -physaddr=" + phys +
 			" -hostname=" + n +
 			" -logger=" + loggerport +
@@ -64,7 +64,7 @@ func main() {
 	flag.Parse()
 	fmt.Println("running deter with nmsgs:", nmsgs)
 	// fs defines the list of files that are needed to run the timestampers.
-	fs := []string{"exec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
+	fs := []string{"exec", "forkexec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
 
 	// read in the hosts file.
 	virt, err := cliutils.ReadLines("virt.txt")

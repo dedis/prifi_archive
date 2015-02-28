@@ -174,6 +174,7 @@ func main() {
 					log.Printf("Waiting: %d s\n", rootwait)
 					// wait for the other nodes to get set up
 					time.Sleep(time.Duration(rootwait) * time.Second)
+
 					log.Println("STARTING ROOT ROUND")
 					s.Run("root", nrounds)
 					fmt.Println("\n\nROOT DONE\n\n")
