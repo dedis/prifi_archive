@@ -149,10 +149,10 @@ func MonitorMemStats(server string, poll int, done chan struct{}, stats *[]*ExpV
 }
 
 type SysStats struct {
-	File     string `json:"file"`
-	Type     string `json:"type"`
-	SysTime  int    `json:"systime"`
-	UserTime int    `json:"usertime"`
+	File     string  `json:"file"`
+	Type     string  `json:"type"`
+	SysTime  float64 `json:"systime"`
+	UserTime float64 `json:"usertime"`
 }
 
 // Monitor: monitors log aggregates results into RunStats
@@ -230,7 +230,7 @@ retry:
 			S += (entry.Time - tM) * (entry.Time - M)
 			k++
 			rs.StdDev = math.Sqrt(S / (k - 1))
-		} else if bytes.Contains(data, []byte{"forkexec"}) {
+		} else if bytes.Contains(data, []byte("forkexec")) {
 			var ss SysStats
 			err := json.Unmarshal(data, &ss)
 			if err != nil {
@@ -318,11 +318,16 @@ func DepthTest(hpn, low, high, step int) []T {
 	for bf := low; bf <= high; bf += step {
 		ts = append(ts, T{hpn, bf, 7000})
 	}
+	return ts
 }
 
 func main() {
 	os.Chdir("..")
 	MkTestDir()
+	err := exec.Command("go", "build", "-v").Run()
+	if err != nil {
+		log.Println(err)
+	}
 	//t := TestT
 	//RunTests("test", t)
 	t := LoadTest(40, 10, 0, 10000, 1000)

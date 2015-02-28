@@ -15,7 +15,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -41,6 +40,7 @@ var pprofaddr string
 var physaddr string
 var rootwait int
 var debug bool
+var rate int
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -74,11 +74,10 @@ func main() {
 			}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
 		}
 		log.AddHook(lh)
-		log.SetOutput(ioutil.Discard)
+		// log.SetOutput(ioutil.Discard)
 		//log.Println("Log Test")
 		//fmt.Println("exiting logger block")
 	}
-
 	if physaddr == "" {
 		h, _, err := net.SplitHostPort(hostname)
 		if err != nil {

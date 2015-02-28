@@ -82,7 +82,7 @@ func main() {
 	}
 	// if the rate has been specified then send out one message every
 	// rate milliseconds
-	if rate != -1 {
+	if rate > 0 {
 		ticker := time.Tick(time.Duration(rate) * time.Millisecond)
 		i := 0
 		for _ = range ticker {

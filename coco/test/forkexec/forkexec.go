@@ -37,7 +37,6 @@ func init() {
 
 func main() {
 	flag.Parse()
-
 	// connect with the logging server
 	if logger != "" {
 		// blocks until we can connect to the logger
@@ -52,29 +51,28 @@ func main() {
 		//log.Println("Log Test")
 		//fmt.Println("exiting logger block")
 	}
-
+	log.Println("IN FORK EXEC")
 	// recombine the flags for exec to use
-	nargs := 9
-	args := make([]string, nargs)
-	args[0] = "-hostname=" + hostname
-	args[1] = "-configFile=" + configFile
-	args[2] = "-logger=" + logger
-	args[3] = "-app=" + app
-	args[4] = "-nrounds=" + strconv.Itoa(nrounds)
-	args[5] = "-pprofaddr=" + pprofaddr
-	args[6] = "-physaddr=" + physaddr
-	args[7] = "-rootwait=" + strconv.Itoa(rootwait)
-	args[8] = "-debug=" + strconv.FormatBool(debug)
-
-	onearg := ""
-	for i := 0; i < nargs; i++ {
-		onearg = onearg + args[i]
+	args := []string{
+		"-hostname=" + hostname,
+		"-config=" + configFile,
+		"-logger=" + logger,
+		"-app=" + app,
+		"-nrounds=" + strconv.Itoa(nrounds),
+		"-pprofaddr=" + pprofaddr,
+		"-physaddr=" + physaddr,
+		"-rootwait=" + strconv.Itoa(rootwait),
+		"-debug=" + strconv.FormatBool(debug),
 	}
-
-	cmd := exec.Command("exec", onearg)
+	infos, _ := ioutil.ReadDir(".")
+	log.Println("DIRECTORY STATUS:", infos)
+	cmd := exec.Command("./exec", args...)
+	//cmd.Stdout = log.StandardLogger().Writer()
+	//cmd.Stderr = log.StandardLogger().Writer()
+	//log.Println("running command:", cmd)
 	err := cmd.Run()
 	if err != nil {
-		log.Errorln("cmd run:" + err.Error())
+		log.Errorln("cmd run:", err)
 	}
 
 	// get CPU usage stats

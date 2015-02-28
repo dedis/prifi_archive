@@ -52,12 +52,14 @@ var nmsgs string
 var hpn string
 var bf string
 var debug string
+var rate int
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
 	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
 	flag.StringVar(&bf, "bf", "", "branching factor")
 	flag.StringVar(&debug, "debug", "false", "set debug mode")
+	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages")
 }
 
 func main() {
@@ -203,7 +205,8 @@ func main() {
 			" -name=client@"+p+
 			" -server="+servers+
 			" -logger="+loggerports[i]+
-			" -debug="+debug)
+			" -debug="+debug+
+			" -rate="+rate)
 		i = (i + 1) % len(loggerports)
 	}
 
