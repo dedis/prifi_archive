@@ -272,6 +272,12 @@ func (sn *Node) sub(a abstract.Point, b abstract.Point) {
 
 }
 
+func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
+	for _, k := range keys {
+		sn.sub(a, k)
+	}
+}
+
 func max(a int, b int) int {
 	if a > b {
 		return a

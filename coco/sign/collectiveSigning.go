@@ -405,8 +405,8 @@ func (sn *Node) Respond(Round int) error {
 	}
 
 	// remove exceptions from subtree that failed
-	sn.sub(round.Log.V_hat, exceptionV_hat)
 	sn.sub(round.X_hat, exceptionX_hat)
+	round.exceptionV_hat = exceptionV_hat
 
 	return sn.actOnResponses(Round, exceptionV_hat, exceptionX_hat)
 }
@@ -472,12 +472,16 @@ func (sn *Node) FinalizeCommits(Round int) error {
 // Called by every node after receiving aggregate responses from descendants
 func (sn *Node) VerifyResponses(Round int) error {
 	round := sn.Rounds[Round]
+
 	// Check that: base**r_hat * X_hat**c == V_hat
 	// Equivalent to base**(r+xc) == base**(v) == T in vanillaElGamal
-	var P, T abstract.Point
-	P = sn.suite.Point()
-	T = sn.suite.Point()
-	T.Add(T.Mul(nil, round.r_hat), P.Mul(round.X_hat, round.c))
+	Aux := sn.suite.Point()
+	V_clean := sn.suite.Point()
+	V_clean.Add(V_clean.Mul(nil, round.r_hat), Aux.Mul(round.X_hat, round.c))
+	// T is the recreated V_hat
+	T := sn.suite.Point().Null()
+	T.Add(T, V_clean)
+	T.Add(T, round.exceptionV_hat)
 
 	var c2 abstract.Secret
 	if sn.IsRoot() {

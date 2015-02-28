@@ -46,7 +46,7 @@ func main() {
 	flag.Parse()
 	var wg sync.WaitGroup
 	// start building the necessary packages
-	packages := []string{"../logserver", "../timeclient", "../exec", "../deter"}
+	packages := []string{"../logserver", "../timeclient", "../exec", "../forkexec", "../deter"}
 	for _, p := range packages {
 		wg.Add(1)
 		if p == "../deter" {
@@ -131,7 +131,7 @@ func main() {
 		log.Fatal("failed to copy logserver")
 	}
 	// scp the files that we need over to the boss node
-	files := []string{"timeclient", "exec", "deter", "cfg.json", "phys.txt", "virt.txt"}
+	files := []string{"timeclient", "exec", "forkexec", "deter", "cfg.json", "phys.txt", "virt.txt"}
 	cliutils.Scp("dvisher", "users.isi.deterlab.net", "../logserver", "")
 	for _, f := range files {
 		wg.Add(1)
