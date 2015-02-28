@@ -38,22 +38,31 @@ import (
 func GenExecCmd(phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
-		total += "(sudo ./exec -rootwait=" + rootwait + " -physaddr=" + phys + " -hostname=" + n + " -logger=" + loggerport + " </dev/null 2>/dev/null 1>/dev/null &); "
+		total += "(sudo ./exec -rootwait=" + rootwait +
+			" -physaddr=" + phys +
+			" -hostname=" + n +
+			" -logger=" + loggerport +
+			" -debug=" + debug +
+			" </dev/null 2>/dev/null 1>/dev/null &); "
 	}
 	return total
 }
 
 var nmsgs string
 var hpn string
+var bf string
+var debug string
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
 	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
+	flag.StringVar(&bf, "bf", "", "branching factor")
+	flag.StringVar(&debug, "debug", "false", "set debug mode")
 }
 
 func main() {
 	flag.Parse()
-	fmt.Println("running deter")
+	fmt.Println("running deter with nmsgs:", nmsgs)
 	// fs defines the list of files that are needed to run the timestampers.
 	fs := []string{"exec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
 
@@ -80,9 +89,13 @@ func main() {
 		}(h)
 	}
 	wg.Wait()
-	logger := phys[len(phys)-1]
-	phys = phys[:len(phys)-1]
-	virt = virt[:len(virt)-1]
+	masterLogger := phys[0]
+	slaveLogger1 := phys[1]
+	slaveLogger2 := phys[2]
+	loggers := []string{masterLogger, slaveLogger1, slaveLogger2}
+
+	phys = phys[3:]
+	virt = virt[3:]
 
 	// Read in and parse the configuration file
 	file, e := ioutil.ReadFile("cfg.json")
@@ -90,7 +103,9 @@ func main() {
 		log.Fatal("deter.go: error reading configuration file: %v\n", e)
 	}
 
-	cliutils.Scp("", logger, "cfg.json", "logserver/cfg.json")
+	for _, logger := range loggers {
+		cliutils.Scp("", logger, "cfg.json", "logserver/cfg.json")
+	}
 
 	var tree graphs.Tree
 	json.Unmarshal(file, &tree)
@@ -128,7 +143,9 @@ func main() {
 	}
 
 	fmt.Println("copying over files")
-	cliutils.Scp("", logger, "logserver", "")
+	for _, logger := range loggers {
+		cliutils.Scp("", logger, "logserver", "")
+	}
 	// copy the files over to all the host machines.
 	for _, f := range fs {
 		for _, h := range phys {
@@ -140,26 +157,43 @@ func main() {
 		}
 		// cfg.json on logger should be in tree format
 		if f != "cfg.json" {
-			cliutils.Scp("", logger, f, "logserver/"+f)
+			for _, logger := range loggers {
+				cliutils.Scp("", logger, f, "logserver/"+f)
+			}
 		}
 	}
 	wg.Wait()
 
 	// start up the logging server on the final host at port 10000
 	fmt.Println("starting up logserver")
-	loggerport := logger + ":10000"
-	go cliutils.SshRunStdout("", logger, "cd logserver; sudo ./logserver -addr="+loggerport+
-		" -hosts="+strconv.Itoa(len(hostnames))+
-		" -depth="+strconv.Itoa(depth)+
-		" -bf="+strconv.Itoa(depth)+
-		" -hpn="+hpn+
-		" -nmsgs="+nmsgs)
+	// start up the master logger
+	loggerports := make([]string, len(loggers))
+	for i, logger := range loggers {
+		loggerport := logger + ":10000"
+		loggerports[i] = loggerport
+		// redirect to the master logger
+		master := masterLogger + ":10000"
+		// if this is the master logger than don't set the master to anything
+		if loggerport == masterLogger+":10000" {
+			master = ""
+		}
+
+		go cliutils.SshRunStdout("", logger, "cd logserver; sudo ./logserver -addr="+loggerport+
+			" -hosts="+strconv.Itoa(len(hostnames))+
+			" -depth="+strconv.Itoa(depth)+
+			" -bf="+bf+
+			" -hpn="+hpn+
+			" -nmsgs="+nmsgs+
+			" -master="+master)
+	}
+
 	// wait a little bit for the logserver to start up
 	time.Sleep(5 * time.Second)
 	fmt.Println("starting time clients")
 
 	// start up one timeclient per physical machine
 	// it requests timestamps from all the servers on that machine
+	i := 0
 	for p, ss := range physToServer {
 		if len(ss) == 0 {
 			continue
@@ -168,7 +202,9 @@ func main() {
 		go cliutils.SshRunBackground("", p, "sudo ./timeclient -nmsgs="+nmsgs+
 			" -name=client@"+p+
 			" -server="+servers+
-			" -logger="+loggerport)
+			" -logger="+loggerports[i]+
+			" -debug="+debug)
+		i = (i + 1) % len(loggerports)
 	}
 
 	rootwait := strconv.Itoa(30)
@@ -176,7 +212,8 @@ func main() {
 		if len(virts) == 0 {
 			continue
 		}
-		cmd := GenExecCmd(phys, virts, loggerport, rootwait)
+		cmd := GenExecCmd(phys, virts, loggerports[i], rootwait)
+		i = (i + 1) % len(loggerports)
 		wg.Add(1)
 		//time.Sleep(500 * time.Millisecond)
 		go func(phys, cmd string) {

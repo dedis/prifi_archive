@@ -13,15 +13,15 @@
 </head>
 
 <body>
-	<div>Number of Hosts: {{.Hosts}}</div>
-	<div>Depth: {{.Depth}}</div>
-	<div>Branching Factor: {{.BranchingFactor}}</div>
-	<div>Hosts Per Node: {{.HostsPerNodes}}</div>
+	<div>Number of Hosts: <span id="numhosts">{{.Hosts}}</span></div>
+	<div>Depth: <span id="depth">{{.Depth}}</span></div>
+	<div>Branching Factor: <span id="bf">{{.BranchingFactor}}</span></div>
+	<div>Hosts Per Node: {{.HostsPerNode}}</div>
 	<div>Messages Per Client Per Round: {{.NumberOfMessages}}</div>
-	<div>Minimum Time: <span id="mintime"></span> ns</div>
-	<div>Maximum Time: <span id="maxtime"></span> ns</div>
-	<div>Average Time: <span id="avgtime"></span> ns</div>
-	<div>Standard Deviation: <span id="stddev"></span> ns</div>
+	<div>Minimum Time: <span id="mintime"></span> s</div>
+	<div>Maximum Time: <span id="maxtime"></span> s</div>
+	<div>Average Time: <span id="avgtime"></span> s</div>
+	<div>Standard Deviation: <span id="stddev"></span> s</div>
   <div width="820px" height="409px">
     <canvas id="announce_chart" width="818px" height="409px"></canvas>
   </div>

@@ -26,6 +26,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
+	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/test/logutils"
 	"github.com/dedis/prifi/coco/test/oldconfig"
@@ -39,6 +40,7 @@ var nrounds int
 var pprofaddr string
 var physaddr string
 var rootwait int
+var debug bool
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -50,17 +52,20 @@ func init() {
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
+	flag.BoolVar(&debug, "debug", false, "set debugging")
 }
 
 func main() {
 	flag.Parse()
-	//coco.DEBUG = true
+	if debug {
+		coco.DEBUG = true
+	}
 	defer func() {
 		log.Errorln("TERMINATING HOST")
 	}()
 
 	// connect with the logging server
-	if logger != "" {
+	if logger != "" && coco.DEBUG {
 		// blocks until we can connect to the logger
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
 		if err != nil {

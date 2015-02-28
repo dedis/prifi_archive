@@ -9,6 +9,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
+	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 )
 
@@ -99,7 +100,9 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 				c.Mux.Lock()
 				c.Servers[name] = conn
 				c.Mux.Unlock()
-				log.Println("SUCCESS: connected to server:", conn)
+				if coco.DEBUG {
+					log.Println("SUCCESS: connected to server:", conn)
+				}
 				if c.handleServer(conn) == io.EOF {
 					c.Servers[name] = nil
 					return
@@ -145,7 +148,9 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 			Sreq:  &StampRequest{Val: val}})
 	if err != nil {
 		if err != coconet.ConnectionNotEstablished {
-			// log.Warn("error timestamping: ", err)
+			if coco.DEBUG {
+				log.Warn("error timestamping: ", err)
+			}
 		}
 		return err
 	}

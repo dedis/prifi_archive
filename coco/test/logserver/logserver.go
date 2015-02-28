@@ -23,7 +23,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-var addr, hosts, depth, bf, hpn, nmsgs string
+var addr, hosts, depth, bf, hpn, nmsgs, master string
 var homePage *template.Template
 
 type Home struct {
@@ -35,6 +35,8 @@ type Home struct {
 	NumberOfMessages string
 }
 
+var Log Logger
+
 func init() {
 	flag.StringVar(&addr, "addr", "", "the address of the logging server")
 	flag.StringVar(&hosts, "hosts", "", "number of hosts in config file")
@@ -42,11 +44,8 @@ func init() {
 	flag.StringVar(&bf, "bf", "", "the branching factor of the tree")
 	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
 	flag.StringVar(&nmsgs, "nmsgs", "", "number of messages per round")
-}
+	flag.StringVar(&master, "master", "", "address of the master of this node")
 
-var Log Logger
-
-func init() {
 	Log = Logger{
 		Slock: sync.RWMutex{},
 		Sox:   make(map[*websocket.Conn]bool),
@@ -73,10 +72,14 @@ func logEntryHandler(ws *websocket.Conn) {
 	var data []byte
 	err := websocket.Message.Receive(ws, &data)
 	for err == nil {
-		Log.Mlock.Lock()
-		Log.Msgs = append(Log.Msgs, data)
-		Log.End += 1
-		Log.Mlock.Unlock()
+		if !isMaster {
+			websocket.Message.Send(wsmaster, data)
+		} else {
+			Log.Mlock.Lock()
+			Log.Msgs = append(Log.Msgs, data)
+			Log.End += 1
+			Log.Mlock.Unlock()
+		}
 		err = websocket.Message.Receive(ws, &data)
 	}
 	log.Println("log server client error:", err)
@@ -210,27 +213,47 @@ func getDebugServers() []string {
 	return debugServers
 }
 
+var isMaster bool
+var wsmaster *websocket.Conn
+
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	// read in from flags the port I should be listening on
 	flag.Parse()
-	var err error
-	homePage, err = template.ParseFiles("home.html")
-	if err != nil {
-		log.Fatal("unable to parse home.html")
+	if master == "" {
+		isMaster = true
 	}
+	log.Println("running logserver with nmsgs branching factor:", nmsgs, bf)
+	if isMaster {
+		var err error
+		homePage, err = template.ParseFiles("home.html")
+		if err != nil {
+			log.Fatal("unable to parse home.html")
+		}
 
-	debugServers := getDebugServers()
+		debugServers := getDebugServers()
 
-	for _, s := range debugServers {
-		reverseProxy(s)
+		for _, s := range debugServers {
+			reverseProxy(s)
+		}
+
+		log.Println("LOG SERVER RUNNING AT:", addr)
+		// /bower_components/Chart.js/Chart.min.js
+		http.HandleFunc("/", homeHandler)
+		fs := http.FileServer(http.Dir("bower_components/"))
+		http.Handle("/bower_components/", http.StripPrefix("/bower_components/", fs))
+	} else {
+	retry:
+		var err error
+		origin := "http://localhost/"
+		url := "ws://" + master + "/_log"
+		wsmaster, err = websocket.Dial(url, "", origin)
+		if err != nil {
+			time.Sleep(time.Second)
+			goto retry
+		}
+		log.Println("LOG SLAVE RUNNING AT:", addr)
 	}
-
-	log.Println("LOG SERVER RUNNING AT:", addr)
-	// /bower_components/Chart.js/Chart.min.js
-	http.HandleFunc("/", homeHandler)
-	fs := http.FileServer(http.Dir("bower_components/"))
-	http.Handle("/bower_components/", http.StripPrefix("/bower_components/", fs))
 	http.Handle("/_log", websocket.Handler(logEntryHandler))
 	http.Handle("/log", websocket.Handler(logHandler))
 	log.Fatalln("ERROR: ", http.ListenAndServe(addr, nil))
