@@ -36,6 +36,8 @@ type Round struct {
 	ChildV_hat map[string]abstract.Point
 	// combined public keys of children servers in subtree
 	ChildX_hat map[string]abstract.Point
+	// for internal verification purposes
+	exceptionV_hat abstract.Point
 
 	BackLink hashid.HashId
 	AccRound []byte
