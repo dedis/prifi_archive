@@ -65,7 +65,7 @@ func main() {
 	}()
 
 	// connect with the logging server
-	if logger != "" {
+	if logger != "" && coco.DEBUG {
 		// blocks until we can connect to the logger
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
 		if err != nil {

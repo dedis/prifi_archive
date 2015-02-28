@@ -13,9 +13,9 @@
 </head>
 
 <body>
-	<div>Number of Hosts: {{.Hosts}}</div>
-	<div>Depth: {{.Depth}}</div>
-	<div>Branching Factor: {{.BranchingFactor}}</div>
+	<div>Number of Hosts: <span id="numhosts">{{.Hosts}}</span></div>
+	<div>Depth: <span id="depth">{{.Depth}}</span></div>
+	<div>Branching Factor: <span id="bf">{{.BranchingFactor}}</span></div>
 	<div>Hosts Per Node: {{.HostsPerNode}}</div>
 	<div>Messages Per Client Per Round: {{.NumberOfMessages}}</div>
 	<div>Minimum Time: <span id="mintime"></span> s</div>
