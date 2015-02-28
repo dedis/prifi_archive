@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"io/ioutil"
 	"log"
 	"math"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+// NOTE: SHOULD BE RUN FROM run_tests directory
 // note: deploy2deter must be run from within it's directory
 //
 // Outputting data: output to csv files (for loading into excel)
@@ -52,6 +54,23 @@ type RunStats struct {
 	StdDev  float64
 }
 
+func (s RunStats) CSVHeader() []byte {
+	var buf bytes.Buffer
+	buf.WriteString("hosts, depth, min, max, avg, stddev\n")
+	return buf.Bytes()
+}
+func (s RunStats) CSV() []byte {
+	var buf bytes.Buffer
+	fmt.FPrintf(&buf, "%d, %d, %f, %f, %f, %f\n",
+		s.NHosts,
+		s.Depth,
+		s.MinTime,
+		s.MaxTime,
+		s.AvgTime,
+		s.StdDev)
+	return buf.Bytes()
+}
+
 /*
 {
 	"eapp":"time",
@@ -75,21 +94,6 @@ type StatsEntry struct {
 	Round   int     `json:"round"`
 	Time    float64 `json:"time"`
 	Type    string  `json:"type"`
-}
-
-func (s RunStats) CSVHeader() []byte {
-	var buf bytes.Buffer
-	buf.WriteString("hosts, depth, min, max, avg, stddev\n")
-}
-func (s RunStats) CSV() []byte {
-	var buf bytes.Buffer
-	fmt.FPrintf(&buf, "%d, %d, %f, %f, %f, %f\n",
-		s.NHosts,
-		s.Depth,
-		s.MinTime,
-		s.MaxTime,
-		s.AvgTime,
-		s.StdDev)
 }
 
 // Monitor: monitors log aggregates results into RunStats
@@ -167,8 +171,15 @@ retry:
 	return rs
 }
 
-func RunTest(hpn, bf, nmsgs int) RunStats {
-	cmdstr := fmt.Sprintf("./deploy2deter -hpn=%d -bf=%d -nmsgs=%d", hpn, bf, msgs)
+type T struct {
+	hpn   int
+	bf    int
+	nmsgs int
+}
+
+// hpn, bf, nmsgs
+func RunTest(t T) RunStats {
+	cmdstr := fmt.Sprintf("./deploy2deter -hpn=%d -bf=%d -nmsgs=%d", t.hpn, t.bf, t.msgs)
 	cmd := exec.Command("bash -c \"" + cmdstr + "\"")
 	err := cmd.Start()
 	if err != nil {
@@ -177,4 +188,23 @@ func RunTest(hpn, bf, nmsgs int) RunStats {
 	rs := Monitor()
 	cmd.Process.Kill()
 	return rs
+}
+
+func TestFile(name string) string {
+	return "test_data/"
+}
+
+func RunTests(name string, ts []T) {
+	rs := make([]RunStats, len(ts))
+	for i, t := range ts {
+		rs[i] = RunTest(t)
+	}
+	output := rs[0].CSVHeader()
+	for _, s := range rs {
+		output = append(output, s.CSV())
+	}
+	err := ioutil.WriteFile(name, output, 0660)
+	if err != nil {
+		log.Fatal("failed to write out test file:", name)
+	}
 }
