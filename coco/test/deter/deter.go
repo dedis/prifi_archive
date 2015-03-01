@@ -191,6 +191,7 @@ func main() {
 			" -bf="+bf+
 			" -hpn="+hpn+
 			" -nmsgs="+nmsgs+
+			" -rate="+strconv.Itoa(rate)+
 			" -master="+master)
 	}
 

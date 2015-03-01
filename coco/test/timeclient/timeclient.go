@@ -131,6 +131,7 @@ func main() {
 
 	// if rate specified send out one message every rate milliseconds
 	if rate > 0 {
+		log.Println("CLIENT RATE:", rate)
 		// Stream time stamp requests
 		streamMessgs(c, servers)
 		return

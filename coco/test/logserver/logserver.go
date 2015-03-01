@@ -23,7 +23,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-var addr, hosts, depth, bf, hpn, nmsgs, master string
+var addr, hosts, depth, bf, hpn, nmsgs, master, rate string
 var homePage *template.Template
 
 type Home struct {
@@ -33,6 +33,7 @@ type Home struct {
 	BranchingFactor  string
 	HostsPerNode     string
 	NumberOfMessages string
+	Rate             string
 }
 
 var Log Logger
@@ -43,6 +44,7 @@ func init() {
 	flag.StringVar(&depth, "depth", "", "the depth of the tree")
 	flag.StringVar(&bf, "bf", "", "the branching factor of the tree")
 	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
+	flag.StringVar(&rate, "rate", "", "the rate of messages")
 	flag.StringVar(&nmsgs, "nmsgs", "", "number of messages per round")
 	flag.StringVar(&master, "master", "", "address of the master of this node")
 
@@ -120,7 +122,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	// fmt.Println(host)
 	ws := "ws://" + host + "/log"
 
-	err := homePage.Execute(w, Home{ws, hosts, depth, bf, hpn, nmsgs})
+	err := homePage.Execute(w, Home{ws, hosts, depth, bf, hpn, nmsgs, rate})
 	if err != nil {
 		panic(err)
 		log.Fatal(err)

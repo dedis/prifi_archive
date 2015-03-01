@@ -59,16 +59,18 @@ type RunStats struct {
 
 	SysTime  float64
 	UserTime float64
+
+	Rate float64
 }
 
 func (s RunStats) CSVHeader() []byte {
 	var buf bytes.Buffer
-	buf.WriteString("hosts, depth, min, max, avg, stddev, systime, usertime\n")
+	buf.WriteString("hosts, depth, min, max, avg, stddev, systime, usertime, rate\n")
 	return buf.Bytes()
 }
 func (s RunStats) CSV() []byte {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%d, %d, %f, %f, %f, %f, %f, %f\n",
+	fmt.Fprintf(&buf, "%d, %d, %f, %f, %f, %f, %f, %f, %f\n",
 		s.NHosts,
 		s.Depth,
 		s.MinTime,
@@ -76,7 +78,8 @@ func (s RunStats) CSV() []byte {
 		s.AvgTime,
 		s.StdDev,
 		s.SysTime,
-		s.UserTime)
+		s.UserTime,
+		s.Rate)
 	return buf.Bytes()
 }
 
@@ -114,6 +117,20 @@ type StatsEntry struct {
 	Round   int     `json:"round"`
 	Time    float64 `json:"time"`
 	Type    string  `json:"type"`
+}
+
+type SysStats struct {
+	File     string  `json:"file"`
+	Type     string  `json:"type"`
+	SysTime  float64 `json:"systime"`
+	UserTime float64 `json:"usertime"`
+}
+
+type ClientMsgStats struct {
+	File        string    `json:"file"`
+	Type        string    `json:"type"`
+	Buckets     []float64 `json:"buck"`
+	RoundsAfter []float64 `json:"roundsAfter"`
 }
 
 type ExpVar struct {
@@ -157,13 +174,6 @@ func MonitorMemStats(server string, poll int, done chan struct{}, stats *[]*ExpV
 			}
 		}
 	}()
-}
-
-type SysStats struct {
-	File     string  `json:"file"`
-	Type     string  `json:"type"`
-	SysTime  float64 `json:"systime"`
-	UserTime float64 `json:"usertime"`
 }
 
 // Monitor: monitors log aggregates results into RunStats
@@ -255,9 +265,62 @@ retry:
 			rs.UserTime = ss.UserTime
 			log.Println("FORKEXEC:", ss)
 			break
+		} else if bytes.Contains(data, []byte("client_msg_stats")) {
+			var cms ClientMsgStats
+			err := json.Unmarshal(data, &cms)
+			if err != nil {
+				log.Fatal("unable to unmarshal client_msg_stats:", string(data))
+			}
+			// what do I want to keep out of the Client Message States
+			// cms.Buckets stores how many were processed at time T
+			// cms.RoundsAfter stores how many rounds delayed it was
+			//
+			// get the average delay (roundsAfter), max and min
+			// get the total number of messages timestamped
+			// get the average number of messages timestamped per second?
+			avg, _, _, _ := ArrStats(cms.Buckets)
+			// get the observed rate of processed messages
+			// avg is how many messages per second, we want how many milliseconds between messages
+			observed := avg / 1000 // set avg to messages per milliseconds
+			observed = 1 / observed
+			rs.Rate = observed
 		}
 	}
 	return rs
+}
+
+func ArrStats(stream []float64) (avg float64, min float64, max float64, stddev float64) {
+	// truncate trailing 0s
+	i := len(stream) - 1
+	for ; i >= 0; i-- {
+		if math.Abs(stream[i]) > 0.01 {
+			break
+		}
+	}
+	stream = stream[:i+1]
+
+	k := float64(1)
+	first := true
+	var M, S float64
+	for _, e := range stream {
+		if first {
+			first = false
+			min = e
+			max = e
+		}
+		if e < min {
+			min = e
+		} else if max < e {
+			max = e
+		}
+		avg = ((avg * (k - 1)) + e) / k
+		var tM = M
+		M += (e - tM) / k
+		S += (e - tM) * (e - M)
+		k++
+		stddev = math.Sqrt(S / (k - 1))
+	}
+	return avg, min, max, stddev
 }
 
 type T struct {
@@ -319,6 +382,7 @@ func RunTests(name string, ts []T) {
 // hpn=1 bf=2 nmsgs=700
 var TestT = []T{
 	{1, 2, 700, -1},
+	{1, 2, -1, 1},
 }
 
 func LoadTest(hpn, bf, low, high, step int) []T {
@@ -328,6 +392,18 @@ func LoadTest(hpn, bf, low, high, step int) []T {
 		ts = append(ts, T{hpn, bf, nmsgs, -1})
 	}
 	return ts
+}
+
+// high and low specify how many milliseconds between messages
+func RateLoadTest(hpn, bf int) []T {
+	return []T{
+		{hpn, bf, -1, 50000000}, // never send a message
+		{hpn, bf, -1, 5000},     // one per round
+		{hpn, bf, -1, 500},      // 10 per round
+		{hpn, bf, -1, 50},       // 100 per round
+		{hpn, bf, -1, 5},        // 1000 per round
+		{hpn, bf, -1, 1},        // 5000 per round
+	}
 }
 
 func DepthTest(hpn, low, high, step int) []T {
@@ -346,12 +422,20 @@ func main() {
 	if err != nil {
 		log.Println(err)
 	}
-	//t := TestT
-	//RunTests("test", t)
-	t := LoadTest(40, 10, 0, 10000, 1000)
+	// test the testing framework
+	t := TestT
+	RunTests("test", t)
+
+	t = RateLoadTest(40, 10)
+	RunTests("load_rate_test_bf10", t)
+	t = RateLoadTest(40, 50)
+	RunTests("load_rate_test_bf50", t)
+
+	t = LoadTest(40, 10, 0, 10000, 1000)
 	RunTests("load_test_bf10", t)
 	t = LoadTest(40, 50, 0, 10000, 1000)
 	RunTests("load_test_bf50", t)
+
 	t = DepthTest(40, 10, 50, 10)
 	RunTests("depth_test", t)
 }
