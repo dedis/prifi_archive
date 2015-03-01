@@ -51,7 +51,7 @@ func (n *TestNode) nodeSetup(name string, peerkeys []abstract.Point) {
 	n.sharedsecrets = make([]abstract.Cipher, n.npeers)
 	for i := range peerkeys {
 		dh := n.suite.Point().Mul(peerkeys[i], n.pri)
-		data := dh.Encode()
+		data, _ := dh.MarshalBinary()
 		n.sharedsecrets[i] = n.suite.Cipher(data)
 	}
 }
