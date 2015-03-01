@@ -38,6 +38,9 @@ type Server struct {
 	closeChan chan bool
 }
 
+// time we wait between rounds
+var ROUND_TIME time.Duration = 5 * time.Second
+
 func NewServer(signer coco.Signer) *Server {
 	s := &Server{}
 
@@ -167,7 +170,7 @@ func (s *Server) Run(role string, nRounds int) {
 
 	case "root":
 		// every 5 seconds start a new round
-		ticker := time.Tick(5000 * time.Millisecond)
+		ticker := time.Tick(ROUND_TIME * time.Second)
 		for _ = range ticker {
 			s.nRounds++
 			if s.nRounds > nRounds {
