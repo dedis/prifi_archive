@@ -72,6 +72,13 @@ func streamMessgs(c *stamp.Client, servers []string) {
 			t := time.Since(t0)
 
 			if err == io.EOF {
+				log.WithFields(log.Fields{
+					"file":        logutils.File(),
+					"type":        "client_msg_stats",
+					"buck":        buck,
+					"roundsAfter": roundsAfter,
+				}).Info("")
+
 				log.Fatal("EOF: termininating time client")
 			}
 
@@ -93,12 +100,6 @@ func streamMessgs(c *stamp.Client, servers []string) {
 		i = (i + 1) % nServers
 	}
 
-	log.WithFields(log.Fields{
-		"file":        logutils.File(),
-		"type":        "ClientReceived",
-		"buck":        buck,
-		"roundsAfter": roundsAfter,
-	}).Info("")
 }
 
 var MAX_N_SECONDS int = 1 * 60 * 60 // 1 hours' worth of seconds
@@ -114,6 +115,7 @@ func main() {
 			log.Fatal(err)
 		}
 		log.AddHook(lh)
+		log.Println("time client connected to logger")
 	}
 	c := stamp.NewClient(name)
 	msgs := genRandomMessages(nmsgs)
@@ -151,6 +153,11 @@ func main() {
 				defer wg.Done()
 				e := c.TimeStamp(msgs[i], servers[s])
 				if e == io.EOF {
+					log.WithFields(log.Fields{
+						"file": logutils.File(),
+						"type": "client_msg_stats",
+					}).Info("")
+
 					log.Fatal("EOF: terminating time client")
 				}
 			}(i, s)

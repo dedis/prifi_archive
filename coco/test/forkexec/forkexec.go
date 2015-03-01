@@ -16,12 +16,12 @@ var hostname string
 var configFile string
 var logger string
 var app string
-var nrounds int
 var pprofaddr string
 var physaddr string
 var rootwait int
 var debug bool
 var failures bool
+var rounds int
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -29,7 +29,7 @@ func init() {
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
 	flag.StringVar(&logger, "logger", "", "remote logger")
 	flag.StringVar(&app, "app", "time", "application to run [sign|time]")
-	flag.IntVar(&nrounds, "nrounds", 100, "number of rounds to run")
+	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run")
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
@@ -60,11 +60,11 @@ func main() {
 		"-config=" + configFile,
 		"-logger=" + logger,
 		"-app=" + app,
-		"-nrounds=" + strconv.Itoa(nrounds),
 		"-pprof=" + pprofaddr,
 		"-physaddr=" + physaddr,
 		"-rootwait=" + strconv.Itoa(rootwait),
 		"-debug=" + strconv.FormatBool(debug),
+		"-rounds=" + strconv.Itoa(rounds),
 	}
 	//infos, _ := ioutil.ReadDir(".")*/
 	//for _, i := range infos {

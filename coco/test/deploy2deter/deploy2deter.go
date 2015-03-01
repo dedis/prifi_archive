@@ -36,6 +36,8 @@ var debug bool
 var rate int
 var failures int
 
+var rounds int
+
 func init() {
 	flag.IntVar(&bf, "bf", 2, "branching factor: default binary")
 	flag.IntVar(&hpn, "hpn", 1, "hosts per node: default 1")
@@ -43,6 +45,7 @@ func init() {
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages: if rate > 0 then used")
 	flag.BoolVar(&debug, "debug", false, "run in debugging mode")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run for")
 }
 
 func main() {
@@ -169,5 +172,6 @@ func main() {
 			" -hpn="+strconv.Itoa(hpn)+
 			" -bf="+strconv.Itoa(bf)+
 			" -rate="+strconv.Itoa(rate)+
+			" -rounds="+strconv.Itoa(rounds)+
 			" -debug="+strconv.FormatBool(debug)))
 }

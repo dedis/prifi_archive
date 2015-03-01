@@ -129,8 +129,8 @@ type SysStats struct {
 type ClientMsgStats struct {
 	File        string    `json:"file"`
 	Type        string    `json:"type"`
-	Buckets     []float64 `json:"buck"`
-	RoundsAfter []float64 `json:"roundsAfter"`
+	Buckets     []float64 `json:"buck,omitempty"`
+	RoundsAfter []float64 `json:"roundsAfter,omitempty"`
 }
 
 type ExpVar struct {
@@ -208,7 +208,8 @@ retry:
 	if err != nil {
 		log.Fatal("unable to convert depth to be a number:", depth)
 	}
-
+	client_done := false
+	root_done := false
 	var rs RunStats
 	rs.NHosts = nh
 	rs.Depth = d
@@ -228,7 +229,9 @@ retry:
 			continue
 		}
 		if bytes.Contains(data, []byte("EOF")) || bytes.Contains(data, []byte("terminating")) {
-			log.Println("EOF/terminating Detected: need forkexec to report")
+			log.Println(
+				"EOF/terminating Detected: need forkexec to report and clients: %b %b",
+				root_done, client_done)
 		}
 		if bytes.Contains(data, []byte("root_round")) {
 			var entry StatsEntry
@@ -256,6 +259,10 @@ retry:
 			k++
 			rs.StdDev = math.Sqrt(S / (k - 1))
 		} else if bytes.Contains(data, []byte("forkexec")) {
+
+			if root_done {
+				continue
+			}
 			var ss SysStats
 			err := json.Unmarshal(data, &ss)
 			if err != nil {
@@ -264,8 +271,14 @@ retry:
 			rs.SysTime = ss.SysTime
 			rs.UserTime = ss.UserTime
 			log.Println("FORKEXEC:", ss)
-			break
+			if client_done {
+				break
+			}
+			root_done = true
 		} else if bytes.Contains(data, []byte("client_msg_stats")) {
+			if client_done {
+				continue
+			}
 			var cms ClientMsgStats
 			err := json.Unmarshal(data, &cms)
 			if err != nil {
@@ -284,6 +297,10 @@ retry:
 			observed := avg / 1000 // set avg to messages per milliseconds
 			observed = 1 / observed
 			rs.Rate = observed
+			if root_done {
+				break
+			}
+			client_done = true
 		}
 	}
 	return rs
@@ -324,10 +341,11 @@ func ArrStats(stream []float64) (avg float64, min float64, max float64, stddev f
 }
 
 type T struct {
-	hpn   int
-	bf    int
-	nmsgs int
-	rate  int
+	hpn    int
+	bf     int
+	nmsgs  int
+	rate   int
+	rounds int
 }
 
 // hpn, bf, nmsgsG
@@ -336,7 +354,8 @@ func RunTest(t T) RunStats {
 	bf := fmt.Sprintf("-bf=%d", t.bf)
 	nmsgs := fmt.Sprintf("-nmsgs=%d", t.nmsgs)
 	rate := fmt.Sprintf("-rate=%d", t.rate)
-	cmd := exec.Command("./deploy2deter", hpn, bf, nmsgs, rate, debug)
+	rounds := fmt.Sprintf("-rate=%d", t.rounds)
+	cmd := exec.Command("./deploy2deter", hpn, bf, nmsgs, rate, rounds, debug)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
@@ -381,15 +400,15 @@ func RunTests(name string, ts []T) {
 
 // hpn=1 bf=2 nmsgs=700
 var TestT = []T{
-	{1, 2, 700, -1},
-	{1, 2, -1, 1},
+	{1, 2, -1, 1, 10},
+	{1, 2, 700, -1, 10},
 }
 
 func LoadTest(hpn, bf, low, high, step int) []T {
 	n := (high - low) / step
 	ts := make([]T, 0, n)
 	for nmsgs := low; nmsgs <= high; nmsgs += step {
-		ts = append(ts, T{hpn, bf, nmsgs, -1})
+		ts = append(ts, T{hpn, bf, nmsgs, -1, DefaultRounds})
 	}
 	return ts
 }
@@ -397,26 +416,30 @@ func LoadTest(hpn, bf, low, high, step int) []T {
 // high and low specify how many milliseconds between messages
 func RateLoadTest(hpn, bf int) []T {
 	return []T{
-		{hpn, bf, -1, 50000000}, // never send a message
-		{hpn, bf, -1, 5000},     // one per round
-		{hpn, bf, -1, 500},      // 10 per round
-		{hpn, bf, -1, 50},       // 100 per round
-		{hpn, bf, -1, 5},        // 1000 per round
-		{hpn, bf, -1, 1},        // 5000 per round
+		{hpn, bf, -1, 50000000, DefaultRounds}, // never send a message
+		{hpn, bf, -1, 5000, DefaultRounds},     // one per round
+		{hpn, bf, -1, 500, DefaultRounds},      // 10 per round
+		{hpn, bf, -1, 50, DefaultRounds},       // 100 per round
+		{hpn, bf, -1, 5, DefaultRounds},        // 1000 per round
+		{hpn, bf, -1, 1, DefaultRounds},        // 5000 per round
 	}
 }
 
 func DepthTest(hpn, low, high, step int) []T {
 	ts := make([]T, 0)
 	for bf := low; bf <= high; bf += step {
-		ts = append(ts, T{hpn, bf, 7000, -1})
+		ts = append(ts, T{hpn, bf, 7000, -1, DefaultRounds})
 	}
 	return ts
 }
 
+var DefaultRounds int = 100
+
 func main() {
 	view = true
 	os.Chdir("..")
+	//SetDebug(true)
+	DefaultRounds = 10
 	MkTestDir()
 	err := exec.Command("go", "build", "-v").Run()
 	if err != nil {

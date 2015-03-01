@@ -36,7 +36,7 @@ var hostname string
 var configFile string
 var logger string
 var app string
-var nrounds int
+var rounds int
 var pprofaddr string
 var physaddr string
 var rootwait int
@@ -49,7 +49,7 @@ func init() {
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
 	flag.StringVar(&logger, "logger", "", "remote logger")
 	flag.StringVar(&app, "app", "time", "application to run [sign|time]")
-	flag.IntVar(&nrounds, "nrounds", 100, "number of rounds to run")
+	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run")
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
@@ -174,17 +174,17 @@ func main() {
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
 				if s.IsRoot() {
-					log.Println("RUNNING ROOT SERVER AT:", hostname)
+					log.Println("RUNNING ROOT SERVER AT:", hostname, rounds)
 					log.Printf("Waiting: %d s\n", rootwait)
 					// wait for the other nodes to get set up
 					time.Sleep(time.Duration(rootwait) * time.Second)
 
 					log.Println("STARTING ROOT ROUND")
-					s.Run("root", nrounds)
+					s.Run("root", rounds)
 					fmt.Println("\n\nROOT DONE\n\n")
 
 				} else {
-					s.Run("regular", nrounds)
+					s.Run("regular", rounds)
 					fmt.Println("\n\nREGULAR DONE\n\n")
 				}
 			}
