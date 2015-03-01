@@ -88,6 +88,8 @@ func main() {
 		go func(h string) {
 			defer wg.Done()
 			cliutils.SshRun("", h, "sudo killall exec logserver timeclient scp ssh 2>/dev/null >/dev/null")
+			time.Sleep(1 * time.Second)
+			cliutils.SshRun("", h, "sudo killall forkexec")
 		}(h)
 	}
 	wg.Wait()
@@ -150,6 +152,9 @@ func main() {
 	}
 	// copy the files over to all the host machines.
 	for _, f := range fs {
+		if f == "exec" {
+			log.Println("copying exec over to destination")
+		}
 		for _, h := range phys {
 			wg.Add(1)
 			go func(h string, f string) {
@@ -206,7 +211,7 @@ func main() {
 			" -server="+servers+
 			" -logger="+loggerports[i]+
 			" -debug="+debug+
-			" -rate="+rate)
+			" -rate="+strconv.Itoa(rate))
 		i = (i + 1) % len(loggerports)
 	}
 

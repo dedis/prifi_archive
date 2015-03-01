@@ -51,7 +51,7 @@ func main() {
 		//log.Println("Log Test")
 		//fmt.Println("exiting logger block")
 	}
-	log.Println("IN FORK EXEC")
+	// log.Println("IN FORK EXEC")
 	// recombine the flags for exec to use
 	args := []string{
 		"-hostname=" + hostname,
@@ -59,13 +59,17 @@ func main() {
 		"-logger=" + logger,
 		"-app=" + app,
 		"-nrounds=" + strconv.Itoa(nrounds),
-		"-pprofaddr=" + pprofaddr,
+		"-pprof=" + pprofaddr,
 		"-physaddr=" + physaddr,
 		"-rootwait=" + strconv.Itoa(rootwait),
 		"-debug=" + strconv.FormatBool(debug),
 	}
-	infos, _ := ioutil.ReadDir(".")
-	log.Println("DIRECTORY STATUS:", infos)
+	//infos, _ := ioutil.ReadDir(".")*/
+	//for _, i := range infos {
+	//if i.Name() == "exec" {
+	//log.Println("exec file exists")
+	//}
+	//}
 	cmd := exec.Command("./exec", args...)
 	//cmd.Stdout = log.StandardLogger().Writer()
 	//cmd.Stderr = log.StandardLogger().Writer()

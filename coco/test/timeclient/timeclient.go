@@ -63,8 +63,8 @@ func main() {
 		// log.Println("Log Test")
 		// fmt.Println("exiting logger block")
 	}
-	//log.SetFlags(log.Lshortfile)
-	//log.SetPrefix(name + ":")
+	// log.SetFlags(log.Lshortfile)
+	// log.SetPrefix(name + ":")
 	// log.Println("TIMESTAMP CLIENT")
 	c := stamp.NewClient(name)
 	// log.Println("SERVER: ", server)

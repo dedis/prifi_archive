@@ -15,6 +15,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -65,7 +66,7 @@ func main() {
 	}()
 
 	// connect with the logging server
-	if logger != "" && coco.DEBUG {
+	if logger != "" {
 		// blocks until we can connect to the logger
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
 		if err != nil {
@@ -74,7 +75,7 @@ func main() {
 			}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
 		}
 		log.AddHook(lh)
-		// log.SetOutput(ioutil.Discard)
+		log.SetOutput(ioutil.Discard)
 		//log.Println("Log Test")
 		//fmt.Println("exiting logger block")
 	}

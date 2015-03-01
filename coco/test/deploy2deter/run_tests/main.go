@@ -1,24 +1,3 @@
-package main
-
-import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
-	"io/ioutil"
-	"log"
-	"math"
-	"net/http"
-	"os"
-	"os/exec"
-	"runtime"
-	"strconv"
-	"time"
-
-	"github.com/PuerkitoBio/goquery"
-	"golang.org/x/net/websocket"
-)
-
 // NOTE: SHOULD BE RUN FROM run_tests directory
 // note: deploy2deter must be run from within it's directory
 //
@@ -47,6 +26,27 @@ import (
 //
 // RunTest(hpn, bf), Monitor() -> RunStats() -> csv -> Excel
 //
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"math"
+	"net/http"
+	"os"
+	"os/exec"
+	"runtime"
+	"strconv"
+	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/pkg/browser"
+	"golang.org/x/net/websocket"
+)
 
 type RunStats struct {
 	NHosts int
@@ -93,6 +93,17 @@ func (s RunStats) CSV() []byte {
 	"type":"root_round"
 }
 */
+var view bool
+var debug string = "-debug=false"
+
+func SetDebug(b bool) {
+	if b {
+		debug = "-debug=true"
+	} else {
+		debug = "-debug=false"
+	}
+}
+
 type StatsEntry struct {
 	App     string  `json:"eapp"`
 	Host    string  `json:"ehost"`
@@ -159,17 +170,21 @@ type SysStats struct {
 func Monitor() RunStats {
 	log.Println("MONITORING")
 	defer fmt.Println("DONE MONITORING")
-retry:
+retry_dial:
 	ws, err := websocket.Dial("ws://localhost:8080/log", "", "http://localhost/")
 	if err != nil {
 		time.Sleep(1 * time.Second)
-		goto retry
+		goto retry_dial
 	}
+retry:
 	// Get HTML of webpage for data (NHosts, Depth, ...)
 	doc, err := goquery.NewDocument("http://localhost:8080/")
 	if err != nil {
 		log.Println("unable to get log data: retrying:", err)
 		goto retry
+	}
+	if view {
+		browser.OpenURL("http://localhost:8080/")
 	}
 	nhosts := doc.Find("#numhosts").First().Text()
 	log.Println("hosts:", nhosts)
@@ -249,6 +264,7 @@ type T struct {
 	hpn   int
 	bf    int
 	nmsgs int
+	rate  int
 }
 
 // hpn, bf, nmsgsG
@@ -256,7 +272,8 @@ func RunTest(t T) RunStats {
 	hpn := fmt.Sprintf("-hpn=%d", t.hpn)
 	bf := fmt.Sprintf("-bf=%d", t.bf)
 	nmsgs := fmt.Sprintf("-nmsgs=%d", t.nmsgs)
-	cmd := exec.Command("./deploy2deter", hpn, bf, nmsgs, "-debug=true")
+	rate := fmt.Sprintf("-rate=%d", t.rate)
+	cmd := exec.Command("./deploy2deter", hpn, bf, nmsgs, rate, debug)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
@@ -301,14 +318,14 @@ func RunTests(name string, ts []T) {
 
 // hpn=1 bf=2 nmsgs=700
 var TestT = []T{
-	{1, 2, 700},
+	{1, 2, 700, -1},
 }
 
 func LoadTest(hpn, bf, low, high, step int) []T {
 	n := (high - low) / step
 	ts := make([]T, 0, n)
 	for nmsgs := low; nmsgs <= high; nmsgs += step {
-		ts = append(ts, T{hpn, bf, nmsgs})
+		ts = append(ts, T{hpn, bf, nmsgs, -1})
 	}
 	return ts
 }
@@ -316,12 +333,13 @@ func LoadTest(hpn, bf, low, high, step int) []T {
 func DepthTest(hpn, low, high, step int) []T {
 	ts := make([]T, 0)
 	for bf := low; bf <= high; bf += step {
-		ts = append(ts, T{hpn, bf, 7000})
+		ts = append(ts, T{hpn, bf, 7000, -1})
 	}
 	return ts
 }
 
 func main() {
+	view = true
 	os.Chdir("..")
 	MkTestDir()
 	err := exec.Command("go", "build", "-v").Run()
