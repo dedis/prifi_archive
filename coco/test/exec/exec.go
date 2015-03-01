@@ -41,7 +41,7 @@ var pprofaddr string
 var physaddr string
 var rootwait int
 var debug bool
-var rate int
+var failures int
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -54,6 +54,7 @@ func init() {
 	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
 	flag.BoolVar(&debug, "debug", false, "set debugging")
+	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 }
 
 func main() {
@@ -167,6 +168,9 @@ func main() {
 			log.Fatal(err)
 		}
 		for _, s := range stampers {
+			if failures > 0 {
+				s.Signer.SetTestingFailures(true)
+			}
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
 				if s.IsRoot() {

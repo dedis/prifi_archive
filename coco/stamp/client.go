@@ -133,7 +133,6 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 // When client asks for val to be timestamped
 // It blocks until it get a stamp reply back
 func (c *Client) TimeStamp(val []byte, TSServerName string) error {
-
 	c.Mux.Lock()
 	c.reqno++
 	myReqno := c.reqno

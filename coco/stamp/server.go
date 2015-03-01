@@ -170,7 +170,7 @@ func (s *Server) Run(role string, nRounds int) {
 
 	case "root":
 		// every 5 seconds start a new round
-		ticker := time.Tick(ROUND_TIME * time.Second)
+		ticker := time.Tick(ROUND_TIME)
 		for _ = range ticker {
 			s.nRounds++
 			if s.nRounds > nRounds {

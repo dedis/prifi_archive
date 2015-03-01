@@ -21,6 +21,7 @@ var pprofaddr string
 var physaddr string
 var rootwait int
 var debug bool
+var failures bool
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -33,6 +34,7 @@ func init() {
 	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
 	flag.BoolVar(&debug, "debug", false, "set debugging")
+	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 }
 
 func main() {

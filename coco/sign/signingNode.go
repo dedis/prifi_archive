@@ -5,6 +5,8 @@ import (
 	"crypto/cipher"
 	"encoding/binary"
 	"errors"
+	"hash/fnv"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -32,9 +34,9 @@ const (
 type Node struct {
 	coconet.Host
 
-	// Set to true if FaultyHosts are used instead of Hosts
-	// Signing Node must test this field to know if it must simulate failure
-	TestingFailures bool // false by default
+	// Signing Node will Fail at FailureRate probability
+	FailureRate int
+	Rand        *rand.Rand
 
 	Type   Type
 	Height int
@@ -61,6 +63,10 @@ type Node struct {
 	closed      chan error // error sent when connection closed
 	done        chan int   // round number sent when round done
 	commitsDone chan int   // round number sent when announce/commit phase done
+}
+
+func (sn *Node) SetFailureRate(v int) {
+	sn.FailureRate = v
 }
 
 func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
@@ -163,7 +169,11 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 
-	sn.TestingFailures = false
+	sn.FailureRate = 0
+	h := fnv.New32a()
+	h.Write([]byte(hn.Name()))
+	seed := h.Sum32()
+	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	return sn
 }
 
@@ -181,8 +191,32 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 
-	sn.TestingFailures = false
+	sn.FailureRate = 0
+	h := fnv.New32a()
+	h.Write([]byte(hn.Name()))
+	seed := h.Sum32()
+	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	return sn
+}
+
+func (sn *Node) ShouldIFail(phase string) bool {
+	if sn.FailureRate > 0 {
+		// If we were manually set to always fail
+		if sn.Host.(*coconet.FaultyHost).IsDead() ||
+			sn.Host.(*coconet.FaultyHost).IsDeadFor(phase) {
+			// log.Println(sn.Name(), "dead for "+phase)
+			return true
+		}
+
+		// If we were only given a probability of failing
+		if p := sn.Rand.Int() % 100; p < sn.FailureRate {
+			// log.Println(sn.Name(), "died for "+phase, "p", p, "with prob ", sn.FailureRate)
+			return true
+		}
+
+	}
+
+	return false
 }
 
 func (sn *Node) AddPeer(conn string, PubKey abstract.Point) {
