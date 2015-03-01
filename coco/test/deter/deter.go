@@ -43,6 +43,7 @@ func GenExecCmd(phys string, names []string, loggerport, rootwait string) string
 			" -hostname=" + n +
 			" -logger=" + loggerport +
 			" -debug=" + debug +
+			" -rounds=" + strconv.Itoa(rounds) +
 			" </dev/null 2>/dev/null 1>/dev/null &); "
 	}
 	return total
@@ -53,6 +54,7 @@ var hpn string
 var bf string
 var debug string
 var rate int
+var rounds int
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
@@ -60,11 +62,12 @@ func init() {
 	flag.StringVar(&bf, "bf", "", "branching factor")
 	flag.StringVar(&debug, "debug", "false", "set debug mode")
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages")
+	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
 }
 
 func main() {
 	flag.Parse()
-	fmt.Println("running deter with nmsgs:", nmsgs)
+	fmt.Println("running deter with nmsgs:", nmsgs, rate, rounds)
 	// fs defines the list of files that are needed to run the timestampers.
 	fs := []string{"exec", "forkexec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
 
