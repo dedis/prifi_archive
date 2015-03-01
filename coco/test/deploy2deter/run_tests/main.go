@@ -208,7 +208,8 @@ retry:
 	if err != nil {
 		log.Fatal("unable to convert depth to be a number:", depth)
 	}
-
+	client_done := false
+	root_done := false
 	var rs RunStats
 	rs.NHosts = nh
 	rs.Depth = d
@@ -256,6 +257,9 @@ retry:
 			k++
 			rs.StdDev = math.Sqrt(S / (k - 1))
 		} else if bytes.Contains(data, []byte("forkexec")) {
+			if root_done {
+				continue
+			}
 			var ss SysStats
 			err := json.Unmarshal(data, &ss)
 			if err != nil {
@@ -264,8 +268,14 @@ retry:
 			rs.SysTime = ss.SysTime
 			rs.UserTime = ss.UserTime
 			log.Println("FORKEXEC:", ss)
-			break
+			if client_done {
+				break
+			}
+			root_done = true
 		} else if bytes.Contains(data, []byte("client_msg_stats")) {
+			if client_done {
+				continue
+			}
 			var cms ClientMsgStats
 			err := json.Unmarshal(data, &cms)
 			if err != nil {
@@ -284,6 +294,10 @@ retry:
 			observed := avg / 1000 // set avg to messages per milliseconds
 			observed = 1 / observed
 			rs.Rate = observed
+			if root_done {
+				break
+			}
+			client_done = true
 		}
 	}
 	return rs
@@ -417,6 +431,7 @@ func DepthTest(hpn, low, high, step int) []T {
 func main() {
 	view = true
 	os.Chdir("..")
+	SetDebug(true)
 	MkTestDir()
 	err := exec.Command("go", "build", "-v").Run()
 	if err != nil {

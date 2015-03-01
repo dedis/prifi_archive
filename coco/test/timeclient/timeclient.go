@@ -95,7 +95,7 @@ func streamMessgs(c *stamp.Client, servers []string) {
 
 	log.WithFields(log.Fields{
 		"file":        logutils.File(),
-		"type":        "ClientReceived",
+		"type":        "client_msg_stats",
 		"buck":        buck,
 		"roundsAfter": roundsAfter,
 	}).Info("")
