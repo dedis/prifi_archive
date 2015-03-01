@@ -50,6 +50,60 @@ func genRandomMessages(n int) [][]byte {
 	return msgs
 }
 
+func streamMessgs(c *stamp.Client, servers []string) {
+	// buck[i] = # of timestamp responses received in second i
+	buck := make([]int, MAX_N_SECONDS)
+	// roundsAfter[i] = # of timestamp requests that were processed i rounds late
+	roundsAfter := make([]int, MAX_N_ROUNDS)
+	ticker := time.Tick(time.Duration(rate) * time.Millisecond)
+	msg := genRandomMessages(1)[0]
+
+	i := 0
+	nServers := len(servers)
+	firstReceived := false
+	var tFirst time.Time
+
+	// every tick send a time stamp request to every server specified
+	for _ = range ticker {
+
+		go func(msg []byte, s string) {
+			t0 := time.Now()
+			err := c.TimeStamp(msg, s)
+			t := time.Since(t0)
+
+			if err == io.EOF {
+				log.Fatal("EOF: termininating time client")
+			}
+
+			if !firstReceived {
+				firstReceived = true
+				tFirst = time.Now()
+			}
+
+			// TODO: we might want to subtract a buffer from secToTimeStamp
+			// to account for computation time
+			secToTimeStamp := t.Seconds()
+			secSinceFirst := time.Since(tFirst).Seconds()
+
+			buck[int(secSinceFirst)]++
+			roundsAfter[int(secToTimeStamp)/int(stamp.ROUND_TIME/time.Second)]++
+
+		}(msg, servers[i])
+
+		i = (i + 1) % nServers
+	}
+
+	log.WithFields(log.Fields{
+		"file":        logutils.File(),
+		"type":        "ClientReceived",
+		"buck":        buck,
+		"roundsAfter": roundsAfter,
+	}).Info("")
+}
+
+var MAX_N_SECONDS int = 1 * 60 * 60 // 1 hours' worth of seconds
+var MAX_N_ROUNDS int = MAX_N_SECONDS / int(stamp.ROUND_TIME/time.Second)
+
 func main() {
 	flag.Parse()
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -60,17 +114,11 @@ func main() {
 			log.Fatal(err)
 		}
 		log.AddHook(lh)
-		// log.Println("Log Test")
-		// fmt.Println("exiting logger block")
 	}
-	// log.SetFlags(log.Lshortfile)
-	// log.SetPrefix(name + ":")
-	// log.Println("TIMESTAMP CLIENT")
 	c := stamp.NewClient(name)
-	// log.Println("SERVER: ", server)
 	msgs := genRandomMessages(nmsgs)
-
 	servers := strings.Split(server, ",")
+
 	// log.Println("connecting to servers:", servers)
 	for _, s := range servers {
 		h, p, err := net.SplitHostPort(s)
@@ -80,22 +128,11 @@ func main() {
 		pn, _ := strconv.Atoi(p)
 		c.AddServer(s, coconet.NewTCPConn(net.JoinHostPort(h, strconv.Itoa(pn+1))))
 	}
-	// if the rate has been specified then send out one message every
-	// rate milliseconds
+
+	// if rate specified send out one message every rate milliseconds
 	if rate > 0 {
-		ticker := time.Tick(time.Duration(rate) * time.Millisecond)
-		i := 0
-		for _ = range ticker {
-			// every tick send a time stamp request to every server specified
-			msg := genRandomMessages(1)[0]
-			s := servers[i]
-			err := c.TimeStamp(msg, s)
-			if err == io.EOF {
-				log.Errorln("EOF: termininating time client")
-				return
-			}
-			i += 1
-		}
+		// Stream time stamp requests
+		streamMessgs(c, servers)
 		return
 	}
 
