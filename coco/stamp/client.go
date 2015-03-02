@@ -103,7 +103,8 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 				if coco.DEBUG {
 					log.Println("SUCCESS: connected to server:", conn)
 				}
-				if c.handleServer(conn) == io.EOF {
+				err := c.handleServer(conn)
+				if err == io.EOF {
 					c.Servers[name] = nil
 					return
 				} else {

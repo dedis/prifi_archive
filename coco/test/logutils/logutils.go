@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 	"runtime"
 	"strconv"
 	"time"
@@ -41,10 +40,8 @@ func File() string {
 	return file + ":" + strconv.Itoa(line)
 }
 
-// host is my host: what machine I am running on
-// hostport is the address of the logging server
-// host
-func NewLoggerHook(hostport, host, app string) (*LoggerHook, error) {
+func (lh *LoggerHook) Connect() {
+	hostport := lh.HostPort
 retry:
 	addr := "ws://" + hostport + "/_log"
 	ws, err := websocket.Dial(addr, "", "http://localhost/")
@@ -53,25 +50,31 @@ retry:
 		time.Sleep(time.Second)
 		goto retry
 	}
+	lh.Conn = ws
+}
+
+// host is my host: what machine I am running on
+// hostport is the address of the logging server
+// host
+func NewLoggerHook(hostport, host, app string) (*LoggerHook, error) {
+retry:
+	addr := "ws://" + hostport + "/_log"
+	ws, err := websocket.Dial(addr, "", "http://localhost/")
+	if err != nil {
+		time.Sleep(time.Second)
+		goto retry
+	}
 	return &LoggerHook{hostport, ws, &JSONFormatter{host, app}}, err
 }
 
 // Fire is called when a log event is fired.
 func (hook *LoggerHook) Fire(entry *logrus.Entry) error {
-	// fmt.Println("running log hook")
 	serialized, err := hook.f.Format(entry)
 	if err != nil {
-		return fmt.Errorf("Failed to  fields to format, %v", err)
+		return fmt.Errorf("Failed to fields to format, %v", err)
 	}
-	// only report some subset of the client rounds
-	if k, ok := entry.Data["type"]; ok && k.(string) == "client_round" {
-		if rand.Intn(512) > 1 {
-			return nil
-		}
-	}
-	bytesWritten, err := hook.Conn.Write(serialized)
+	_, err = hook.Conn.Write(serialized)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to send log line to Logger via TCP. Wrote %d bytes before error: %v", bytesWritten, err)
 		return err
 	}
 

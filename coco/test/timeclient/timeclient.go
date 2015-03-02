@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -25,6 +26,7 @@ var nmsgs int
 var name string
 var logger string
 var rate int
+var debug bool
 
 func init() {
 	addr, _ := oldconfig.GetAddress()
@@ -35,6 +37,7 @@ func init() {
 	flag.StringVar(&name, "name", addr, "name for the client")
 	flag.StringVar(&logger, "logger", "", "remote logger")
 	flag.IntVar(&rate, "rate", -1, "milliseconds between timestamp requests")
+	flag.BoolVar(&debug, "debug", false, "set debug mode")
 	//log.SetFormatter(&log.JSONFormatter{})
 }
 
@@ -51,13 +54,13 @@ func genRandomMessages(n int) [][]byte {
 }
 
 func streamMessgs(c *stamp.Client, servers []string) {
+	log.Println("STREAMING: GIVEN RATE")
 	// buck[i] = # of timestamp responses received in second i
-	buck := make([]int, MAX_N_SECONDS)
+	buck := make([]int64, MAX_N_SECONDS)
 	// roundsAfter[i] = # of timestamp requests that were processed i rounds late
-	roundsAfter := make([]int, MAX_N_ROUNDS)
+	roundsAfter := make([]int64, MAX_N_ROUNDS)
 	ticker := time.Tick(time.Duration(rate) * time.Millisecond)
 	msg := genRandomMessages(1)[0]
-
 	i := 0
 	nServers := len(servers)
 	firstReceived := false
@@ -65,7 +68,6 @@ func streamMessgs(c *stamp.Client, servers []string) {
 
 	// every tick send a time stamp request to every server specified
 	for _ = range ticker {
-
 		go func(msg []byte, s string) {
 			t0 := time.Now()
 			err := c.TimeStamp(msg, s)
@@ -80,8 +82,11 @@ func streamMessgs(c *stamp.Client, servers []string) {
 				}).Info("")
 
 				log.Fatal("EOF: termininating time client")
+			} else if err != nil {
+				// ignore errors
+				return
 			}
-
+			log.Println("successfully timestamped item")
 			if !firstReceived {
 				firstReceived = true
 				tFirst = time.Now()
@@ -91,9 +96,9 @@ func streamMessgs(c *stamp.Client, servers []string) {
 			// to account for computation time
 			secToTimeStamp := t.Seconds()
 			secSinceFirst := time.Since(tFirst).Seconds()
-
-			buck[int(secSinceFirst)]++
-			roundsAfter[int(secToTimeStamp)/int(stamp.ROUND_TIME/time.Second)]++
+			atomic.AddInt64(&buck[int(secSinceFirst)], 1)
+			index := int(secToTimeStamp) / int(stamp.ROUND_TIME/time.Second)
+			atomic.AddInt64(&roundsAfter[index], 1)
 
 		}(msg, servers[i])
 
@@ -115,10 +120,9 @@ func main() {
 			log.Fatal(err)
 		}
 		log.AddHook(lh)
-		log.Println("time client connected to logger")
 	}
 	c := stamp.NewClient(name)
-	msgs := genRandomMessages(nmsgs)
+	msgs := genRandomMessages(nmsgs + 20)
 	servers := strings.Split(server, ",")
 
 	// log.Println("connecting to servers:", servers)
@@ -133,7 +137,6 @@ func main() {
 
 	// if rate specified send out one message every rate milliseconds
 	if rate > 0 {
-		log.Println("CLIENT RATE:", rate)
 		// Stream time stamp requests
 		streamMessgs(c, servers)
 		return
@@ -151,8 +154,8 @@ func main() {
 			wg.Add(1)
 			go func(i, s int) {
 				defer wg.Done()
-				e := c.TimeStamp(msgs[i], servers[s])
-				if e == io.EOF {
+				err := c.TimeStamp(msgs[i], servers[s])
+				if err == io.EOF {
 					log.WithFields(log.Fields{
 						"file": logutils.File(),
 						"type": "client_msg_stats",

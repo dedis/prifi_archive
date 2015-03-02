@@ -38,7 +38,7 @@ import (
 func GenExecCmd(phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
-		total += "(sudo ./forkexec -rootwait=" + rootwait +
+		total += "(cd remote; sudo ./forkexec -rootwait=" + rootwait +
 			" -physaddr=" + phys +
 			" -hostname=" + n +
 			" -logger=" + loggerport +
@@ -67,16 +67,14 @@ func init() {
 
 func main() {
 	flag.Parse()
+	log.SetFlags(log.Lshortfile)
 	fmt.Println("running deter with nmsgs:", nmsgs, rate, rounds)
-	// fs defines the list of files that are needed to run the timestampers.
-	fs := []string{"exec", "forkexec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
 
-	// read in the hosts file.
-	virt, err := cliutils.ReadLines("virt.txt")
+	virt, err := cliutils.ReadLines("remote/virt.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
-	phys, err := cliutils.ReadLines("phys.txt")
+	phys, err := cliutils.ReadLines("remote/phys.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -92,10 +90,20 @@ func main() {
 			defer wg.Done()
 			cliutils.SshRun("", h, "sudo killall exec logserver timeclient scp ssh 2>/dev/null >/dev/null")
 			time.Sleep(1 * time.Second)
-			cliutils.SshRun("", h, "sudo killall forkexec")
+			cliutils.SshRun("", h, "sudo killall forkexec 2>/dev/null >/dev/null")
 		}(h)
 	}
 	wg.Wait()
+
+	for _, h := range phys {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			cliutils.Rsync("", h, "remote", "")
+		}(h)
+	}
+	wg.Wait()
+
 	masterLogger := phys[0]
 	slaveLogger1 := phys[1]
 	slaveLogger2 := phys[2]
@@ -105,38 +113,22 @@ func main() {
 	virt = virt[3:]
 
 	// Read in and parse the configuration file
-	file, e := ioutil.ReadFile("cfg.json")
-	if e != nil {
-		log.Fatal("deter.go: error reading configuration file: %v\n", e)
+	file, err := ioutil.ReadFile("remote/cfg.json")
+	if err != nil {
+		log.Fatal("deter.go: error reading configuration file: %v\n", err)
+	}
+	log.Println("cfg file:", string(file))
+	var cf config.ConfigFile
+	err = json.Unmarshal(file, &cf)
+	if err != nil {
+		log.Fatal("unable to unmarshal config.ConfigFile:", err)
 	}
 
-	for _, logger := range loggers {
-		cliutils.Scp("", logger, "cfg.json", "logserver/cfg.json")
-	}
+	hostnames := cf.Hosts
 
-	var tree graphs.Tree
-	json.Unmarshal(file, &tree)
-
-	hostnames := make([]string, 0, len(virt))
-	tree.TraverseTree(func(t *graphs.Tree) {
-		hostnames = append(hostnames, t.Name)
-	})
-
-	depth := graphs.Depth(&tree)
+	depth := graphs.Depth(cf.Tree)
 
 	log.Println("depth of tree:", depth)
-	cf := config.ConfigFromTree(&tree, hostnames)
-	cfb, err := json.Marshal(cf)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// write out a true configuration file
-	log.Println(string(cfb))
-	err = ioutil.WriteFile("cfg.json", cfb, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	// mapping from physical node name to the timestamp servers that are running there
 	// essentially a reverse mapping of vpmap except ports are also used
@@ -148,31 +140,6 @@ func main() {
 		ss = append(ss, virt)
 		physToServer[p] = ss
 	}
-
-	fmt.Println("copying over files")
-	for _, logger := range loggers {
-		cliutils.Scp("", logger, "logserver", "")
-	}
-	// copy the files over to all the host machines.
-	for _, f := range fs {
-		if f == "exec" {
-			log.Println("copying exec over to destination")
-		}
-		for _, h := range phys {
-			wg.Add(1)
-			go func(h string, f string) {
-				defer wg.Done()
-				cliutils.Scp("", h, f, f)
-			}(h, f)
-		}
-		// cfg.json on logger should be in tree format
-		if f != "cfg.json" {
-			for _, logger := range loggers {
-				cliutils.Scp("", logger, f, "logserver/"+f)
-			}
-		}
-	}
-	wg.Wait()
 
 	// start up the logging server on the final host at port 10000
 	fmt.Println("starting up logserver")
@@ -188,7 +155,7 @@ func main() {
 			master = ""
 		}
 
-		go cliutils.SshRunStdout("", logger, "cd logserver; sudo ./logserver -addr="+loggerport+
+		go cliutils.SshRunStdout("", logger, "cd remote/logserver; sudo ./logserver -addr="+loggerport+
 			" -hosts="+strconv.Itoa(len(hostnames))+
 			" -depth="+strconv.Itoa(depth)+
 			" -bf="+bf+
@@ -210,16 +177,20 @@ func main() {
 			continue
 		}
 		servers := strings.Join(ss, ",")
-		go cliutils.SshRunBackground("", p, "sudo ./timeclient -nmsgs="+nmsgs+
-			" -name=client@"+p+
-			" -server="+servers+
-			" -logger="+loggerports[i]+
-			" -debug="+debug+
-			" -rate="+strconv.Itoa(rate))
+		go func(i int, p string) {
+			_, err := cliutils.SshRun("", p, "cd remote; sudo ./timeclient -nmsgs="+nmsgs+
+				" -name=client@"+p+
+				" -server="+servers+
+				" -logger="+loggerports[i]+
+				" -debug="+debug+
+				" -rate="+strconv.Itoa(rate))
+			if err != nil {
+				log.Println(err)
+			}
+		}(i, p)
 		i = (i + 1) % len(loggerports)
 	}
-
-	rootwait := strconv.Itoa(30)
+	rootwait := strconv.Itoa(10)
 	for phys, virts := range physToServer {
 		if len(virts) == 0 {
 			continue
@@ -229,7 +200,7 @@ func main() {
 		wg.Add(1)
 		//time.Sleep(500 * time.Millisecond)
 		go func(phys, cmd string) {
-			// log.Println("running on ", phys, cmd)
+			//log.Println("running on ", phys, cmd)
 			err := cliutils.SshRunBackground("", phys, cmd)
 			if err != nil {
 				log.Fatal("ERROR STARTING TIMESTAMPER:", err)

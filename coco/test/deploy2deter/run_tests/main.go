@@ -229,7 +229,7 @@ retry:
 			continue
 		}
 		if bytes.Contains(data, []byte("EOF")) || bytes.Contains(data, []byte("terminating")) {
-			log.Println(
+			log.Printf(
 				"EOF/terminating Detected: need forkexec to report and clients: %b %b",
 				root_done, client_done)
 		}
@@ -354,7 +354,7 @@ func RunTest(t T) RunStats {
 	bf := fmt.Sprintf("-bf=%d", t.bf)
 	nmsgs := fmt.Sprintf("-nmsgs=%d", t.nmsgs)
 	rate := fmt.Sprintf("-rate=%d", t.rate)
-	rounds := fmt.Sprintf("-rate=%d", t.rounds)
+	rounds := fmt.Sprintf("-rounds=%d", t.rounds)
 	cmd := exec.Command("./deploy2deter", hpn, bf, nmsgs, rate, rounds, debug)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -363,7 +363,7 @@ func RunTest(t T) RunStats {
 		log.Fatal(err)
 	}
 	// give it a while to start up
-	time.Sleep(3 * time.Minute)
+	time.Sleep(30 * time.Second)
 	rs := Monitor()
 	cmd.Process.Kill()
 	fmt.Println("TEST COMPLETE:", rs)
@@ -400,7 +400,7 @@ func RunTests(name string, ts []T) {
 
 // hpn=1 bf=2 nmsgs=700
 var TestT = []T{
-	{1, 2, -1, 1, 10},
+	{1, 2, -1, 5000, 10},
 	{1, 2, 700, -1, 10},
 }
 
@@ -438,7 +438,7 @@ var DefaultRounds int = 100
 func main() {
 	view = true
 	os.Chdir("..")
-	//SetDebug(true)
+	SetDebug(true)
 	DefaultRounds = 10
 	MkTestDir()
 	err := exec.Command("go", "build", "-v").Run()

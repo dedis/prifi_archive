@@ -15,7 +15,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -58,6 +57,7 @@ func init() {
 
 func main() {
 	flag.Parse()
+	log.Println("Running Timestamper:", logger)
 	if debug {
 		coco.DEBUG = true
 	}
@@ -68,15 +68,16 @@ func main() {
 	// connect with the logging server
 	if logger != "" {
 		// blocks until we can connect to the logger
+		log.Println("Connecting to Logger")
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
+		log.Println("Connected to Logger")
 		if err != nil {
 			log.WithFields(log.Fields{
 				"file": logutils.File(),
 			}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
 		}
 		log.AddHook(lh)
-		log.SetOutput(ioutil.Discard)
-		//log.Println("Log Test")
+		//log.SetOutput(ioutil.Discard)
 		//fmt.Println("exiting logger block")
 	}
 	if physaddr == "" {
