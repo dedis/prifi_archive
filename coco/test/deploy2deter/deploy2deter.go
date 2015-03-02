@@ -37,10 +37,9 @@ var bf int
 var hpn int
 
 var nmsgs int
-
 var debug bool
-
 var rate int
+var failures int
 
 var rounds int
 
@@ -50,6 +49,7 @@ func init() {
 	flag.IntVar(&nmsgs, "nmsgs", 100, "number of messages per round")
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages: if rate > 0 then used")
 	flag.BoolVar(&debug, "debug", false, "run in debugging mode")
+	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run for")
 }
 

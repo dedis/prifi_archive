@@ -35,10 +35,11 @@ import (
 	"github.com/dedis/prifi/coco/test/graphs"
 )
 
-func GenExecCmd(phys string, names []string, loggerport, rootwait string) string {
+func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
 		total += "(cd remote; sudo ./forkexec -rootwait=" + rootwait +
+			" -failures=" + strconv.Itoa(failures) +
 			" -physaddr=" + phys +
 			" -hostname=" + n +
 			" -logger=" + loggerport +
@@ -54,6 +55,7 @@ var hpn string
 var bf string
 var debug string
 var rate int
+var failures int
 var rounds int
 
 func init() {
@@ -62,6 +64,7 @@ func init() {
 	flag.StringVar(&bf, "bf", "", "branching factor")
 	flag.StringVar(&debug, "debug", "false", "set debug mode")
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages")
+	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
 }
 
@@ -195,7 +198,7 @@ func main() {
 		if len(virts) == 0 {
 			continue
 		}
-		cmd := GenExecCmd(phys, virts, loggerports[i], rootwait)
+		cmd := GenExecCmd(failures, phys, virts, loggerports[i], rootwait)
 		i = (i + 1) % len(loggerports)
 		wg.Add(1)
 		//time.Sleep(500 * time.Millisecond)

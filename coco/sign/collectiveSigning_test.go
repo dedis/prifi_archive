@@ -104,7 +104,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 
 	for i := 0; i < nNodes; i++ {
 		if len(faultyNodes) > 0 {
-			nodes[i].TestingFailures = true
+			nodes[i].FailureRate = 1
 		}
 
 		go func(i int) {
@@ -126,7 +126,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 //    / \   \
 //   2   3   5
 func TestSmallConfigHealthy(t *testing.T) {
-	if err := runTreeSmallConfig(sign.MerkleTree); err != nil {
+	if err := runTreeSmallConfig(sign.MerkleTree, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -134,12 +134,21 @@ func TestSmallConfigHealthy(t *testing.T) {
 func TestSmallConfigFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTreeSmallConfig(sign.MerkleTree, faultyNodes...); err != nil {
+	if err := runTreeSmallConfig(sign.MerkleTree, 100, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func runTreeSmallConfig(signType sign.Type, faultyNodes ...int) error {
+func TestSmallConfigFaulty2(t *testing.T) {
+	failureRate := 15
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 1, 2, 3, 4, 5)
+	if err := runTreeSmallConfig(sign.MerkleTree, failureRate, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int) error {
 	var hostConfig *oldconfig.HostConfig
 	var err error
 	if len(faultyNodes) > 0 {
@@ -153,12 +162,16 @@ func runTreeSmallConfig(signType sign.Type, faultyNodes ...int) error {
 
 	for _, fh := range faultyNodes {
 		fmt.Println("Setting", hostConfig.SNodes[fh].Name(), "as faulty")
-		hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("response", true)
+		if failureRate == 100 {
+			hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("commit", true)
+
+		}
+		// hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).Die()
 	}
 
 	if len(faultyNodes) > 0 {
 		for i := range hostConfig.SNodes {
-			hostConfig.SNodes[i].TestingFailures = true
+			hostConfig.SNodes[i].FailureRate = failureRate
 		}
 	}
 

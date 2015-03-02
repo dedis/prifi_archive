@@ -423,7 +423,13 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 			if _, ok := hc.Hosts[addr]; !ok {
 				// only create the tcp hosts requested
 				if opts.Host == "" || opts.Host == addr {
-					hosts[addr] = coconet.NewTCPHost(addr)
+					if opts.Faulty == true {
+						hosts[h] = &coconet.FaultyHost{}
+						tcpHost := coconet.NewTCPHost(addr)
+						hosts[h] = coconet.NewFaultyHost(tcpHost)
+					} else {
+						hosts[addr] = coconet.NewTCPHost(addr)
+					}
 				} else {
 					hosts[addr] = nil // it is there but not backed
 				}

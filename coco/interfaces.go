@@ -33,4 +33,8 @@ type Signer interface {
 	RegisterAnnounceFunc(cf CommitFunc)
 
 	RegisterDoneFunc(df DoneFunc)
+
+	// Allows user of Signer to inform Signer to run with simulated failures
+	// As to test robustness of Signer
+	SetFailureRate(val int)
 }

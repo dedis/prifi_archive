@@ -142,7 +142,7 @@ func (sn *Node) waitOn(ch chan *SigningMessage, timeout time.Duration, what stri
 					return messgs
 				}
 			case <-time.After(timeout):
-				log.Warnln(sn.Name(), "timeouted on", what, timeout)
+				log.Warnln(sn.Name(), "timeouted on", what, timeout, "got", len(messgs), "out of", nChildren)
 				return messgs
 			}
 		}
@@ -277,10 +277,7 @@ func (sn *Node) actOnCommits(Round int) (err error) {
 			ExceptionList: round.ExceptionList,
 			Round:         Round}
 
-		if sn.TestingFailures == true &&
-			(sn.Host.(*coconet.FaultyHost).IsDead() ||
-				sn.Host.(*coconet.FaultyHost).IsDeadFor("commit")) {
-			// fmt.Println(sn.Name(), "dead for commits")
+		if sn.ShouldIFail("commit") {
 			return
 		}
 
@@ -420,10 +417,7 @@ func (sn *Node) actOnResponses(Round int, exceptionV_hat abstract.Point, excepti
 	}
 
 	if !sn.IsRoot() {
-		if sn.TestingFailures == true &&
-			(sn.Host.(*coconet.FaultyHost).IsDead() ||
-				sn.Host.(*coconet.FaultyHost).IsDeadFor("response")) {
-			// fmt.Println(sn.Name(), "dead for response")
+		if sn.ShouldIFail("response") {
 			return nil
 		}
 		// report verify response error
@@ -499,13 +493,14 @@ func (sn *Node) VerifyResponses(Round int) error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(round.Log.V_hat) || (sn.IsRoot() && !round.c.Equal(c2)) {
+		// panic(sn.Name() + "reports ElGamal Collective Signature failed for Round" + strconv.Itoa(Round))
 		log.Errorln(sn.Name(), "reports ElGamal Collective Signature failed for Round", Round)
 		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
 	}
 
 	if sn.IsRoot() {
 		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
-		//log.Println(round.MTRoot)
+		// log.Println(round.MTRoot)
 	}
 	return nil
 }
