@@ -40,13 +40,17 @@ func removeTrailingZeroes(a []int64) []int64 {
 	return a[:i+1]
 }
 
+var muStats sync.Mutex
+
 func AggregateStats(buck, roundsAfter []int64) string {
+	muStats.Lock()
 	log.WithFields(log.Fields{
 		"file":        logutils.File(),
 		"type":        "client_msg_stats",
 		"buck":        removeTrailingZeroes(buck),
 		"roundsAfter": removeTrailingZeroes(roundsAfter),
 	}).Info("")
+	muStats.Unlock()
 	return "Client Finished Aggregating Statistics"
 }
 
@@ -60,20 +64,20 @@ func streamMessgs(c *stamp.Client, servers []string, rate int) {
 	msg := genRandomMessages(1)[0]
 	i := 0
 	nServers := len(servers)
-	var tFirst time.Time
 
 retry:
 	err := c.TimeStamp(msg, servers[0])
 	if err == io.EOF {
 		log.Fatal(AggregateStats(buck, roundsAfter))
 	} else if err != nil {
-		time.Sleep(500 * time.Millsecond)
+		time.Sleep(500 * time.Millisecond)
 		goto retry
 	}
 
 	tFirst := time.Now()
 
 	// every tick send a time stamp request to every server specified
+	// this will stream until we get an EOF
 	for _ = range ticker {
 		go func(msg []byte, s string) {
 			t0 := time.Now()
@@ -111,7 +115,7 @@ func Run(server string, nmsgs int, name string, rate int, debug bool) {
 	msgs := genRandomMessages(nmsgs + 20)
 	servers := strings.Split(server, ",")
 
-	// log.Println("connecting to servers:", servers)
+	// connect to all the servers listed
 	for _, s := range servers {
 		h, p, err := net.SplitHostPort(s)
 		if err != nil {
@@ -132,7 +136,7 @@ func Run(server string, nmsgs int, name string, rate int, debug bool) {
 	r := 0
 	s := 0
 
-	// log.Println("timeclient using rounds")
+	// ROUNDS BASED IS DEPRECATED
 	log.Fatal("ROUNDS BASED RATE LIMITING DEPRECATED")
 	for {
 		//start := time.Now()

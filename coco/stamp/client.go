@@ -77,6 +77,7 @@ func (c *Client) handleResponse(tsm *TimeStampMessage) {
 	case StampReplyType:
 		// Process reply and inform done channel associated with
 		// reply sequence number that the reply was received
+		// we know that there is no error at this point
 		c.ProcessStampReply(tsm)
 
 	}
@@ -104,14 +105,16 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 					log.Println("SUCCESS: connected to server:", conn)
 				}
 				err := c.handleServer(conn)
-				if err == io.EOF {
-					log.Println("EOF DETECTED: sending EOF to all pending TimeStamps")
+				// if a server encounters any terminating error
+				// terminate all pending client transactions and kill the client
+				if err != nil {
+					log.Errorln("EOF DETECTED: sending EOF to all pending TimeStamps")
+					c.Mux.Lock()
 					for _, ch := range c.doneChan {
-						log.Println("sending to receiving channel")
+						log.Println("Sending to Receiving Channel")
 						ch <- io.EOF
 					}
-					c.Mux.Lock()
-					c.Error = err
+					c.Error = io.EOF
 					c.Mux.Unlock()
 					return
 				} else {
@@ -159,6 +162,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 				log.Warn("error timestamping: ", err)
 			}
 		}
+		// pass back up all errors from putting to server
 		return err
 	}
 
@@ -170,7 +174,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	// wait until ProcessStampReply signals that reply was received
 	err = <-myChan
 	if err != nil {
-		log.Println("terminating timestamp request with error:", err)
+		log.Errorln("error received from DoneChan:", err)
 		return err
 	}
 
