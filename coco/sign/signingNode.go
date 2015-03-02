@@ -104,6 +104,8 @@ func (sn *Node) logTotalTime(totalTime time.Duration) {
 	}).Info("root challenge")
 }
 
+var MAX_WILLING_TO_WAIT time.Duration = 20 * time.Second
+
 func (sn *Node) StartSigningRound() error {
 	// send an announcement message to all other TSServers
 	sn.nRounds++
@@ -116,7 +118,7 @@ func (sn *Node) StartSigningRound() error {
 	go func() {
 		err := sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
 		if err != nil {
-			log.Println("Signature fails if at leas one node says it failed. set coco.DEBUG to true for more info")
+			log.Println("Signature fails if at least one node says it failed")
 			log.Errorln(err)
 		}
 	}()
@@ -137,6 +139,9 @@ func (sn *Node) StartSigningRound() error {
 
 	case err := <-sn.closed:
 		return err
+	case <-time.After(MAX_WILLING_TO_WAIT):
+		log.Fatal("Really bad. Round did not finish commit phase and did not report network errors.")
+		return errors.New("Really bad. Round did not finish commit phase and did not report network errors.")
 	}
 
 	// 2nd Phase succeeded or connection error
@@ -155,6 +160,9 @@ func (sn *Node) StartSigningRound() error {
 		return nil
 	case err := <-sn.closed:
 		return err
+	case <-time.After(MAX_WILLING_TO_WAIT):
+		log.Fatal("Really bad. Round did not finish respond phase and did not report network errors.")
+		return errors.New("Really bad. Round did not finish respond phase and did not report network errors.")
 	}
 
 }
