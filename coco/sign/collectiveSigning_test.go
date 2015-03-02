@@ -41,7 +41,7 @@ func TestStaticPubKey(t *testing.T) {
 
 func TestStaticFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
-	faultyNodes = append(faultyNodes, 100)
+	faultyNodes = append(faultyNodes, 1)
 
 	if err := runStaticTest(sign.PubKey, faultyNodes...); err != nil {
 		t.Fatal(err)

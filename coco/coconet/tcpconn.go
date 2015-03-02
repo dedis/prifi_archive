@@ -17,6 +17,7 @@ import (
 type TCPConn struct {
 	sync.RWMutex
 
+	lock sync.Mutex
 	name string
 	conn net.Conn
 	enc  *gob.Encoder
@@ -101,6 +102,9 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 
 // blocks until we get something
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
+
 	for tc.dec == nil {
 		// panic("no decoder yet")
 		return ConnectionNotEstablished
@@ -118,10 +122,13 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 }
 
 func (tc *TCPConn) Close() {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	log.Errorln("Closing Connection")
 	if tc.conn != nil {
 		tc.conn.Close()
 	}
+
 	tc.conn = nil
 	tc.enc = nil
 	tc.dec = nil
