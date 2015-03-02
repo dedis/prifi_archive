@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
 	"os/exec"
 	"strconv"
 
@@ -49,13 +48,14 @@ func main() {
 			}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
 		}
 		log.AddHook(lh)
-		log.SetOutput(ioutil.Discard)
+		//log.SetOutput(ioutil.Discard)
 		//log.Println("Log Test")
 		//fmt.Println("exiting logger block")
 	}
 	// log.Println("IN FORK EXEC")
 	// recombine the flags for exec to use
 	args := []string{
+		"-failures=" + strconv.Itoa(failures),
 		"-hostname=" + hostname,
 		"-config=" + configFile,
 		"-logger=" + logger,
@@ -66,16 +66,10 @@ func main() {
 		"-debug=" + strconv.FormatBool(debug),
 		"-rounds=" + strconv.Itoa(rounds),
 	}
-	//infos, _ := ioutil.ReadDir(".")*/
-	//for _, i := range infos {
-	//if i.Name() == "exec" {
-	//log.Println("exec file exists")
-	//}
-	//}
 	cmd := exec.Command("./exec", args...)
 	//cmd.Stdout = log.StandardLogger().Writer()
 	//cmd.Stderr = log.StandardLogger().Writer()
-	//log.Println("running command:", cmd)
+	// log.Println("running command:", cmd)
 	err := cmd.Run()
 	if err != nil {
 		log.Errorln("cmd run:", err)

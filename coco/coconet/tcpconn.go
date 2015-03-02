@@ -5,8 +5,8 @@ import (
 	"errors"
 	"io"
 	"net"
-	"os"
 	"sync"
+	"syscall"
 
 	log "github.com/Sirupsen/logrus"
 
@@ -92,9 +92,12 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 
 	err := tc.enc.Encode(bm)
 	if err != nil {
-		log.Errorln("failed to put/encode:", err)
-		if err == io.EOF {
-			log.Println("tcpconn: put: error is an io.EOF")
+		oe, ok := err.(*net.OpError)
+		if ok && oe.Err == syscall.EPIPE {
+			return io.EOF
+		}
+		if err == io.ErrClosedPipe {
+			return io.EOF
 		}
 	}
 	return err
@@ -112,9 +115,13 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 
 	err := tc.dec.Decode(bum)
 	if err != nil {
-		if err == io.EOF {
-			log.Println("tcpconn: get: error is an io.EOF")
-			os.Exit(0)
+		oe, ok := err.(*net.OpError)
+		if ok && oe.Err == syscall.EPIPE {
+			return io.EOF
+		}
+
+		if err == io.ErrClosedPipe {
+			err = io.EOF
 		}
 		log.Errorln("failed to decode:", err)
 	}

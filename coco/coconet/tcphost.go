@@ -3,7 +3,9 @@ package coconet
 // TCPHost is a simple implementation of Host that does not specify the
 import (
 	"errors"
+	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -406,6 +408,8 @@ func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 					if e == ErrorConnClosed {
 						errch <- errors.New("connection has been closed")
 						return
+					} else if e == io.EOF {
+						os.Exit(1)
 					}
 
 					ch <- NetworkMessg{Data: data, From: c}

@@ -26,18 +26,19 @@ type Client struct {
 
 	// maps response request numbers to channels confirming
 	// where response confirmations are sent
-	doneChan map[SeqNo]chan bool
+	doneChan map[SeqNo]chan error
 
 	nRounds     int    // # of last round messages were received in, as perceived by client
 	curRoundSig []byte // merkle tree root of last round
 	// roundChan   chan int // round numberd are sent in as rounds change
+	Error error
 }
 
 func NewClient(name string) (c *Client) {
 	c = &Client{name: name}
 	c.Servers = make(map[string]coconet.Conn)
 	c.history = make(map[SeqNo]TimeStampMessage)
-	c.doneChan = make(map[SeqNo]chan bool)
+	c.doneChan = make(map[SeqNo]chan error)
 	// c.roundChan = make(chan int)
 	return
 }
@@ -56,13 +57,12 @@ func (c *Client) Close() {
 func (c *Client) handleServer(s coconet.Conn) error {
 	for {
 		tsm := &TimeStampMessage{}
-		// log.Println("connection:", s)
 		err := s.Get(tsm)
 		if err != nil {
-			if err != coconet.ConnectionNotEstablished {
-				log.Warn("error getting from connection:", err)
+			if err == coconet.ConnectionNotEstablished {
 				continue
 			}
+			log.Warn("error getting from connection:", err)
 			return err
 		}
 		c.handleResponse(tsm)
@@ -77,6 +77,7 @@ func (c *Client) handleResponse(tsm *TimeStampMessage) {
 	case StampReplyType:
 		// Process reply and inform done channel associated with
 		// reply sequence number that the reply was received
+		// we know that there is no error at this point
 		c.ProcessStampReply(tsm)
 
 	}
@@ -103,8 +104,18 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 				if coco.DEBUG {
 					log.Println("SUCCESS: connected to server:", conn)
 				}
-				if c.handleServer(conn) == io.EOF {
-					c.Servers[name] = nil
+				err := c.handleServer(conn)
+				// if a server encounters any terminating error
+				// terminate all pending client transactions and kill the client
+				if err != nil {
+					log.Errorln("EOF DETECTED: sending EOF to all pending TimeStamps")
+					c.Mux.Lock()
+					for _, ch := range c.doneChan {
+						log.Println("Sending to Receiving Channel")
+						ch <- io.EOF
+					}
+					c.Error = io.EOF
+					c.Mux.Unlock()
 					return
 				} else {
 					// try reconnecting if it didn't close the channel
@@ -121,12 +132,8 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 	defer c.Mux.Unlock()
 	conn := c.Servers[name]
 	if conn == nil {
-		/*	log.WithFields(log.Fields{
-			"file": logutils.File(),
-		}).Warnln("Server is nil:", c.Servers, "with: ", name)*/
 		return errors.New("INVALID SERVER/NOT CONNECTED")
 	}
-	// log.Println("PUT CONN: ", conn)
 	return conn.Put(data)
 }
 
@@ -134,9 +141,13 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 // It blocks until it get a stamp reply back
 func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	c.Mux.Lock()
+	if c.Error != nil {
+		c.Mux.Unlock()
+		return c.Error
+	}
 	c.reqno++
 	myReqno := c.reqno
-	c.doneChan[c.reqno] = make(chan bool, 1) // new done channel for new req
+	c.doneChan[c.reqno] = make(chan error, 1) // new done channel for new req
 	c.Mux.Unlock()
 	// send request to TSServer
 	// log.Println("SENDING TIME STAMP REQUEST TO: ", TSServerName)
@@ -151,6 +162,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 				log.Warn("error timestamping: ", err)
 			}
 		}
+		// pass back up all errors from putting to server
 		return err
 	}
 
@@ -160,13 +172,17 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	c.Mux.Unlock()
 
 	// wait until ProcessStampReply signals that reply was received
-	<-myChan
+	err = <-myChan
+	if err != nil {
+		log.Errorln("error received from DoneChan:", err)
+		return err
+	}
 
 	// delete channel as it is of no longer meaningful
 	c.Mux.Lock()
 	delete(c.doneChan, myReqno)
 	c.Mux.Unlock()
-	return nil
+	return err
 }
 
 func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
@@ -186,5 +202,5 @@ func (c *Client) ProcessStampReply(tsm *TimeStampMessage) {
 	} else {
 		c.Mux.Unlock()
 	}
-	done <- true
+	done <- nil
 }

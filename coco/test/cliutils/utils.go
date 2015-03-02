@@ -33,7 +33,7 @@ func Rsync(username, host, file, dest string) error {
 	if username != "" {
 		addr = username + "@" + addr
 	}
-	cmd := exec.Command("rsync", "-az", file, addr)
+	cmd := exec.Command("rsync", "-azu", file, addr)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
