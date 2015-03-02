@@ -9,6 +9,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	// "strconv"
@@ -21,7 +22,6 @@ import (
 // 3. Challenge
 // 4. Response
 
-var ALLOW_PANICS bool = false
 var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
 // Start listening for messages coming from parent(up)
@@ -507,7 +507,7 @@ func (sn *Node) VerifyResponses(Round int) error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(round.Log.V_hat) || (sn.IsRoot() && !round.c.Equal(c2)) {
-		if ALLOW_PANICS == true {
+		if coco.DEBUG == true {
 			panic(sn.Name() + "reports ElGamal Collective Signature failed for Round" + strconv.Itoa(Round))
 		}
 		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
