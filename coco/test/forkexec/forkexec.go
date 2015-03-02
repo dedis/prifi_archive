@@ -19,7 +19,7 @@ var pprofaddr string
 var physaddr string
 var rootwait int
 var debug bool
-var failures bool
+var failures int
 var rounds int
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
@@ -55,6 +55,7 @@ func main() {
 	log.Println("IN FORK EXEC")
 	// recombine the flags for exec to use
 	args := []string{
+		"-failures=" + strconv.Itoa(failures),
 		"-hostname=" + hostname,
 		"-config=" + configFile,
 		"-logger=" + logger,

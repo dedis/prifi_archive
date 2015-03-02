@@ -343,7 +343,6 @@ func ArrStats(stream []float64) (avg float64, min float64, max float64, stddev f
 type T struct {
 	hpn    int
 	bf     int
-	nmsgs  int
 	rate   int
 	rounds int
 }
@@ -352,10 +351,9 @@ type T struct {
 func RunTest(t T) RunStats {
 	hpn := fmt.Sprintf("-hpn=%d", t.hpn)
 	bf := fmt.Sprintf("-bf=%d", t.bf)
-	nmsgs := fmt.Sprintf("-nmsgs=%d", t.nmsgs)
 	rate := fmt.Sprintf("-rate=%d", t.rate)
 	rounds := fmt.Sprintf("-rounds=%d", t.rounds)
-	cmd := exec.Command("./deploy2deter", hpn, bf, nmsgs, rate, rounds, debug)
+	cmd := exec.Command("./deploy2deter", hpn, bf, rate, rounds, debug)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
@@ -400,35 +398,25 @@ func RunTests(name string, ts []T) {
 
 // hpn=1 bf=2 nmsgs=700
 var TestT = []T{
-	{1, 2, -1, 5000, 10},
-	{1, 2, 700, -1, 10},
-}
-
-func LoadTest(hpn, bf, low, high, step int) []T {
-	n := (high - low) / step
-	ts := make([]T, 0, n)
-	for nmsgs := low; nmsgs <= high; nmsgs += step {
-		ts = append(ts, T{hpn, bf, nmsgs, -1, DefaultRounds})
-	}
-	return ts
+	{1, 2, 5000, 10},
 }
 
 // high and low specify how many milliseconds between messages
 func RateLoadTest(hpn, bf int) []T {
 	return []T{
-		{hpn, bf, -1, 50000000, DefaultRounds}, // never send a message
-		{hpn, bf, -1, 5000, DefaultRounds},     // one per round
-		{hpn, bf, -1, 500, DefaultRounds},      // 10 per round
-		{hpn, bf, -1, 50, DefaultRounds},       // 100 per round
-		{hpn, bf, -1, 5, DefaultRounds},        // 1000 per round
-		{hpn, bf, -1, 1, DefaultRounds},        // 5000 per round
+		{hpn, bf, 50000000, DefaultRounds}, // never send a message
+		{hpn, bf, 5000, DefaultRounds},     // one per round
+		{hpn, bf, 500, DefaultRounds},      // 10 per round
+		{hpn, bf, 50, DefaultRounds},       // 100 per round
+		{hpn, bf, 5, DefaultRounds},        // 1000 per round
+		{hpn, bf, 1, DefaultRounds},        // 5000 per round
 	}
 }
 
 func DepthTest(hpn, low, high, step int) []T {
 	ts := make([]T, 0)
 	for bf := low; bf <= high; bf += step {
-		ts = append(ts, T{hpn, bf, 7000, -1, DefaultRounds})
+		ts = append(ts, T{hpn, bf, 10, DefaultRounds})
 	}
 	return ts
 }
@@ -453,11 +441,6 @@ func main() {
 	RunTests("load_rate_test_bf10", t)
 	t = RateLoadTest(40, 50)
 	RunTests("load_rate_test_bf50", t)
-
-	t = LoadTest(40, 10, 0, 10000, 1000)
-	RunTests("load_test_bf10", t)
-	t = LoadTest(40, 50, 0, 10000, 1000)
-	RunTests("load_test_bf50", t)
 
 	t = DepthTest(40, 10, 50, 10)
 	RunTests("depth_test", t)

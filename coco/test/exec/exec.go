@@ -170,7 +170,7 @@ func main() {
 		}
 		for _, s := range stampers {
 			if failures > 0 {
-				s.Signer.SetTestingFailures(true)
+				s.Signer.SetFailureRate(failures)
 			}
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {

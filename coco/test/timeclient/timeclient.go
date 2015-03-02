@@ -147,6 +147,7 @@ func main() {
 	s := 0
 
 	// log.Println("timeclient using rounds")
+	log.Fatal("ROUNDS BASED RATE LIMITING DEPRECATED")
 	for {
 		//start := time.Now()
 		var wg sync.WaitGroup
@@ -157,8 +158,10 @@ func main() {
 				err := c.TimeStamp(msgs[i], servers[s])
 				if err == io.EOF {
 					log.WithFields(log.Fields{
-						"file": logutils.File(),
-						"type": "client_msg_stats",
+						"file":        logutils.File(),
+						"type":        "client_msg_stats",
+						"buck":        make([]int64, 0),
+						"roundsAfter": make([]int64, 0),
 					}).Info("")
 
 					log.Fatal("EOF: terminating time client")
@@ -168,7 +171,7 @@ func main() {
 		}
 		wg.Wait()
 		//elapsed := time.Since(start)
-		// log.Println("client done with round: ", time.Since(start).Nanoseconds())
+		log.Println("client done with round")
 		//log.WithFields(log.Fields{
 		//"file":  logutils.File(),
 		//"type":  "client_round",
