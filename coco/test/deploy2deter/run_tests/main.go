@@ -398,7 +398,8 @@ func RunTests(name string, ts []T) {
 
 // hpn=1 bf=2 nmsgs=700
 var TestT = []T{
-	{1, 2, 5000, 10},
+	{1, 2, 5000, 5},
+	{1, 2, 5000, 5},
 }
 
 // high and low specify how many milliseconds between messages
@@ -437,11 +438,14 @@ func main() {
 	t := TestT
 	RunTests("test", t)
 
+	// how does the branching factor effect speed
+	t = DepthTest(40, 10, 50, 10)
+	RunTests("depth_test", t)
+
+	// load test the client
 	t = RateLoadTest(40, 10)
 	RunTests("load_rate_test_bf10", t)
 	t = RateLoadTest(40, 50)
 	RunTests("load_rate_test_bf50", t)
 
-	t = DepthTest(40, 10, 50, 10)
-	RunTests("depth_test", t)
 }

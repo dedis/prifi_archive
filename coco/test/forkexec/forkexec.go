@@ -52,7 +52,7 @@ func main() {
 		//log.Println("Log Test")
 		//fmt.Println("exiting logger block")
 	}
-	log.Println("IN FORK EXEC")
+	// log.Println("IN FORK EXEC")
 	// recombine the flags for exec to use
 	args := []string{
 		"-failures=" + strconv.Itoa(failures),

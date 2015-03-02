@@ -110,7 +110,9 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 						log.Println("sending to receiving channel")
 						ch <- io.EOF
 					}
+					c.Mux.Lock()
 					c.Error = err
+					c.Mux.Unlock()
 					return
 				} else {
 					// try reconnecting if it didn't close the channel
@@ -127,22 +129,19 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 	defer c.Mux.Unlock()
 	conn := c.Servers[name]
 	if conn == nil {
-		/*	log.WithFields(log.Fields{
-			"file": logutils.File(),
-		}).Warnln("Server is nil:", c.Servers, "with: ", name)*/
 		return errors.New("INVALID SERVER/NOT CONNECTED")
 	}
-	// log.Println("PUT CONN: ", conn)
 	return conn.Put(data)
 }
 
 // When client asks for val to be timestamped
 // It blocks until it get a stamp reply back
 func (c *Client) TimeStamp(val []byte, TSServerName string) error {
+	c.Mux.Lock()
 	if c.Error != nil {
+		c.Mux.Unlock()
 		return c.Error
 	}
-	c.Mux.Lock()
 	c.reqno++
 	myReqno := c.reqno
 	c.doneChan[c.reqno] = make(chan error, 1) // new done channel for new req
