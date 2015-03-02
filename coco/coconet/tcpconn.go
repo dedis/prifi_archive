@@ -122,13 +122,13 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 }
 
 func (tc *TCPConn) Close() {
-	tc.lock.Lock()
-	defer tc.lock.Unlock()
 	log.Errorln("Closing Connection")
 	if tc.conn != nil {
 		tc.conn.Close()
 	}
 
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	tc.conn = nil
 	tc.enc = nil
 	tc.dec = nil

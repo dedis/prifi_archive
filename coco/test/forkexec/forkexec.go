@@ -20,7 +20,7 @@ var pprofaddr string
 var physaddr string
 var rootwait int
 var debug bool
-var failures bool
+var failures int
 var rounds int
 
 // TODO: add debug flag for more debugging information (memprofilerate...)

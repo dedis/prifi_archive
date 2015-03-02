@@ -114,7 +114,11 @@ func (sn *Node) StartSigningRound() error {
 	var firstRoundTime time.Duration
 	var totalTime time.Duration
 	go func() {
-		sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		err := sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		if err != nil {
+			log.Println("Signature fails if at leas one node says it failed. set coco.DEBUG to true for more info")
+			log.Errorln(err)
+		}
 	}()
 
 	// 1st Phase succeeded or connection error

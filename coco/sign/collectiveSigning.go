@@ -21,6 +21,7 @@ import (
 // 3. Challenge
 // 4. Response
 
+var ALLOW_PANICS bool = false
 var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
 // Start listening for messages coming from parent(up)
@@ -56,9 +57,14 @@ func (sn *Node) getUp() {
 		default:
 			continue
 		case Announcement:
-			sn.Announce(sm.Am)
+			if err := sn.Announce(sm.Am); err != nil {
+				log.Errorln(err)
+			}
+
 		case Challenge:
-			sn.Challenge(sm.Chm)
+			if err := sn.Challenge(sm.Chm); err != nil {
+				log.Errorln(err)
+			}
 		}
 	}
 }
@@ -166,8 +172,9 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 		sn.Round = Round
 		sn.LastSeenRound = Round
 
-		// round number that links this round to past rounds
-		sn.SetAccountableRound(Round)
+		// Create my back link to previous round
+		sn.SetBackLink(Round)
+		// sn.SetAccountableRound(Round)
 	}
 
 	// Inform all children of announcement
@@ -262,8 +269,10 @@ func (sn *Node) Commit(Round int) error {
 
 // Finalize commits by initiating the challenge pahse if root
 // Send own commitment message up to parent if non-root
-func (sn *Node) actOnCommits(Round int) (err error) {
+func (sn *Node) actOnCommits(Round int) error {
 	round := sn.Rounds[Round]
+	var err error
+
 	if sn.IsRoot() {
 		sn.commitsDone <- Round
 		err = sn.FinalizeCommits(Round)
@@ -278,14 +287,14 @@ func (sn *Node) actOnCommits(Round int) (err error) {
 			Round:         Round}
 
 		if sn.ShouldIFail("commit") {
-			return
+			return nil
 		}
 
 		err = sn.PutUp(&SigningMessage{
 			Type: Commitment,
 			Com:  com})
 	}
-	return
+	return err
 }
 
 // initiated by root, propagated by all others
@@ -391,13 +400,17 @@ func (sn *Node) Respond(Round int) error {
 			sn.add(exceptionX_hat, sm.Rm.ExceptionX_hat)
 			round.ExceptionList = append(round.ExceptionList, sm.Rm.ExceptionList...)
 
-		// Report errors that are not networking errors
 		case Error:
-			log.Println(sn.Name(), "Error in respose for child", from, sm)
 			if sm.Err == nil {
+				panic("Error message with no error")
 				continue
 			}
-			return errors.New(sm.Err.Err)
+
+			// Report up non-networking error, probably signature failure
+			log.Println(sn.Name(), "Error in respose for child", from, sm)
+			err := errors.New(sm.Err.Err)
+			sn.PutUpError(err)
+			return err
 		}
 	}
 
@@ -411,35 +424,36 @@ func (sn *Node) Respond(Round int) error {
 func (sn *Node) actOnResponses(Round int, exceptionV_hat abstract.Point, exceptionX_hat abstract.Point) error {
 	round := sn.Rounds[Round]
 	err := sn.VerifyResponses(Round)
-	// root reports round is done
-	if sn.IsRoot() {
-		sn.done <- Round
+
+	// if error put it up if parent exists
+	if err != nil && !sn.IsRoot() {
+		sn.PutUpError(err)
+		return err
 	}
 
-	if !sn.IsRoot() {
+	// if no error send up own response
+	if err == nil && !sn.IsRoot() {
 		if sn.ShouldIFail("response") {
 			return nil
 		}
-		// report verify response error
-		// log.Println(sn.Name(), "put up response with err", err)
-		if err != nil {
-			return sn.PutUp(&SigningMessage{
-				Type: Error,
-				Err:  &ErrorMessage{Err: err.Error()}})
-		}
 
+		// create and putup own response message
 		rm := &ResponseMessage{
 			R_hat:          round.r_hat,
 			ExceptionList:  round.ExceptionList,
 			ExceptionV_hat: exceptionV_hat,
 			ExceptionX_hat: exceptionX_hat,
 			Round:          Round}
-		// create and putup own response message
 		return sn.PutUp(&SigningMessage{
 			Type: Response,
 			Rm:   rm})
 	}
-	return nil
+
+	// root reports round is done
+	if sn.IsRoot() {
+		sn.done <- Round
+	}
+	return err
 }
 
 // Called *only* by root node after receiving all commits
@@ -493,8 +507,9 @@ func (sn *Node) VerifyResponses(Round int) error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(round.Log.V_hat) || (sn.IsRoot() && !round.c.Equal(c2)) {
-		// panic(sn.Name() + "reports ElGamal Collective Signature failed for Round" + strconv.Itoa(Round))
-		log.Errorln(sn.Name(), "reports ElGamal Collective Signature failed for Round", Round)
+		if ALLOW_PANICS == true {
+			panic(sn.Name() + "reports ElGamal Collective Signature failed for Round" + strconv.Itoa(Round))
+		}
 		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
 	}
 
@@ -503,6 +518,13 @@ func (sn *Node) VerifyResponses(Round int) error {
 		// log.Println(round.MTRoot)
 	}
 	return nil
+}
+
+func (sn *Node) PutUpError(err error) {
+	// log.Println(sn.Name(), "put up response with err", err)
+	sn.PutUp(&SigningMessage{
+		Type: Error,
+		Err:  &ErrorMessage{Err: err.Error()}})
 }
 
 // Returns a secret that depends on on a message and a point
