@@ -64,6 +64,7 @@ var debug string
 var rate int
 var failures int
 var rounds int
+var kill bool
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
@@ -73,6 +74,7 @@ func init() {
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
+	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
 }
 
 func main() {
@@ -104,6 +106,10 @@ func main() {
 		}(h)
 	}
 	wg.Wait()
+
+	if kill {
+		return
+	}
 
 	for _, h := range phys {
 		wg.Add(1)

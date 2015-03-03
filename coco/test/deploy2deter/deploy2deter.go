@@ -40,7 +40,7 @@ var nmsgs int
 var debug bool
 var rate int
 var failures int
-
+var kill bool
 var rounds int
 
 func init() {
@@ -51,6 +51,7 @@ func init() {
 	flag.BoolVar(&debug, "debug", false, "run in debugging mode")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run for")
+	flag.BoolVar(&kill, "kill", false, "kill all running processes (but don't start anything)")
 }
 
 func main() {
@@ -85,6 +86,9 @@ func main() {
 	}
 	// killssh processes on users
 	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh scp deter 2>/dev/null 1>/dev/null")
+	if kill {
+		goto deter
+	}
 	// parse the hosts.txt file to create a separate list (and file)
 	// of physical nodes and virtual nodes. Such that each host on line i, in phys.txt
 	// corresponds to each host on line i, in virt.txt.
@@ -191,11 +195,13 @@ func main() {
 	// run the deter lab boss nodes process
 	// it will be responsible for forwarding the files and running the individual
 	// timestamping servers
+deter:
 	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net",
 		"GOMAXPROCS=8 remote/deter -nmsgs="+strconv.Itoa(nmsgs)+
 			" -hpn="+strconv.Itoa(hpn)+
 			" -bf="+strconv.Itoa(bf)+
 			" -rate="+strconv.Itoa(rate)+
 			" -rounds="+strconv.Itoa(rounds)+
-			" -debug="+strconv.FormatBool(debug)))
+			" -debug="+strconv.FormatBool(debug)+
+			" -deter="+strconv.FormatBool(kill)))
 }
