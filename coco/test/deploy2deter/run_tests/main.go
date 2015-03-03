@@ -379,6 +379,7 @@ func RunTest(t T) (RunStats, error) {
 		rs = Monitor(t.bf)
 		cmd.Process.Kill()
 		fmt.Println("TEST COMPLETE:", rs)
+		done <- struct{}{}
 	}()
 
 	select {
