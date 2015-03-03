@@ -410,30 +410,31 @@ func RunTests(name string, ts []T) {
 	rs := make([]RunStats, len(ts))
 	f, err := os.OpenFile(TestFile(name), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error opening test file:", err)
 	}
 	_, err = f.Write(rs[0].CSVHeader())
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error writing test file header:", err)
 	}
 	err = f.Sync()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error syncing test file:", err)
 	}
 
 	for i, t := range ts {
 	retry:
 		rs[i], err = RunTest(t)
 		if err != nil {
+			log.Println("error running test:", err)
 			goto retry
 		}
 		_, err := f.Write(rs[i].CSV())
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("error writing data to test file:", err)
 		}
 		err = f.Sync()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("error syncing data to test file:", err)
 		}
 	}
 }
@@ -473,7 +474,7 @@ func main() {
 	MkTestDir()
 	err := exec.Command("go", "build", "-v").Run()
 	if err != nil {
-		log.Println(err)
+		log.Fatalln("error building deploy2deter:", err)
 	}
 	// test the testing framework
 	//t := TestT
