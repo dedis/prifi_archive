@@ -125,15 +125,15 @@ func main() {
 	// copy the logserver directory to the current directory
 	err = exec.Command("rsync", "-au", "../logserver", "remote/").Run()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error rsyncing logserver directory into remote directory:", err)
 	}
-	err = exec.Command("rsync", "-au", "phys.txt", "virt.txt", "remote/logserver/").Run()
+	err = exec.Command("rsync", "-au", "remote/phys.txt", "remote/virt.txt", "remote/logserver/").Run()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error rsyncing phys, virt, and remote/logserver:", err)
 	}
 	err = os.Rename("logserver", "remote/logserver/logserver")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error renaming logserver:", err)
 	}
 
 	b, err := json.Marshal(t)
@@ -155,12 +155,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	// scp the files that we need over to the boss node
-	files := []string{"timeclient", "exec", "forkexec", "deter", "cfg.json", "phys.txt", "virt.txt"}
+	files := []string{"timeclient", "exec", "forkexec", "deter", "cfg.json"}
 	for _, f := range files {
-		err := exec.Command("rsync", "-au", f, "remote/").Run()
+		cmd := exec.Command("rsync", "-au", f, "remote/")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("error unable to rsync file into remote directory:", err)
 		}
 	}
 	err = cliutils.Rsync("dvisher", "users.isi.deterlab.net", "remote", "")
