@@ -79,9 +79,7 @@ func (s *Server) Listen() error {
 	// log.Println("Listening @ ", s.name)
 	ln, err := net.Listen("tcp4", s.name)
 	if err != nil {
-		log.Println("failed to listen:", err)
 		panic(err)
-		//return err
 	}
 
 	go func() {
@@ -92,9 +90,6 @@ func (s *Server) Listen() error {
 				// handle error
 				log.Errorln("failed to accept connection")
 				continue
-			}
-			if conn == nil {
-				log.Errorln("!!!nil connection!!!")
 			}
 
 			c := coconet.NewTCPConnFromNet(conn)
@@ -129,9 +124,11 @@ func (s *Server) Listen() error {
 
 		}
 	}()
+
 	return nil
 }
 
+// Used for goconns
 // should only be used if clients are created in batch
 func (s *Server) ListenToClients() {
 	for _, c := range s.Clients {
