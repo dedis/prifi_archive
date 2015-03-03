@@ -157,7 +157,7 @@ func main() {
 	}
 
 	// scp the files that we need over to the boss node
-	files := []string{"timeclient", "exec", "forkexec", "deter", "cfg.json"}
+	files := []string{"timeclient", "exec", "forkexec", "deter"}
 	for _, f := range files {
 		cmd := exec.Command("rsync", "-au", f, "remote/")
 		cmd.Stdout = os.Stdout
