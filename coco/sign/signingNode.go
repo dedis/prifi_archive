@@ -285,7 +285,7 @@ func (sn *Node) SetBackLink(Round int) {
 func (sn *Node) setPool() {
 	var p sync.Pool
 	p.New = NewSigningMessage
-	sn.Host.SetPool(p)
+	sn.SetPool(p)
 }
 
 // accommodate nils

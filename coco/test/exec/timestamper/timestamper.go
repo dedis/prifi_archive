@@ -85,7 +85,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 		}
 		for _, s := range stampers {
 			if failures > 0 {
-				s.Signer.SetFailureRate(failures)
+				s.SetFailureRate(failures)
 			}
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {

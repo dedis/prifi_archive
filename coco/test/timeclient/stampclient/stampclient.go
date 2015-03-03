@@ -55,7 +55,7 @@ func AggregateStats(buck, roundsAfter []int64) string {
 }
 
 func streamMessgs(c *stamp.Client, servers []string, rate int) {
-	log.Println("STREAMING: GIVEN RATE")
+	//log.Println("STREAMING: GIVEN RATE")
 	// buck[i] = # of timestamp responses received in second i
 	buck := make([]int64, MAX_N_SECONDS)
 	// roundsAfter[i] = # of timestamp requests that were processed i rounds late
@@ -90,7 +90,6 @@ retry:
 				// ignore errors
 				return
 			}
-			log.Println("successfully timestamped item")
 
 			// TODO: we might want to subtract a buffer from secToTimeStamp
 			// to account for computation time

@@ -173,7 +173,9 @@ func (h *TCPHost) Connect() error {
 	}
 	conn, err := net.Dial("tcp", h.parent)
 	if err != nil {
-		log.Warnln("tcphost: failed to connect to parent:", err)
+		if coco.DEBUG {
+			log.Warnln("tcphost: failed to connect to parent:", err)
+		}
 		return err
 	}
 	tp := NewTCPConnFromNet(conn)

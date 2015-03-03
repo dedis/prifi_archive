@@ -220,6 +220,7 @@ var wsmaster *websocket.Conn
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+
 	// read in from flags the port I should be listening on
 	flag.Parse()
 	if master == "" {

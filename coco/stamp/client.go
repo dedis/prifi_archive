@@ -62,7 +62,9 @@ func (c *Client) handleServer(s coconet.Conn) error {
 			if err == coconet.ConnectionNotEstablished {
 				continue
 			}
-			log.Warn("error getting from connection:", err)
+			if coco.DEBUG {
+				log.Warn("error getting from connection:", err)
+			}
 			return err
 		}
 		c.handleResponse(tsm)
@@ -108,10 +110,14 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 				// if a server encounters any terminating error
 				// terminate all pending client transactions and kill the client
 				if err != nil {
-					log.Errorln("EOF DETECTED: sending EOF to all pending TimeStamps")
+					if coco.DEBUG {
+						log.Errorln("EOF DETECTED: sending EOF to all pending TimeStamps")
+					}
 					c.Mux.Lock()
 					for _, ch := range c.doneChan {
-						log.Println("Sending to Receiving Channel")
+						if coco.DEBUG {
+							log.Println("Sending to Receiving Channel")
+						}
 						ch <- io.EOF
 					}
 					c.Error = io.EOF
@@ -174,7 +180,9 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	// wait until ProcessStampReply signals that reply was received
 	err = <-myChan
 	if err != nil {
-		log.Errorln("error received from DoneChan:", err)
+		if coco.DEBUG {
+			log.Errorln("error received from DoneChan:", err)
+		}
 		return err
 	}
 

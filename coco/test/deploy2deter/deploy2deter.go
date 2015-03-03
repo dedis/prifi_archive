@@ -56,6 +56,7 @@ func init() {
 func main() {
 	log.SetFlags(log.Lshortfile)
 	flag.Parse()
+	log.Println("RUNNING DEPLOY2DETER WITH RATE:", rate)
 	os.MkdirAll("remote", 0777)
 	var wg sync.WaitGroup
 	// start building the necessary packages

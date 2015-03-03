@@ -31,6 +31,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -52,6 +53,8 @@ type RunStats struct {
 	NHosts int
 	Depth  int
 
+	BF int
+
 	MinTime float64
 	MaxTime float64
 	AvgTime float64
@@ -65,14 +68,15 @@ type RunStats struct {
 
 func (s RunStats) CSVHeader() []byte {
 	var buf bytes.Buffer
-	buf.WriteString("hosts, depth, min, max, avg, stddev, systime, usertime, rate\n")
+	buf.WriteString("hosts, depth, bf, min, max, avg, stddev, systime, usertime, rate\n")
 	return buf.Bytes()
 }
 func (s RunStats) CSV() []byte {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%d, %d, %f, %f, %f, %f, %f, %f, %f\n",
+	fmt.Fprintf(&buf, "%d, %d, %d, %f, %f, %f, %f, %f, %f, %f\n",
 		s.NHosts,
 		s.Depth,
+		s.BF,
 		s.MinTime,
 		s.MaxTime,
 		s.AvgTime,
@@ -177,7 +181,7 @@ func MonitorMemStats(server string, poll int, done chan struct{}, stats *[]*ExpV
 }
 
 // Monitor: monitors log aggregates results into RunStats
-func Monitor() RunStats {
+func Monitor(bf int) RunStats {
 	log.Println("MONITORING")
 	defer fmt.Println("DONE MONITORING")
 retry_dial:
@@ -213,6 +217,7 @@ retry:
 	var rs RunStats
 	rs.NHosts = nh
 	rs.Depth = d
+	rs.BF = bf
 
 	var M, S float64
 	k := float64(1)
@@ -234,6 +239,10 @@ retry:
 				root_done, client_done)
 		}
 		if bytes.Contains(data, []byte("root_round")) {
+			if client_done || root_done {
+				// ignore after we have received our first EOF
+				continue
+			}
 			var entry StatsEntry
 			err := json.Unmarshal(data, &entry)
 			if err != nil {
@@ -259,7 +268,6 @@ retry:
 			k++
 			rs.StdDev = math.Sqrt(S / (k - 1))
 		} else if bytes.Contains(data, []byte("forkexec")) {
-
 			if root_done {
 				continue
 			}
@@ -348,24 +356,39 @@ type T struct {
 }
 
 // hpn, bf, nmsgsG
-func RunTest(t T) RunStats {
-	hpn := fmt.Sprintf("-hpn=%d", t.hpn)
-	bf := fmt.Sprintf("-bf=%d", t.bf)
-	rate := fmt.Sprintf("-rate=%d", t.rate)
-	rounds := fmt.Sprintf("-rounds=%d", t.rounds)
-	cmd := exec.Command("./deploy2deter", hpn, bf, rate, rounds, debug)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	err := cmd.Start()
-	if err != nil {
-		log.Fatal(err)
+func RunTest(t T) (RunStats, error) {
+	// add timeout for 10 minutes?
+	done := make(chan struct{})
+	var rs RunStats
+	go func() {
+		hpn := fmt.Sprintf("-hpn=%d", t.hpn)
+		nmsgs := fmt.Sprintf("-nmsgs=%d", -1)
+		bf := fmt.Sprintf("-bf=%d", t.bf)
+		rate := fmt.Sprintf("-rate=%d", t.rate)
+		rounds := fmt.Sprintf("-rounds=%d", t.rounds)
+		cmd := exec.Command("./deploy2deter", hpn, nmsgs, bf, rate, rounds, debug)
+		log.Println("RUNNING TEST:", cmd.Args)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Start()
+		if err != nil {
+			log.Fatal(err)
+		}
+		// give it a while to start up
+		time.Sleep(30 * time.Second)
+		rs = Monitor(t.bf)
+		cmd.Process.Kill()
+		fmt.Println("TEST COMPLETE:", rs)
+	}()
+
+	select {
+	case <-done:
+		return rs, nil
+	case <-time.After(10 * time.Minute):
+		return rs, errors.New("time out")
 	}
-	// give it a while to start up
-	time.Sleep(30 * time.Second)
-	rs := Monitor()
-	cmd.Process.Kill()
-	fmt.Println("TEST COMPLETE:", rs)
-	return rs
+
+	return rs, nil
 }
 
 func MkTestDir() {
@@ -382,17 +405,35 @@ func TestFile(name string) string {
 // RunTests runs the given tests and puts the output into the
 // given file name. It outputs RunStats in a CSV format.
 func RunTests(name string, ts []T) {
+
 	rs := make([]RunStats, len(ts))
-	for i, t := range ts {
-		rs[i] = RunTest(t)
-	}
-	output := rs[0].CSVHeader()
-	for _, s := range rs {
-		output = append(output, s.CSV()...)
-	}
-	err := ioutil.WriteFile(TestFile(name), output, 0660)
+	f, err := os.OpenFile(TestFile(name), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
 	if err != nil {
-		log.Fatal("failed to write out test file:", name)
+		log.Fatal(err)
+	}
+	_, err = f.Write(rs[0].CSVHeader())
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = f.Sync()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for i, t := range ts {
+	retry:
+		rs[i], err = RunTest(t)
+		if err != nil {
+			goto retry
+		}
+		_, err := f.Write(rs[i].CSV())
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = f.Sync()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -405,12 +446,11 @@ var TestT = []T{
 // high and low specify how many milliseconds between messages
 func RateLoadTest(hpn, bf int) []T {
 	return []T{
-		{hpn, bf, 50000000, DefaultRounds}, // never send a message
-		{hpn, bf, 5000, DefaultRounds},     // one per round
-		{hpn, bf, 500, DefaultRounds},      // 10 per round
-		{hpn, bf, 50, DefaultRounds},       // 100 per round
-		{hpn, bf, 5, DefaultRounds},        // 1000 per round
-		{hpn, bf, 1, DefaultRounds},        // 5000 per round
+		{hpn, bf, 5000, DefaultRounds}, // never send a message
+		{hpn, bf, 5000, DefaultRounds}, // one per round
+		{hpn, bf, 500, DefaultRounds},  // 10 per round
+		{hpn, bf, 50, DefaultRounds},   // 100 per round
+		{hpn, bf, 30, DefaultRounds},   // 1000 per round
 	}
 }
 
@@ -425,9 +465,9 @@ func DepthTest(hpn, low, high, step int) []T {
 var DefaultRounds int = 100
 
 func main() {
-	view = true
+	// view = true
 	os.Chdir("..")
-	SetDebug(true)
+	// SetDebug(true)
 	DefaultRounds = 10
 	MkTestDir()
 	err := exec.Command("go", "build", "-v").Run()
@@ -435,17 +475,17 @@ func main() {
 		log.Println(err)
 	}
 	// test the testing framework
-	t := TestT
-	RunTests("test", t)
+	//t := TestT
+	//RunTests("test", t)
 
 	// how does the branching factor effect speed
-	t = DepthTest(40, 10, 50, 10)
-	RunTests("depth_test", t)
+	t := DepthTest(100, 2, 100, 1)
+	RunTests("depth_test.csv", t)
 
 	// load test the client
 	t = RateLoadTest(40, 10)
-	RunTests("load_rate_test_bf10", t)
+	RunTests("load_rate_test_bf10.csv", t)
 	t = RateLoadTest(40, 50)
-	RunTests("load_rate_test_bf50", t)
+	RunTests("load_rate_test_bf50.csv", t)
 
 }

@@ -462,10 +462,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	}
 	for _, sn := range hostnames {
 		sn.Type = signType
-		//go func(sn *sign.Node) {
-		// start listening for messages from within the tree
 		sn.Host.Listen()
-		//}(sn)
 	}
 
 	for _, sn := range hostnames {
@@ -495,12 +492,14 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 		}
 	}
 
-	// need to make sure connections are setup properly first
+	// need to make sure network connections are setup properly first
 	// wait for a little bit for connections to establish fully
-	time.Sleep(1000 * time.Millisecond)
+	// get rid of waits they hide true bugs
+	// time.Sleep(1000 * time.Millisecond)
 	for _, sn := range hostnames {
 		go func(sn *sign.Node) {
 			// start listening for messages from within the tree
+			// i.e. signing messages
 			sn.Listen()
 		}(sn)
 	}

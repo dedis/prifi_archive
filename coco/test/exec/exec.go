@@ -37,6 +37,7 @@ var physaddr string
 var rootwait int
 var debug bool
 var failures int
+var amroot bool
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -50,6 +51,7 @@ func init() {
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
 	flag.BoolVar(&debug, "debug", false, "set debugging")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.BoolVar(&amroot, "amroot", false, "am I root node")
 }
 
 func main() {
@@ -60,7 +62,7 @@ func main() {
 	}()
 
 	// connect with the logging server
-	if logger != "" {
+	if logger != "" && (debug || amroot) {
 		// blocks until we can connect to the logger
 		log.Println("Connecting to Logger")
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)

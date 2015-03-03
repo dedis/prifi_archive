@@ -21,6 +21,7 @@ var rootwait int
 var debug bool
 var failures int
 var rounds int
+var amroot bool
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -34,12 +35,13 @@ func init() {
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
 	flag.BoolVar(&debug, "debug", false, "set debugging")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.BoolVar(&amroot, "amroot", false, "am I root")
 }
 
 func main() {
 	flag.Parse()
 	// connect with the logging server
-	if logger != "" {
+	if logger != "" && (amroot || debug) {
 		// blocks until we can connect to the logger
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
 		if err != nil {
@@ -48,10 +50,11 @@ func main() {
 			}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
 		}
 		log.AddHook(lh)
-		//log.SetOutput(ioutil.Discard)
-		//log.Println("Log Test")
-		//fmt.Println("exiting logger block")
 	}
+	////log.SetOutput(ioutil.Discard)
+	////log.Println("Log Test")
+	////fmt.Println("exiting logger block")
+	//}
 	// log.Println("IN FORK EXEC")
 	// recombine the flags for exec to use
 	args := []string{
@@ -65,6 +68,7 @@ func main() {
 		"-rootwait=" + strconv.Itoa(rootwait),
 		"-debug=" + strconv.FormatBool(debug),
 		"-rounds=" + strconv.Itoa(rounds),
+		"-amroot=" + strconv.FormatBool(amroot),
 	}
 	cmd := exec.Command("./exec", args...)
 	//cmd.Stdout = log.StandardLogger().Writer()

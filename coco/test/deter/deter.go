@@ -35,9 +35,15 @@ import (
 	"github.com/dedis/prifi/coco/test/graphs"
 )
 
+var rootname string
+
 func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
+		amroot := " -amroot=false"
+		if n == rootname {
+			amroot = " -amroot=true"
+		}
 		total += "(cd remote; sudo ./forkexec -rootwait=" + rootwait +
 			" -failures=" + strconv.Itoa(failures) +
 			" -physaddr=" + phys +
@@ -45,6 +51,7 @@ func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait 
 			" -logger=" + loggerport +
 			" -debug=" + debug +
 			" -rounds=" + strconv.Itoa(rounds) +
+			amroot +
 			" </dev/null 2>/dev/null 1>/dev/null &); "
 	}
 	return total
@@ -130,6 +137,8 @@ func main() {
 	hostnames := cf.Hosts
 
 	depth := graphs.Depth(cf.Tree)
+
+	rootname = hostnames[0]
 
 	log.Println("depth of tree:", depth)
 
