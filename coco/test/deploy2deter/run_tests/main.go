@@ -470,9 +470,9 @@ func DepthTest(hpn, low, high, step int) []T {
 var DefaultRounds int = 100
 
 func main() {
-	view = true
+	// view = true
 	os.Chdir("..")
-	SetDebug(true)
+	// SetDebug(true)
 	DefaultRounds = 10
 
 	MkTestDir()
