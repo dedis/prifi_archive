@@ -29,17 +29,47 @@ import (
 //     1   4
 //    / \   \
 //   2   3   5
-func TestTSSIntegration(t *testing.T) {
+
+func TestTSSIntegrationHealthy(t *testing.T) {
+	if err := runTSSIntegration(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTSSIntegrationFaulty(t *testing.T) {
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 2, 5)
+	if err := runTSSIntegration(100, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runTSSIntegration(failureRate int, faultyNodes ...int) error {
+	var hostConfig *oldconfig.HostConfig
+	var err error
 	nMessages := 4 // per round
 	nRounds := 3
 
-	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
-	if err != nil {
-		t.Fatal(err)
+	// load config with faulty or healthy hosts
+	if len(faultyNodes) > 0 {
+		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", oldconfig.ConfigOptions{Faulty: true})
+	} else {
+		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json")
 	}
+	if err != nil {
+		return err
+	}
+
+	// set FailureRates
+	if len(faultyNodes) > 0 {
+		for i := range hostConfig.SNodes {
+			hostConfig.SNodes[i].FailureRate = failureRate
+		}
+	}
+
 	err = hostConfig.Run(sign.MerkleTree)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
 	// Connect all TSServers to their clients, except for root TSServer
@@ -74,6 +104,7 @@ func TestTSSIntegration(t *testing.T) {
 	// After clients receive messages back we need a better way
 	// of waiting to make sure servers check ElGamal sigs
 	time.Sleep(1 * time.Second)
+	return nil
 }
 
 func TestGoConnTimestampFromConfig(t *testing.T) {

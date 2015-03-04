@@ -211,6 +211,10 @@ func (sn *Node) initCommitCrypto(Round int) {
 func (sn *Node) Commit(Round int) error {
 	round := sn.Rounds[Round]
 	sn.LastSeenRound = max(Round, sn.LastSeenRound)
+	if round == nil {
+		return nil
+	}
+
 	sn.initCommitCrypto(Round)
 
 	// wait on commits from children
@@ -299,9 +303,12 @@ func (sn *Node) actOnCommits(Round int) error {
 
 // initiated by root, propagated by all others
 func (sn *Node) Challenge(chm *ChallengeMessage) error {
-	// register challenge
 	round := sn.Rounds[chm.Round]
 	sn.LastSeenRound = max(chm.Round, sn.LastSeenRound)
+	if round == nil {
+		return nil
+	}
+	// register challenge
 	round.c = chm.C
 
 	if sn.Type == PubKey {
@@ -359,6 +366,12 @@ func (sn *Node) initResponseCrypto(Round int) {
 
 func (sn *Node) Respond(Round int) error {
 	round := sn.Rounds[Round]
+	sn.LastSeenRound = max(Round, sn.LastSeenRound)
+	if round == nil || round.Log.v == nil {
+		// If I was not announced of this round, or I failed to commit
+		return nil
+	}
+
 	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	sn.initResponseCrypto(Round)
 

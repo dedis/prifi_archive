@@ -208,7 +208,9 @@ func (h *TCPHost) Connect() error {
 func (h *TCPHost) Close() {
 	h.rlock.Lock()
 	for k, p := range h.peers {
-		p.Close()
+		if p != nil {
+			p.Close()
+		}
 		h.peers[k] = nil
 	}
 	h.rlock.Unlock()
