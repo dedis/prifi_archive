@@ -334,6 +334,8 @@ func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
 	return parent.Get(data)
 }
 
+var ErrorChildNotReady error = errors.New("child is not ready")
+
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
 func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
@@ -350,7 +352,7 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 	for i, c := range children {
 		h.rlock.Lock()
 		if !h.ready[c] {
-			err = errors.New("child is not ready")
+			err = ErrorChildNotReady
 			h.rlock.Unlock()
 			continue
 		}

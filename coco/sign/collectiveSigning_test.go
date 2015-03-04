@@ -5,6 +5,7 @@ import (
 	"log"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/dedis/crypto/nist"
 	_ "github.com/dedis/prifi/coco"
@@ -259,10 +260,14 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(1 * time.Second)
+
 	N := 5
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
 		err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+
 		if err != nil {
 			t.Error(err)
 		}
