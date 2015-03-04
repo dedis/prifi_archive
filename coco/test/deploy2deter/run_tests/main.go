@@ -485,9 +485,8 @@ func main() {
 
 	t := TestT
 	RunTests("test", t)
-	return
 	// how does the branching factor effect speed
-	t := DepthTest(100, 2, 100, 1)
+	t = DepthTest(100, 2, 100, 1)
 	RunTests("depth_test.csv", t)
 
 	// load test the client
