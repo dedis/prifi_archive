@@ -200,5 +200,6 @@ func main() {
 			" -rate="+strconv.Itoa(rate)+
 			" -rounds="+strconv.Itoa(rounds)+
 			" -debug="+strconv.FormatBool(debug)+
+			" -failures="+strconv.Itoa(failures)+
 			" -kill="+strconv.FormatBool(kill)))
 }

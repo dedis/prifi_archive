@@ -349,10 +349,11 @@ func ArrStats(stream []float64) (avg float64, min float64, max float64, stddev f
 }
 
 type T struct {
-	hpn    int
-	bf     int
-	rate   int
-	rounds int
+	hpn      int
+	bf       int
+	rate     int
+	rounds   int
+	failures int
 }
 
 // hpn, bf, nmsgsG
@@ -366,7 +367,8 @@ func RunTest(t T) (RunStats, error) {
 		bf := fmt.Sprintf("-bf=%d", t.bf)
 		rate := fmt.Sprintf("-rate=%d", t.rate)
 		rounds := fmt.Sprintf("-rounds=%d", t.rounds)
-		cmd := exec.Command("./deploy2deter", hpn, nmsgs, bf, rate, rounds, debug)
+		failures := fmt.Sprintf("-failures=%d", t.failures)
+		cmd := exec.Command("./deploy2deter", hpn, nmsgs, bf, rate, rounds, debug, failures)
 		log.Println("RUNNING TEST:", cmd.Args)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -439,27 +441,28 @@ func RunTests(name string, ts []T) {
 	}
 }
 
-// hpn=1 bf=2 nmsgs=700
+// hpn=1, bf=2, rate=5000, failures=20
 var TestT = []T{
-	{1, 2, 5000, 5},
-	{1, 2, 5000, 5},
+	{1, 2, 5000, 5, 0},
+	{1, 2, 5000, 10, 50},
+	{10, 2, 5000, 10, 10},
 }
 
 // high and low specify how many milliseconds between messages
 func RateLoadTest(hpn, bf int) []T {
 	return []T{
-		{hpn, bf, 5000, DefaultRounds}, // never send a message
-		{hpn, bf, 5000, DefaultRounds}, // one per round
-		{hpn, bf, 500, DefaultRounds},  // 10 per round
-		{hpn, bf, 50, DefaultRounds},   // 100 per round
-		{hpn, bf, 30, DefaultRounds},   // 1000 per round
+		{hpn, bf, 5000, DefaultRounds, 0}, // never send a message
+		{hpn, bf, 5000, DefaultRounds, 0}, // one per round
+		{hpn, bf, 500, DefaultRounds, 0},  // 10 per round
+		{hpn, bf, 50, DefaultRounds, 0},   // 100 per round
+		{hpn, bf, 30, DefaultRounds, 0},   // 1000 per round
 	}
 }
 
 func DepthTest(hpn, low, high, step int) []T {
 	ts := make([]T, 0)
 	for bf := low; bf <= high; bf += step {
-		ts = append(ts, T{hpn, bf, 10, DefaultRounds})
+		ts = append(ts, T{hpn, bf, 10, DefaultRounds, 0})
 	}
 	return ts
 }
@@ -471,17 +474,19 @@ func main() {
 	os.Chdir("..")
 	// SetDebug(true)
 	DefaultRounds = 10
+
 	MkTestDir()
+
 	err := exec.Command("go", "build", "-v").Run()
 	if err != nil {
 		log.Fatalln("error building deploy2deter:", err)
 	}
 	// test the testing framework
-	//t := TestT
-	//RunTests("test", t)
 
+	t := TestT
+	RunTests("test", t)
 	// how does the branching factor effect speed
-	t := DepthTest(100, 2, 100, 1)
+	t = DepthTest(100, 2, 100, 1)
 	RunTests("depth_test.csv", t)
 
 	// load test the client
