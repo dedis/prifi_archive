@@ -125,7 +125,7 @@ func (sn *Node) getDown() {
 			sn.roundLock.Unlock()
 			rmch <- sm
 		case Error:
-			// log.Println(sn.Name(), "error", ErrUnknownMessageType, sm, sm.Err)
+			log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 		}
 	}
 }

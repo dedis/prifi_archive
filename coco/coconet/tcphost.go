@@ -16,7 +16,7 @@ import (
 )
 
 // Default timeout for any network operation
-const DefaultTCPTimeout time.Duration = 1 * time.Minute
+const DefaultTCPTimeout time.Duration = 5 * time.Second
 
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
