@@ -87,6 +87,35 @@ func (s RunStats) CSV() []byte {
 	return buf.Bytes()
 }
 
+func RunStatsAvg(rs []RunStats) RunStats {
+	if len(rs) == 0 {
+		return RunStats{}
+	}
+	r := RunStats{}
+	r.NHosts = rs[0].NHosts
+	r.Depth = rs[0].Depth
+	r.BF = rs[0].BF
+
+	for _, a := range rs {
+		r.MinTime += a.MinTime
+		r.MaxTime += a.MaxTime
+		r.AvgTime += a.AvgTime
+		r.StdDev += a.StdDev
+		r.SysTime += a.SysTime
+		r.UserTime += a.UserTime
+		r.Rate += a.Rate
+	}
+	l := float64(len(rs))
+	r.MinTime /= l
+	r.MaxTime /= l
+	r.AvgTime /= l
+	r.StdDev /= l
+	r.SysTime /= l
+	r.UserTime /= l
+	r.Rate /= l
+	return r
+}
+
 /*
 {
 	"eapp":"time",
@@ -356,39 +385,48 @@ type T struct {
 	failures int
 }
 
+func isZero(f float64) bool {
+	return math.Abs(f) < 0.0000001
+}
+
 // hpn, bf, nmsgsG
 func RunTest(t T) (RunStats, error) {
 	// add timeout for 10 minutes?
 	done := make(chan struct{})
 	var rs RunStats
+	hpn := fmt.Sprintf("-hpn=%d", t.hpn)
+	nmsgs := fmt.Sprintf("-nmsgs=%d", -1)
+	bf := fmt.Sprintf("-bf=%d", t.bf)
+	rate := fmt.Sprintf("-rate=%d", t.rate)
+	rounds := fmt.Sprintf("-rounds=%d", t.rounds)
+	failures := fmt.Sprintf("-failures=%d", t.failures)
+	cmd := exec.Command("./deploy2deter", hpn, nmsgs, bf, rate, rounds, debug, failures)
+	log.Println("RUNNING TEST:", cmd.Args)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
+	// give it a while to start up
+	time.Sleep(30 * time.Second)
+
 	go func() {
-		hpn := fmt.Sprintf("-hpn=%d", t.hpn)
-		nmsgs := fmt.Sprintf("-nmsgs=%d", -1)
-		bf := fmt.Sprintf("-bf=%d", t.bf)
-		rate := fmt.Sprintf("-rate=%d", t.rate)
-		rounds := fmt.Sprintf("-rounds=%d", t.rounds)
-		failures := fmt.Sprintf("-failures=%d", t.failures)
-		cmd := exec.Command("./deploy2deter", hpn, nmsgs, bf, rate, rounds, debug, failures)
-		log.Println("RUNNING TEST:", cmd.Args)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err := cmd.Start()
-		if err != nil {
-			log.Fatal(err)
-		}
-		// give it a while to start up
-		time.Sleep(30 * time.Second)
 		rs = Monitor(t.bf)
 		cmd.Process.Kill()
 		fmt.Println("TEST COMPLETE:", rs)
 		done <- struct{}{}
 	}()
 
+	// timeout the command if it takes too long
 	select {
 	case <-done:
+		if isZero(rs.MinTime) || isZero(rs.MaxTime) || isZero(rs.AvgTime) || math.IsNaN(rs.Rate) || math.IsInf(rs.Rate, 0) {
+			return rs, errors.New("unable to get good data")
+		}
 		return rs, nil
 	case <-time.After(10 * time.Minute):
-		return rs, errors.New("time out")
+		return rs, errors.New("timed out")
 	}
 
 	return rs, nil
@@ -424,12 +462,22 @@ func RunTests(name string, ts []T) {
 	}
 
 	for i, t := range ts {
-	retry:
-		rs[i], err = RunTest(t)
-		if err != nil {
-			log.Println("error running test:", err)
-			goto retry
+		// try three times
+		// take the average of all successfull runs
+		var runs []RunStats
+		for r := 0; r < 3; r++ {
+			run, err := RunTest(t)
+			if err == nil {
+				runs = append(runs, run)
+			} else {
+				log.Println("error running test:", err)
+			}
 		}
+		if len(runs) == 0 {
+			log.Println("unable to get any data for test:", t)
+			continue
+		}
+		rs[i] = RunStatsAvg(runs)
 		_, err := f.Write(rs[i].CSV())
 		if err != nil {
 			log.Fatal("error writing data to test file:", err)
@@ -472,7 +520,7 @@ var DefaultRounds int = 100
 func main() {
 	// view = true
 	os.Chdir("..")
-	// SetDebug(true)
+	SetDebug(true)
 	DefaultRounds = 10
 
 	MkTestDir()
