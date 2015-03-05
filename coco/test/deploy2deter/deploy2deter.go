@@ -97,8 +97,8 @@ func main() {
 		phys = append(phys, physVirt[i])
 		virt = append(virt, physVirt[i+1])
 	}
-	phys = phys[:36]
-	virt = virt[:36]
+	phys = phys[:35]
+	virt = virt[:35]
 	physOut := strings.Join(phys, "\n")
 	virtOut := strings.Join(virt, "\n")
 
