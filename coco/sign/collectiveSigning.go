@@ -9,7 +9,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	// "strconv"
@@ -177,6 +176,12 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 		// sn.SetAccountableRound(Round)
 	}
 
+	// doing this before annoucing children to avoid major drama
+	if !sn.IsRoot() && sn.ShouldIFail("commit") {
+		log.Warn(sn.Name(), "not commiting for round", Round)
+		return nil
+	}
+
 	// Inform all children of announcement
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
 	for i := range messgs {
@@ -187,7 +192,6 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 		return err
 	}
 
-	// initiate commit phase
 	return sn.Commit(am.Round)
 }
 
@@ -209,9 +213,11 @@ func (sn *Node) initCommitCrypto(Round int) {
 }
 
 func (sn *Node) Commit(Round int) error {
+
 	round := sn.Rounds[Round]
 	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	if round == nil {
+		// was not announced of this round, should retreat
 		return nil
 	}
 
@@ -290,10 +296,6 @@ func (sn *Node) actOnCommits(Round int) error {
 			ExceptionList: round.ExceptionList,
 			Round:         Round}
 
-		if sn.ShouldIFail("commit") {
-			return nil
-		}
-
 		err = sn.PutUp(&SigningMessage{
 			Type: Commitment,
 			Com:  com})
@@ -318,8 +320,11 @@ func (sn *Node) Challenge(chm *ChallengeMessage) error {
 		return sn.Respond(chm.Round)
 	} else {
 		// messages from clients, proofs computed
-		if err := sn.SendLocalMerkleProof(chm); err != nil {
-			return err
+		if sn.CommitedFor(round) {
+			if err := sn.SendLocalMerkleProof(chm); err != nil {
+				return err
+			}
+
 		}
 		if err := sn.SendChildrenChallengesProofs(chm); err != nil {
 			return err
@@ -446,9 +451,9 @@ func (sn *Node) actOnResponses(Round int, exceptionV_hat abstract.Point, excepti
 
 	// if no error send up own response
 	if err == nil && !sn.IsRoot() {
-		if sn.ShouldIFail("response") {
-			return nil
-		}
+		// if round.Log.v == nil && sn.ShouldIFail("response") {
+		// 	return nil
+		// }
 
 		// create and putup own response message
 		rm := &ResponseMessage{
@@ -520,9 +525,9 @@ func (sn *Node) VerifyResponses(Round int) error {
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
 	if !T.Equal(round.Log.V_hat) || (sn.IsRoot() && !round.c.Equal(c2)) {
-		if coco.DEBUG == true {
-			panic(sn.Name() + "reports ElGamal Collective Signature failed for Round" + strconv.Itoa(Round))
-		}
+		// if coco.DEBUG == true {
+		panic(sn.Name() + "reports ElGamal Collective Signature failed for Round" + strconv.Itoa(Round))
+		// }
 		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
 	}
 

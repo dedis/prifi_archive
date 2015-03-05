@@ -6,9 +6,10 @@ package sign
 
 import (
 	"bytes"
-	"log"
 	"sort"
 	"strconv"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"

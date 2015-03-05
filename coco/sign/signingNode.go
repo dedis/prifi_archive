@@ -7,6 +7,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,8 +19,6 @@ import (
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/test/logutils"
 )
-
-var ROUND_TIME time.Duration = 1 * time.Second
 
 type Type int // used by other modules as sign.Type
 
@@ -83,7 +82,7 @@ func (sn *Node) logFirstPhase(firstRoundTime time.Duration) {
 		"type":  "root_announce",
 		"round": sn.nRounds,
 		"time":  firstRoundTime,
-	}).Info("root announce")
+	}).Info("root announce round " + strconv.Itoa(sn.nRounds))
 }
 
 func (sn *Node) logSecondPhase(secondRoundTime time.Duration) {
@@ -92,7 +91,7 @@ func (sn *Node) logSecondPhase(secondRoundTime time.Duration) {
 		"type":  "root_challenge",
 		"round": sn.nRounds,
 		"time":  secondRoundTime,
-	}).Info("root challenge")
+	}).Info("root challenge round " + strconv.Itoa(sn.nRounds))
 }
 
 func (sn *Node) logTotalTime(totalTime time.Duration) {
@@ -101,7 +100,7 @@ func (sn *Node) logTotalTime(totalTime time.Duration) {
 		"type":  "root_challenge",
 		"round": sn.nRounds,
 		"time":  totalTime,
-	}).Info("root challenge")
+	}).Info("root challenge round " + strconv.Itoa(sn.nRounds))
 }
 
 var MAX_WILLING_TO_WAIT time.Duration = 20 * time.Second
@@ -246,6 +245,13 @@ func (sn *Node) Done() chan int {
 
 func (sn *Node) LastRound() int {
 	return sn.LastSeenRound
+}
+
+func (sn *Node) CommitedFor(round *Round) bool {
+	if round.Log.v != nil {
+		return true
+	}
+	return false
 }
 
 func intToByteSlice(Round int) []byte {

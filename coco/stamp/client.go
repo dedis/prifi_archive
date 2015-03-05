@@ -11,6 +11,7 @@ import (
 
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
 )
 
 type Client struct {
@@ -178,7 +179,14 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	c.Mux.Unlock()
 
 	// wait until ProcessStampReply signals that reply was received
-	err = <-myChan
+	select {
+	case err = <-myChan:
+		// log.Println("-------------client received  response from" + TSServerName)
+		break
+	case <-time.After(3 * sign.ROUND_TIME):
+		err = errors.New("client timeouted on waiting for response from" + TSServerName)
+
+	}
 	if err != nil {
 		if coco.DEBUG {
 			log.Errorln("error received from DoneChan:", err)
