@@ -224,6 +224,7 @@ retry:
 	doc, err := goquery.NewDocument("http://localhost:8080/")
 	if err != nil {
 		log.Println("unable to get log data: retrying:", err)
+		time.Sleep(10 * time.Second)
 		goto retry
 	}
 	if view {
