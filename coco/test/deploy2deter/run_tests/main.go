@@ -542,6 +542,7 @@ func main() {
 	// t := TestT
 	// RunTests("test", t)
 	t := ScaleTest(10, 1, 100, 2)
+	RunTests("scale_test.csv", t)
 	// how does the branching factor effect speed
 	t = DepthTest(100, 2, 100, 1)
 	RunTests("depth_test.csv", t)
