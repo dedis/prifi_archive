@@ -528,7 +528,7 @@ var DefaultRounds int = 100
 func main() {
 	// view = true
 	os.Chdir("..")
-	SetDebug(true)
+	// SetDebug(true)
 	DefaultRounds = 10
 
 	MkTestDir()
