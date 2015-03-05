@@ -224,6 +224,7 @@ retry:
 	doc, err := goquery.NewDocument("http://localhost:8080/")
 	if err != nil {
 		log.Println("unable to get log data: retrying:", err)
+		time.Sleep(10 * time.Second)
 		goto retry
 	}
 	if view {
@@ -472,6 +473,7 @@ func RunTests(name string, ts []T) {
 			} else {
 				log.Println("error running test:", err)
 			}
+			exec.Command("./deploy2deter", "-kill=true").Run()
 		}
 		if len(runs) == 0 {
 			log.Println("unable to get any data for test:", t)
@@ -515,12 +517,20 @@ func DepthTest(hpn, low, high, step int) []T {
 	return ts
 }
 
+func ScaleTest(bf, low, high, mult int) []T {
+	ts := make([]T, 0)
+	for hpn := low; hpn <= high; hpn *= mult {
+		ts = append(ts, T{hpn, bf, 10, DefaultRounds, 0})
+	}
+	return ts
+}
+
 var DefaultRounds int = 100
 
 func main() {
 	// view = true
 	os.Chdir("..")
-	SetDebug(true)
+	// SetDebug(true)
 	DefaultRounds = 10
 
 	MkTestDir()
@@ -531,8 +541,10 @@ func main() {
 	}
 	// test the testing framework
 
-	t := TestT
-	RunTests("test", t)
+	// t := TestT
+	// RunTests("test", t)
+	t := ScaleTest(10, 1, 100, 2)
+	RunTests("scale_test.csv", t)
 	// how does the branching factor effect speed
 	t = DepthTest(100, 2, 100, 1)
 	RunTests("depth_test.csv", t)
