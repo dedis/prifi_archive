@@ -515,6 +515,14 @@ func DepthTest(hpn, low, high, step int) []T {
 	return ts
 }
 
+func ScaleTest(bf, low, high, mult int) []T {
+	ts := make([]T, 0)
+	for hpn := low; hpn <= high; hpn *= mult {
+		ts = append(ts, T{hpn, bf, 10, DefaultRounds, 0})
+	}
+	return ts
+}
+
 var DefaultRounds int = 100
 
 func main() {
@@ -531,8 +539,9 @@ func main() {
 	}
 	// test the testing framework
 
-	t := TestT
-	RunTests("test", t)
+	// t := TestT
+	// RunTests("test", t)
+	t := ScaleTest(10, 1, 100, 2)
 	// how does the branching factor effect speed
 	t = DepthTest(100, 2, 100, 1)
 	RunTests("depth_test.csv", t)
