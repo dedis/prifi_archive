@@ -261,7 +261,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	// give it some time to set up
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	N := 5
 	for i := 0; i < N; i++ {

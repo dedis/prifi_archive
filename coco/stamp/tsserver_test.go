@@ -9,7 +9,7 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	_ "github.com/dedis/prifi/coco"
+	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/stamp"
@@ -31,15 +31,17 @@ import (
 //   2   3   5
 
 func TestTSSIntegrationHealthy(t *testing.T) {
+	coco.DEBUG = true
 	if err := runTSSIntegration(0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestTSSIntegrationFaulty(t *testing.T) {
+	coco.DEBUG = true
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTSSIntegration(100, faultyNodes...); err != nil {
+	if err := runTSSIntegration(20, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -48,7 +50,7 @@ func runTSSIntegration(failureRate int, faultyNodes ...int) error {
 	var hostConfig *oldconfig.HostConfig
 	var err error
 	nMessages := 4 // per round
-	nRounds := 3
+	nRounds := 4
 
 	// load config with faulty or healthy hosts
 	if len(faultyNodes) > 0 {
@@ -98,6 +100,7 @@ func runTSSIntegration(failureRate int, faultyNodes ...int) error {
 		}(clientsLists[i], nRounds, nMessages, s)
 
 	}
+
 	go stampers[0].Run("root", nRounds)
 	wg.Wait()
 
