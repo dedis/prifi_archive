@@ -473,6 +473,10 @@ func RunTests(name string, ts []T) {
 			} else {
 				log.Println("error running test:", err)
 			}
+			err = exec.Command("./deploy2deter", "-kill=true").Run()
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 		if len(runs) == 0 {
 			log.Println("unable to get any data for test:", t)
