@@ -398,11 +398,13 @@ func (sn *Node) Respond(Round int) error {
 		default:
 			// default == no response from child
 			// log.Println(sn.Name(), "default in respose for child", from, sm)
-			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
+			if children[from] != nil {
+				round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
 
-			// remove public keys and point commits from subtree of faild child
-			sn.add(exceptionX_hat, round.ChildX_hat[from])
-			sn.add(exceptionV_hat, round.ChildV_hat[from])
+				// remove public keys and point commits from subtree of faild child
+				sn.add(exceptionX_hat, round.ChildX_hat[from])
+				sn.add(exceptionV_hat, round.ChildV_hat[from])
+			}
 			continue
 		case Response:
 			// disregard response from children who did not commit

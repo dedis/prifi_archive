@@ -11,7 +11,6 @@ import (
 
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
-	"github.com/dedis/prifi/coco/sign"
 )
 
 type Client struct {
@@ -144,6 +143,8 @@ func (c *Client) PutToServer(name string, data coconet.BinaryMarshaler) error {
 	return conn.Put(data)
 }
 
+var ErrClientToTSTimeout error = errors.New("client timeouted on waiting for response")
+
 // When client asks for val to be timestamped
 // It blocks until it get a stamp reply back
 func (c *Client) TimeStamp(val []byte, TSServerName string) error {
@@ -183,9 +184,12 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	case err = <-myChan:
 		// log.Println("-------------client received  response from" + TSServerName)
 		break
-	case <-time.After(3 * sign.ROUND_TIME):
-		err = errors.New("client timeouted on waiting for response from" + TSServerName)
-
+	case <-time.After(3 * ROUND_TIME):
+		if coco.DEBUG == true {
+			log.Errorln(errors.New("client timeouted on waiting for response from" + TSServerName))
+		}
+		break
+		// err = ErrClientToTSTimeout
 	}
 	if err != nil {
 		if coco.DEBUG {

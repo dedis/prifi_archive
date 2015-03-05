@@ -424,9 +424,10 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 				// only create the tcp hosts requested
 				if opts.Host == "" || opts.Host == addr {
 					if opts.Faulty == true {
-						hosts[h] = &coconet.FaultyHost{}
+						fmt.Println("new faulty", addr)
+						hosts[addr] = &coconet.FaultyHost{}
 						tcpHost := coconet.NewTCPHost(addr)
-						hosts[h] = coconet.NewFaultyHost(tcpHost)
+						hosts[addr] = coconet.NewFaultyHost(tcpHost)
 					} else {
 						hosts[addr] = coconet.NewTCPHost(addr)
 					}
@@ -438,6 +439,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	}
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
+	fmt.Println("hosts", hosts)
 	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)
 	if connT != GoC {
 		hc.Dir = nil

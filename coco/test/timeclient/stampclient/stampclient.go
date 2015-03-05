@@ -69,6 +69,8 @@ retry:
 	err := c.TimeStamp(msg, servers[0])
 	if err == io.EOF {
 		log.Fatal(AggregateStats(buck, roundsAfter))
+	} else if err == stamp.ErrClientToTSTimeout {
+		log.Errorln(err)
 	} else if err != nil {
 		time.Sleep(500 * time.Millisecond)
 		goto retry
