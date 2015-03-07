@@ -517,6 +517,21 @@ func DepthTest(hpn, low, high, step int) []T {
 	return ts
 }
 
+func DepthTestFixed(hpn) []T {
+	return []T{
+		{hpn, 1, 30, DefaultRounds, 0},
+		{hpn, 2, 30, DefaultRounds, 0},
+		{hpn, 4, 30, DefaultRounds, 0},
+		{hpn, 8, 30, DefaultRounds, 0},
+		{hpn, 16, 30, DefaultRounds, 0},
+		{hpn, 32, 30, DefaultRounds, 0},
+		{hpn, 64, 30, DefaultRounds, 0},
+		{hpn, 128, 30, DefaultRounds, 0},
+		{hpn, 256, 30, DefaultRounds, 0},
+		{hpn, 512, 30, DefaultRounds, 0},
+	}
+}
+
 func ScaleTest(bf, low, high, mult int) []T {
 	ts := make([]T, 0)
 	for hpn := low; hpn <= high; hpn *= mult {
@@ -546,13 +561,13 @@ func main() {
 	t := ScaleTest(10, 1, 100, 2)
 	RunTests("scale_test.csv", t)
 	// how does the branching factor effect speed
-	t = DepthTest(100, 2, 100, 1)
+	t = DepthTestFixed(100)
 	RunTests("depth_test.csv", t)
 
 	// load test the client
-	t = RateLoadTest(40, 10)
-	RunTests("load_rate_test_bf10.csv", t)
-	t = RateLoadTest(40, 50)
-	RunTests("load_rate_test_bf50.csv", t)
+	// t = RateLoadTest(40, 10)
+	// RunTests("load_rate_test_bf10.csv", t)
+	// t = RateLoadTest(40, 50)
+	// RunTests("load_rate_test_bf50.csv", t)
 
 }
