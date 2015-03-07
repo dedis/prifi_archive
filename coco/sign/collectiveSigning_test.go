@@ -196,6 +196,9 @@ func TestTreeFromBigConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
 	hc.SNodes[0].LogTest = []byte("hello world")
 	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	if err != nil {
@@ -217,11 +220,14 @@ func TestMultipleRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	for i := 0; i < N; i++ {
 		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
-		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 0})
+		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: i})
 		if err != nil {
 			t.Error(err)
 		}
@@ -237,6 +243,9 @@ func TestTCPStaticConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
 	hc.SNodes[0].LogTest = []byte("hello world")
 	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	if err != nil {
@@ -272,6 +281,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 			t.Error(err)
 		}
 	}
+	time.Sleep(10 * time.Second)
 	for _, n := range hc.SNodes {
 		n.Close()
 	}

@@ -82,7 +82,7 @@ func (sn *Node) logFirstPhase(firstRoundTime time.Duration) {
 		"type":  "root_announce",
 		"round": sn.nRounds,
 		"time":  firstRoundTime,
-	}).Info("root announce round " + strconv.Itoa(sn.nRounds))
+	}).Info("done with root announce round " + strconv.Itoa(sn.nRounds))
 }
 
 func (sn *Node) logSecondPhase(secondRoundTime time.Duration) {
@@ -91,7 +91,7 @@ func (sn *Node) logSecondPhase(secondRoundTime time.Duration) {
 		"type":  "root_challenge",
 		"round": sn.nRounds,
 		"time":  secondRoundTime,
-	}).Info("root challenge round " + strconv.Itoa(sn.nRounds))
+	}).Info("done with root challenge round " + strconv.Itoa(sn.nRounds))
 }
 
 func (sn *Node) logTotalTime(totalTime time.Duration) {
@@ -100,10 +100,10 @@ func (sn *Node) logTotalTime(totalTime time.Duration) {
 		"type":  "root_challenge",
 		"round": sn.nRounds,
 		"time":  totalTime,
-	}).Info("root challenge round " + strconv.Itoa(sn.nRounds))
+	}).Info("done with root challenge round " + strconv.Itoa(sn.nRounds))
 }
 
-var MAX_WILLING_TO_WAIT time.Duration = 20 * time.Second
+var MAX_WILLING_TO_WAIT time.Duration = 30 * time.Second
 
 func (sn *Node) StartSigningRound() error {
 	// send an announcement message to all other TSServers
@@ -139,7 +139,7 @@ func (sn *Node) StartSigningRound() error {
 	case err := <-sn.closed:
 		return err
 	case <-time.After(MAX_WILLING_TO_WAIT):
-		log.Fatal("Really bad. Round did not finish commit phase and did not report network errors.")
+		log.Fatal("Really bad. Round did not finish commit phase and did not report network errors." + strconv.Itoa(sn.nRounds))
 		return errors.New("Really bad. Round did not finish commit phase and did not report network errors.")
 	}
 

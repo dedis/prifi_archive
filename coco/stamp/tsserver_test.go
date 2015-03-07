@@ -29,16 +29,17 @@ import (
 //     1   4
 //    / \   \
 //   2   3   5
+func init() {
+	coco.DEBUG = true
+}
 
 func TestTSSIntegrationHealthy(t *testing.T) {
-	coco.DEBUG = true
 	if err := runTSSIntegration(0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestTSSIntegrationFaulty(t *testing.T) {
-	coco.DEBUG = true
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
 	if err := runTSSIntegration(20, faultyNodes...); err != nil {
@@ -161,6 +162,10 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 		wg.Wait()
 		fmt.Println("done with round:", r, nRounds)
 	}
+
+	// give it some time before closing the connections
+	// so that no essential messages are denied passing through the network
+	time.Sleep(5 * time.Second)
 	for _, h := range hc.SNodes {
 		h.Close()
 	}
@@ -169,24 +174,54 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	}
 }
 
-func TestTCPTimestampFromConfig(t *testing.T) {
+func TestTCPTimestampFromConfigHealthy(t *testing.T) {
+	if err := runTCPTimestampFromConfig(0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTCPTimestampFromConfigFaulty(t *testing.T) {
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 2, 5)
+	if err := runTCPTimestampFromConfig(20, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
+	var hc *oldconfig.HostConfig
+	var err error
 	oldconfig.StartConfigPort += 2010
 	nMessages := 1
 	nClients := 1
-	nRounds := 2
+	nRounds := 4
 
-	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
-	if err != nil {
-		t.Fatal(err)
+	// load config with faulty or healthy hosts
+	if len(faultyNodes) > 0 {
+		hc, err = oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true, Faulty: true})
+	} else {
+		hc, err = oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	}
+	if err != nil {
+		fmt.Println("here")
+		return err
+	}
+
+	// set FailureRates
+	if len(faultyNodes) > 0 {
+		for i := range hc.SNodes {
+			hc.SNodes[i].FailureRate = failureRate
+		}
+	}
+
 	err = hc.Run(sign.MerkleTree)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
 	stampers, clients, err := hc.RunTimestamper(nClients)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	for _, s := range stampers[1:] {
@@ -195,12 +230,14 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 	go stampers[0].Run("root", nRounds)
 	log.Println("About to start sending client messages")
 
-	for r := 0; r < nRounds; r++ {
+	for r := 1; r <= nRounds; r++ {
 		var wg sync.WaitGroup
 		for _, c := range clients {
 			for i := 0; i < nMessages; i++ {
 				messg := []byte("messg:" + strconv.Itoa(r) + "." + strconv.Itoa(i))
 				wg.Add(1)
+
+				// CLIENT SENDING
 				go func(c *stamp.Client, messg []byte, i int) {
 					defer wg.Done()
 					server := "NO VALID SERVER"
@@ -214,24 +251,35 @@ func TestTCPTimestampFromConfig(t *testing.T) {
 					c.Mux.Unlock()
 					log.Infoln("timestamping")
 					err := c.TimeStamp(messg, server)
+					if err == stamp.ErrClientToTSTimeout {
+						log.Errorln(err)
+						return
+					}
 					if err != nil {
 						time.Sleep(1 * time.Second)
+						fmt.Println("retyring because err:", err)
 						goto retry
 					}
 					log.Infoln("timestamped")
 				}(c, messg, r)
+
 			}
 		}
 		// wait between rounds
 		wg.Wait()
-		log.Println("done with round:", r, nRounds)
+		log.Println("done with round:", r, " of ", nRounds)
 	}
+
+	// give it some time before closing the connections
+	// so that no essential messages are denied passing through the network
+	time.Sleep(5 * time.Second)
 	for _, h := range hc.SNodes {
 		h.Close()
 	}
 	for _, c := range clients {
 		c.Close()
 	}
+	return nil
 }
 
 // Create nClients for the TSServer, with first client associated with number fClient
