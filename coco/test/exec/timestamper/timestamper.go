@@ -12,7 +12,7 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failures int) {
+func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failureRate int) {
 	if debug {
 		coco.DEBUG = true
 	}
@@ -25,14 +25,28 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 
 	// load the configuration
 	//log.Println("loading configuration")
-	hc, err := oldconfig.LoadConfig(cfg, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname})
+	var hc *oldconfig.HostConfig
+	var err error
+	if failureRate > 0 {
+		hc, err = oldconfig.LoadConfig(cfg, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname, Faulty: true})
+
+	} else {
+		hc, err = oldconfig.LoadConfig(cfg, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname})
+	}
 	if err != nil {
 		fmt.Println(err)
 		log.Fatal(err)
 	}
 
+	// set FailureRates
+	if failureRate > 0 {
+		for i := range hc.SNodes {
+			hc.SNodes[i].FailureRate = failureRate
+		}
+	}
+
 	// run this specific host
-	//log.Println("RUNNING HOST CONFIG")
+	log.Println("RUNNING HOST CONFIG")
 	err = hc.Run(sign.MerkleTree, hostname)
 	if err != nil {
 		log.Fatal(err)
@@ -76,7 +90,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 			time.Sleep(30 * time.Second)
 		}
 	} else if app == "time" {
-		//log.Println("RUNNING TIMESTAMPER")
+		log.Println("RUNNING TIMESTAMPER")
 		stampers, _, err := hc.RunTimestamper(0, hostname)
 		// get rid of the hc information so it can be GC'ed
 		hc = nil
@@ -84,9 +98,6 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 			log.Fatal(err)
 		}
 		for _, s := range stampers {
-			if failures > 0 {
-				s.SetFailureRate(failures)
-			}
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
 				if s.IsRoot() {

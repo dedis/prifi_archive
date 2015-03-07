@@ -103,7 +103,7 @@ func (sn *Node) logTotalTime(totalTime time.Duration) {
 	}).Info("done with root challenge round " + strconv.Itoa(sn.nRounds))
 }
 
-var MAX_WILLING_TO_WAIT time.Duration = 30 * time.Second
+var MAX_WILLING_TO_WAIT time.Duration = 50 * time.Second
 
 func (sn *Node) StartSigningRound() error {
 	// send an announcement message to all other TSServers
