@@ -3,12 +3,25 @@ package coconet
 import (
 	"errors"
 	"log"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
 )
+
+func init() {
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc,
+		syscall.SIGINT)
+	go func() {
+		<-sigc
+		panic("CTRL-C")
+	}()
+}
 
 // Default timeout for any network operation
 const DefaultGoTimeout time.Duration = 500 * time.Millisecond
@@ -77,8 +90,8 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 		childrenMap: make(map[string]Conn),
 		peers:       make(map[string]Conn),
 		dir:         dir,
-		msgchan:     make(chan NetworkMessg, 1),
-		errchan:     make(chan error, 1)}
+		msgchan:     make(chan NetworkMessg, 0),
+		errchan:     make(chan error, 0)}
 	h.mutimeout.Lock()
 	h.timeout = DefaultGoTimeout
 	h.mutimeout.Unlock()
@@ -184,14 +197,12 @@ func (h *GoHost) IsRoot() bool {
 }
 
 func (h *GoHost) IsParent(peer string) bool {
-	return h.parent.Name() == peer
+	return h.parent != nil && h.parent.Name() == peer
 }
 
 func (h *GoHost) IsChild(peer string) bool {
-	h.rlock.Lock()
 	_, ok := h.peers[peer]
-	h.rlock.Unlock()
-	return h.parent.Name() != peer && ok
+	return !h.IsParent(peer) && ok
 }
 
 // Peers returns the list of peers as a mapping from hostname to Conn
@@ -224,7 +235,7 @@ func (h *GoHost) WaitTick() {
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) PutUp(data BinaryMarshaler) error {
 	// defer fmt.Println(h.Name(), "done put up", h.parent)
-	// fmt.Printf(h.Name(), "PUTTING UP up:%#v", data)
+	// log.Printf("%s PUTTING UP up: %#v", h.Name(), data)
 	return h.parent.Put(data)
 }
 
@@ -295,13 +306,12 @@ func (h *GoHost) Get() (chan NetworkMessg, chan error) {
 		}(i, c)
 	}
 	go func() {
-		h.rlock.Lock()
 		if h.parent == nil {
 			log.Println("no parent")
 			return
 		}
+		h.rlock.Lock()
 		conn := h.peers[h.parent.Name()]
-		log.Println("parent is:", h.parent.Name())
 		h.rlock.Unlock()
 		for {
 			data := h.pool.Get().(BinaryUnmarshaler)
