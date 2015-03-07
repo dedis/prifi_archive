@@ -403,6 +403,7 @@ func RunTest(t T) (RunStats, error) {
 	failures := fmt.Sprintf("-failures=%d", t.failures)
 	cmd := exec.Command("./deploy2deter", hpn, nmsgs, bf, rate, rounds, debug, failures)
 	log.Println("RUNNING TEST:", cmd.Args)
+	log.Println("FAILURES PERCENT:", t.failures)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
@@ -473,7 +474,11 @@ func RunTests(name string, ts []T) {
 			} else {
 				log.Println("error running test:", err)
 			}
-			exec.Command("./deploy2deter", "-kill=true").Run()
+			log.Println("KILLING REMAINING PROCESSES")
+			cmd := exec.Command("./deploy2deter", "-kill=true")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Run()
 		}
 		if len(runs) == 0 {
 			log.Println("unable to get any data for test:", t)
@@ -489,13 +494,6 @@ func RunTests(name string, ts []T) {
 			log.Fatal("error syncing data to test file:", err)
 		}
 	}
-}
-
-// hpn=1, bf=2, rate=5000, failures=20
-var TestT = []T{
-	{1, 2, 5000, 5, 0},
-	{1, 2, 5000, 10, 50},
-	{10, 2, 5000, 10, 10},
 }
 
 // high and low specify how many milliseconds between messages
@@ -527,11 +525,18 @@ func ScaleTest(bf, low, high, mult int) []T {
 
 var DefaultRounds int = 100
 
+// hpn=1, bf=2, rate=5000, failures=20
+var TestT = []T{
+	{1, 2, 5000, 5, 10},
+	{10, 2, 5000, 5, 5},
+	{1, 2, 5000, 5, 0},
+}
+
 func main() {
 	// view = true
 	os.Chdir("..")
-	// SetDebug(true)
-	DefaultRounds = 10
+	SetDebug(true)
+	DefaultRounds = 5 // NOTE: changed from 10
 
 	MkTestDir()
 
@@ -541,18 +546,19 @@ func main() {
 	}
 	// test the testing framework
 
-	// t := TestT
-	// RunTests("test", t)
-	t := ScaleTest(10, 1, 100, 2)
-	RunTests("scale_test.csv", t)
-	// how does the branching factor effect speed
-	t = DepthTest(100, 2, 100, 1)
-	RunTests("depth_test.csv", t)
+	t := TestT
+	RunTests("test.csv", t)
+	/*
+		t := ScaleTest(10, 1, 100, 2)
+		RunTests("scale_test.csv", t)
+		// how does the branching factor effect speed
+		t = DepthTest(100, 2, 100, 1)
+		RunTests("depth_test.csv", t)
 
-	// load test the client
-	t = RateLoadTest(40, 10)
-	RunTests("load_rate_test_bf10.csv", t)
-	t = RateLoadTest(40, 50)
-	RunTests("load_rate_test_bf50.csv", t)
-
+		// load test the client
+		t = RateLoadTest(40, 10)
+		RunTests("load_rate_test_bf10.csv", t)
+		t = RateLoadTest(40, 50)
+		RunTests("load_rate_test_bf50.csv", t)
+	*/
 }

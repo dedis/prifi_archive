@@ -96,5 +96,6 @@ func main() {
 		log.Println(http.ListenAndServe(net.JoinHostPort(physaddr, strconv.Itoa(p+2)), nil))
 	}()
 
+	log.Println("!!!!!!!!!!!!!!!Running timestamp with FAILURE: ", failures)
 	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, failures)
 }
