@@ -37,6 +37,11 @@ type TCPHost struct {
 	Pubkey abstract.Point // own public key
 
 	pool sync.Pool
+
+	// channels to send on Get() and update
+	msglock sync.Mutex
+	msgchan chan NetworkMessg
+	errchan chan error
 }
 
 func (h *TCPHost) DefaultTimeout() time.Duration {
@@ -63,7 +68,10 @@ func NewTCPHost(hostname string) *TCPHost {
 		children: make([]string, 0),
 		peers:    make(map[string]Conn),
 		timeout:  DefaultTCPTimeout,
-		ready:    make(map[string]bool)}
+		ready:    make(map[string]bool),
+		msglock:  sync.Mutex{},
+		msgchan:  make(chan NetworkMessg, 1),
+		errchan:  make(chan error, 1)}
 
 	return h
 }
@@ -263,6 +271,17 @@ func (h *TCPHost) IsRoot() bool {
 	return h.parent == ""
 }
 
+func (h *TCPHost) IsParent(peer string) bool {
+	return h.parent == peer
+}
+
+func (h *TCPHost) IsChild(peer string) bool {
+	h.rlock.Lock()
+	_, ok := h.peers[peer]
+	h.rlock.Unlock()
+	return h.parent != peer && ok
+}
+
 // Peers returns the list of peers as a mapping from hostname to Conn
 func (h *TCPHost) Peers() map[string]Conn {
 	return h.peers
@@ -377,6 +396,7 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
 			break
 		}
 		// XXX see if we should change Sleep with sth else
+		// TODO: exponential backoff?
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -425,8 +445,65 @@ func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 			}(i, c)
 		}
 	}()
-
 	return ch, errch
+}
+
+// each connection we should realistically always be getting from
+// TODO: each of these goroutines could be spawned when we initally connect to
+// them instead
+func (h *TCPHost) Get() (chan NetworkMessg, chan error) {
+	// copy children before ranging for thread safety
+	h.childLock.Lock()
+	children := make([]string, len(h.children))
+	copy(children, h.children)
+	h.childLock.Unlock()
+
+	// start children threads
+	for i, c := range children {
+		go func(i int, c string) {
+
+			for {
+				data := h.pool.Get().(BinaryUnmarshaler)
+				e := h.whenReadyGet(c, data)
+				// check to see if the connection is Closed
+				if e == ErrorConnClosed {
+					h.errchan <- errors.New("connection has been closed")
+					return
+				} else if e == io.EOF {
+					os.Exit(1)
+				}
+
+				h.msglock.Lock()
+				h.msgchan <- NetworkMessg{Data: data, From: c}
+				h.errchan <- e
+				h.msglock.Unlock()
+
+			}
+		}(i, c)
+	}
+	go func() {
+		if h.parent == "" {
+			return
+		}
+		for {
+			data := h.pool.Get().(BinaryUnmarshaler)
+			e := h.whenReadyGet(h.parent, data)
+			if e == ErrorConnClosed {
+				h.errchan <- errors.New("connection has been closed")
+				return
+			} else if e == io.EOF {
+				os.Exit(1)
+			}
+
+			h.msglock.Lock()
+			h.msgchan <- NetworkMessg{Data: data, From: h.parent}
+			h.errchan <- e
+			h.msglock.Unlock()
+
+		}
+	}()
+
+	return h.msgchan, h.errchan
 }
 
 func (h *TCPHost) Pool() sync.Pool {

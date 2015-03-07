@@ -46,7 +46,9 @@ type Host interface {
 	AddChildren(hostname ...string) // add child connections
 	NChildren() int
 
-	IsRoot() bool // true if this host is the root of the tree
+	IsRoot() bool              // true if this host is the root of the tree
+	IsParent(peer string) bool // true if this peer is the parent
+	IsChild(peer string) bool  // true if this peer is a child
 
 	// blocking network calls over the tree
 	PutUp(BinaryMarshaler) error              // send data to parent in host tree
@@ -54,6 +56,7 @@ type Host interface {
 	PutDown([]BinaryMarshaler) error          // send data to children in host tree
 	GetDown() (chan NetworkMessg, chan error) // get data from children in host tree
 
+	Get() (chan NetworkMessg, chan error)
 	// ??? Could be replaced by listeners (condition variables) that wait for a
 	// change to the root status to the node (i.e. through an add parent call)
 	WaitTick() // Sleeps for network implementation dependent amount of time

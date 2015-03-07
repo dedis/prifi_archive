@@ -39,6 +39,10 @@ type GoHost struct {
 	timeout   time.Duration // general timeout for any network operation
 
 	pool sync.Pool
+
+	msglock sync.Mutex
+	msgchan chan NetworkMessg
+	errchan chan error
 }
 
 func (h *GoHost) GetDirectory() *GoDirectory {
@@ -72,7 +76,9 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 		children:    make([]string, 0),
 		childrenMap: make(map[string]Conn),
 		peers:       make(map[string]Conn),
-		dir:         dir}
+		dir:         dir,
+		msgchan:     make(chan NetworkMessg, 1),
+		errchan:     make(chan error, 1)}
 	h.mutimeout.Lock()
 	h.timeout = DefaultGoTimeout
 	h.mutimeout.Unlock()
@@ -138,6 +144,11 @@ func (h *GoHost) AddParent(c string) {
 	// only after putting pub key allow it to be accessed like parent
 	h.parent, _ = h.peers[c]
 	h.plock.Unlock()
+
+	h.rlock.Lock()
+	h.ready[h.parent] = true
+	h.rlock.Unlock()
+
 }
 
 // AddChildren variadically adds multiple Peers as children to the HostNode.
@@ -170,6 +181,17 @@ func (h *GoHost) IsRoot() bool {
 	h.plock.Lock()
 	defer h.plock.Unlock()
 	return h.parent == nil
+}
+
+func (h *GoHost) IsParent(peer string) bool {
+	return h.parent.Name() == peer
+}
+
+func (h *GoHost) IsChild(peer string) bool {
+	h.rlock.Lock()
+	_, ok := h.peers[peer]
+	h.rlock.Unlock()
+	return h.parent.Name() != peer && ok
 }
 
 // Peers returns the list of peers as a mapping from hostname to Conn
@@ -209,6 +231,7 @@ func (h *GoHost) PutUp(data BinaryMarshaler) error {
 // GetUp gets a message (an interface{} value) from the parent through
 // whatever 'network' interface the parent Peer implements.
 func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
+	log.Fatalln("GETTING UP")
 	// fmt.Println("GETTING UP from up")
 	return h.parent.Get(data)
 }
@@ -216,7 +239,6 @@ func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
 func (h *GoHost) PutDown(data []BinaryMarshaler) error {
-	// fmt.Println("PUTTING DOWN")
 	if len(data) != len(h.children) {
 		panic("number of messages passed down != number of children")
 	}
@@ -253,10 +275,52 @@ func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) error {
 	return c.Get(data)
 }
 
+func (h *GoHost) Get() (chan NetworkMessg, chan error) {
+	for i, c := range h.children {
+		go func(i int, c string) {
+			h.rlock.Lock()
+			conn := h.peers[c]
+			h.rlock.Unlock()
+
+			for {
+				data := h.pool.Get().(BinaryUnmarshaler)
+				e := h.whenReadyGet(conn, data)
+
+				h.msglock.Lock()
+				h.msgchan <- NetworkMessg{Data: data, From: c}
+				h.errchan <- e
+				h.msglock.Unlock()
+
+			}
+		}(i, c)
+	}
+	go func() {
+		h.rlock.Lock()
+		if h.parent == nil {
+			log.Println("no parent")
+			return
+		}
+		conn := h.peers[h.parent.Name()]
+		log.Println("parent is:", h.parent.Name())
+		h.rlock.Unlock()
+		for {
+			data := h.pool.Get().(BinaryUnmarshaler)
+			e := h.whenReadyGet(conn, data)
+			h.msglock.Lock()
+			h.msgchan <- NetworkMessg{Data: data, From: h.parent.Name()}
+			h.errchan <- e
+			h.msglock.Unlock()
+		}
+	}()
+
+	return h.msgchan, h.errchan
+
+}
+
 // GetDown gets a message (an interface{} value) from all children through
 // whatever 'network' interface each child Peer implements.
 func (h *GoHost) GetDown() (chan NetworkMessg, chan error) {
-	// fmt.Println("GETTING DOWN")
+	log.Fatalln("GETTING DOWN")
 	var chmu sync.Mutex
 	ch := make(chan NetworkMessg, 1)
 	errch := make(chan error, 1)

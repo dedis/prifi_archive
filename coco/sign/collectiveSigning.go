@@ -25,14 +25,100 @@ var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
 // Start listening for messages coming from parent(up)
 func (sn *Node) Listen() error {
+	log.Println("listening")
 	sn.setPool()
-
-	if !sn.IsRoot() {
-		go sn.getUp()
-	}
-	go sn.getDown()
-
+	go sn.get()
 	return nil
+}
+
+// Get multiplexes all messages from TCPHost using application logic
+func (sn *Node) get() {
+	log.Println("getting")
+	sn.UpdateTimeout()
+	msgchan, errchan := sn.Host.Get()
+	log.Println("got channels to listen to")
+	for {
+		nm := <-msgchan
+		err := <-errchan
+		log.Println("got message:", nm, err)
+		if err != nil {
+			if err == coconet.ConnectionNotEstablished {
+				continue
+			}
+
+			log.Warnf("signing node: error getting: %v", err)
+			if err == io.EOF {
+				sn.closed <- err
+				return
+			}
+			if err == coconet.ErrorConnClosed {
+				continue
+			}
+		}
+
+		// interpret network message as Siging Message
+		sm := nm.Data.(*SigningMessage)
+		sm.From = nm.From
+
+		switch sm.Type {
+		// if it is a bad message just ignore it
+		default:
+			continue
+
+		// if it is an announcement or challenge it should be from parent
+		case Announcement:
+			if !sn.IsParent(sm.From) {
+				log.Errorln("received announcement from non-parent")
+				continue
+			}
+			log.Println("ANNOUNCEMENT")
+			if err := sn.Announce(sm.Am); err != nil {
+				log.Errorln(err)
+			}
+
+		case Challenge:
+			if !sn.IsParent(sm.From) {
+				log.Errorln("received announcement from non-parent")
+				continue
+			}
+
+			log.Println("CHALLENGE")
+			if err := sn.Challenge(sm.Chm); err != nil {
+				log.Errorln(err)
+			}
+
+		// if it is a commitment or response it is from the child
+		case Commitment:
+			if !sn.IsChild(sm.From) {
+				log.Errorln("received announcement from non-parent")
+				continue
+			}
+
+			// shove message on commit channel for its round
+			log.Println("COMMITMENT")
+			round := sm.Com.Round
+			sn.roundLock.Lock()
+			comch := sn.ComCh[round]
+			sn.roundLock.Unlock()
+			comch <- sm
+		case Response:
+			if !sn.IsChild(sm.From) {
+				log.Errorln("received announcement from non-parent")
+				continue
+			}
+
+			// shove message on response channel for its round
+			log.Println("RESPONSE")
+			round := sm.Rm.Round
+			sn.roundLock.Lock()
+			rmch := sn.RmCh[round]
+			sn.roundLock.Unlock()
+			rmch <- sm
+		case Error:
+			log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
+		}
+	}
+
 }
 
 // Determine type of message coming from the parent
