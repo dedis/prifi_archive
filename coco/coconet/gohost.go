@@ -28,22 +28,22 @@ const DefaultGoTimeout time.Duration = 500 * time.Millisecond
 
 var TimeoutError error = errors.New("Network timeout error")
 
+// a GoHost must satisfy the host interface
+var _ Host = &GoHost{}
+
 // HostNode is a simple implementation of Host that does not specify the
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type GoHost struct {
 	name string // the hostname
 
-	plock  sync.Mutex
-	parent Conn // the Peer representing parent, nil if root
+	views *Views
 
-	childLock   sync.Mutex
-	children    []string // a list of unique peers for each hostname
-	childrenMap map[string]Conn
-	peers       map[string]Conn
-	dir         *GoDirectory
+	plock sync.Mutex
+	peers map[string]Conn
+	dir   *GoDirectory
 
-	rlock sync.Mutex
-	ready map[Conn]bool
+	rlock sync.RWMutex
+	ready map[string]bool
 
 	mupk   sync.RWMutex
 	Pubkey abstract.Point // own public key
@@ -86,17 +86,16 @@ func (h *GoHost) Timeout() time.Duration {
 // NewHostNode creates a new HostNode with a given hostname.
 func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
-		children:    make([]string, 0),
-		childrenMap: make(map[string]Conn),
-		peers:       make(map[string]Conn),
-		dir:         dir,
-		msgchan:     make(chan NetworkMessg, 0),
-		errchan:     make(chan error, 0)}
+		views:   NewViews(),
+		peers:   make(map[string]Conn),
+		dir:     dir,
+		msgchan: make(chan NetworkMessg, 0),
+		errchan: make(chan error, 0)}
 	h.mutimeout.Lock()
 	h.timeout = DefaultGoTimeout
 	h.mutimeout.Unlock()
-	h.rlock = sync.Mutex{}
-	h.ready = make(map[Conn]bool)
+	h.rlock = sync.RWMutex{}
+	h.ready = make(map[string]bool)
 	return h
 }
 
@@ -113,15 +112,12 @@ func (h *GoHost) SetPubKey(pk abstract.Point) {
 	h.mupk.Unlock()
 }
 
-func (h *GoHost) Connect() error {
+func (h *GoHost) Connect(view int) error {
 	return nil
 }
 
 func (h *GoHost) Listen() error {
-	h.childLock.Lock()
-	children := make([]string, len(h.children))
-	copy(children, h.children)
-	h.childLock.Unlock()
+	children := h.views.Children(0)
 
 	suite := nist.NewAES128SHA256P256()
 	// each conn should have a Ready() bool, SetReady(bool)
@@ -139,7 +135,7 @@ func (h *GoHost) Listen() error {
 			}
 			conn.SetPubKey(pubkey)
 			h.rlock.Lock()
-			h.ready[conn] = true
+			h.ready[c] = true
 			h.rlock.Unlock()
 			// fmt.Println("connection with child established")
 		}(c)
@@ -147,40 +143,43 @@ func (h *GoHost) Listen() error {
 	return nil
 }
 
+func (h *GoHost) NewView(view int, parent string, children []string) {
+	h.views.NewView(view, parent, children)
+}
+
 // AddParent adds a parent node to the HostNode.
-func (h *GoHost) AddParent(c string) {
+func (h *GoHost) AddParent(view int, c string) {
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
+	h.views.AddParent(view, c)
 	h.plock.Lock()
 	h.peers[c].Put(h.PubKey()) // publick key should be put here first
 	// only after putting pub key allow it to be accessed like parent
-	h.parent, _ = h.peers[c]
 	h.plock.Unlock()
 
 	h.rlock.Lock()
-	h.ready[h.parent] = true
+	h.ready[c] = true
 	h.rlock.Unlock()
 
 }
 
 // AddChildren variadically adds multiple Peers as children to the HostNode.
 // Only unique children will be stored.
-func (h *GoHost) AddChildren(cs ...string) {
+func (h *GoHost) AddChildren(view int, cs ...string) {
 	for _, c := range cs {
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 		}
 		// don't allow children to be accessed before adding them
-		h.children = append(h.children, c)
-		h.childrenMap[c] = h.peers[c]
+		h.views.AddChildren(view, c)
 	}
 }
 
 func (h *GoHost) Close() {}
 
-func (h *GoHost) NChildren() int {
-	return len(h.children)
+func (h *GoHost) NChildren(view int) int {
+	return h.views.NChildren(view)
 }
 
 // Name returns the hostname of the HostNode.
@@ -190,19 +189,17 @@ func (h *GoHost) Name() string {
 
 // IsRoot returns true if the HostNode is the root of it's tree (if it has no
 // parent).
-func (h *GoHost) IsRoot() bool {
-	h.plock.Lock()
-	defer h.plock.Unlock()
-	return h.parent == nil
+func (h *GoHost) IsRoot(view int) bool {
+	return h.views.Parent(view) == ""
 }
 
-func (h *GoHost) IsParent(peer string) bool {
-	return h.parent != nil && h.parent.Name() == peer
+func (h *GoHost) IsParent(view int, peer string) bool {
+	return h.views.Parent(view) == peer
 }
 
-func (h *GoHost) IsChild(peer string) bool {
+func (h *GoHost) IsChild(view int, peer string) bool {
 	_, ok := h.peers[peer]
-	return !h.IsParent(peer) && ok
+	return !h.IsParent(view, peer) && ok
 }
 
 // Peers returns the list of peers as a mapping from hostname to Conn
@@ -210,8 +207,19 @@ func (h *GoHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h *GoHost) Children() map[string]Conn {
-	return h.childrenMap
+func (h *GoHost) Children(view int) map[string]Conn {
+	h.rlock.RLock()
+	childrenMap := make(map[string]Conn, 0)
+	children := h.views.Children(view)
+	for _, c := range children {
+		if !h.ready[c] {
+			continue
+		}
+		childrenMap[c] = h.peers[c]
+	}
+
+	h.rlock.RUnlock()
+	return childrenMap
 }
 
 // AddPeers adds the list of peers
@@ -233,31 +241,35 @@ func (h *GoHost) WaitTick() {
 
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h *GoHost) PutUp(data BinaryMarshaler) error {
+func (h *GoHost) PutUp(view int, data BinaryMarshaler) error {
 	// defer fmt.Println(h.Name(), "done put up", h.parent)
 	// log.Printf("%s PUTTING UP up: %#v", h.Name(), data)
-	return h.parent.Put(data)
-}
-
-// GetUp gets a message (an interface{} value) from the parent through
-// whatever 'network' interface the parent Peer implements.
-func (h *GoHost) GetUp(data BinaryUnmarshaler) error {
-	log.Fatalln("GETTING UP")
-	// fmt.Println("GETTING UP from up")
-	return h.parent.Get(data)
+	pname := h.views.Parent(view)
+	h.rlock.RLock()
+	isReady := h.ready[pname]
+	parent := h.peers[pname]
+	h.rlock.RUnlock()
+	if !isReady {
+		return ConnectionNotEstablished
+	} else if parent == nil && pname != "" {
+		// not the root and I have closed my parent connection
+		return ErrorConnClosed
+	}
+	return parent.Put(data)
 }
 
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
-func (h *GoHost) PutDown(data []BinaryMarshaler) error {
-	if len(data) != len(h.children) {
+func (h *GoHost) PutDown(view int, data []BinaryMarshaler) error {
+	if len(data) != h.views.NChildren(view) {
 		panic("number of messages passed down != number of children")
 	}
 	// Try to send the message to all children
 	// If at least on of the attempts fails, return a non-nil error
 	var err error
 	i := 0
-	for _, c := range h.children {
+	children := h.views.Children(view)
+	for _, c := range children {
 		h.rlock.Lock()
 		conn := h.peers[c]
 		h.rlock.Unlock()
@@ -269,7 +281,7 @@ func (h *GoHost) PutDown(data []BinaryMarshaler) error {
 	return err
 }
 
-func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) error {
+func (h *GoHost) whenReadyGet(c string, data BinaryUnmarshaler) error {
 	// defer fmt.Println(h.Name(), "returned ready channel for", c.Name(), c)
 	for {
 		h.rlock.Lock()
@@ -282,82 +294,29 @@ func (h *GoHost) whenReadyGet(c Conn, data BinaryUnmarshaler) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-
-	return c.Get(data)
+	h.plock.Lock()
+	conn := h.peers[c]
+	h.plock.Unlock()
+	return conn.Get(data)
 }
 
 func (h *GoHost) Get() (chan NetworkMessg, chan error) {
-	for i, c := range h.children {
-		go func(i int, c string) {
-			h.rlock.Lock()
-			conn := h.peers[c]
-			h.rlock.Unlock()
-
+	for name := range h.peers {
+		go func(name string) {
 			for {
 				data := h.pool.Get().(BinaryUnmarshaler)
-				e := h.whenReadyGet(conn, data)
+				err := h.whenReadyGet(name, data)
 
 				h.msglock.Lock()
-				h.msgchan <- NetworkMessg{Data: data, From: c}
-				h.errchan <- e
+				h.msgchan <- NetworkMessg{Data: data, From: name}
+				h.errchan <- err
 				h.msglock.Unlock()
 
 			}
-		}(i, c)
+		}(name)
 	}
-	go func() {
-		if h.parent == nil {
-			log.Println("no parent")
-			return
-		}
-		h.rlock.Lock()
-		conn := h.peers[h.parent.Name()]
-		h.rlock.Unlock()
-		for {
-			data := h.pool.Get().(BinaryUnmarshaler)
-			e := h.whenReadyGet(conn, data)
-			h.msglock.Lock()
-			h.msgchan <- NetworkMessg{Data: data, From: h.parent.Name()}
-			h.errchan <- e
-			h.msglock.Unlock()
-		}
-	}()
-
 	return h.msgchan, h.errchan
 
-}
-
-// GetDown gets a message (an interface{} value) from all children through
-// whatever 'network' interface each child Peer implements.
-func (h *GoHost) GetDown() (chan NetworkMessg, chan error) {
-	log.Fatalln("GETTING DOWN")
-	var chmu sync.Mutex
-	ch := make(chan NetworkMessg, 1)
-	errch := make(chan error, 1)
-
-	// start children threads
-	go func() {
-		for i, c := range h.children {
-			go func(i int, c string) {
-				h.rlock.Lock()
-				conn := h.peers[c]
-				h.rlock.Unlock()
-
-				for {
-					data := h.pool.Get().(BinaryUnmarshaler)
-					e := h.whenReadyGet(conn, data)
-
-					chmu.Lock()
-					ch <- NetworkMessg{Data: data, From: c} // this should be copy of data[i]
-					errch <- e
-					chmu.Unlock()
-
-				}
-			}(i, c)
-		}
-	}()
-
-	return ch, errch
 }
 
 func (h *GoHost) Pool() sync.Pool {

@@ -9,8 +9,8 @@ import (
 // of the Simple Combined Public Key Signature
 
 // Send children challenges
-func (sn *Node) SendChildrenChallenges(chm *ChallengeMessage) error {
-	for _, child := range sn.Children() {
+func (sn *Node) SendChildrenChallenges(view int, chm *ChallengeMessage) error {
+	for _, child := range sn.Children(view) {
 		var messg coconet.BinaryMarshaler
 		messg = &SigningMessage{Type: Challenge, Chm: chm}
 

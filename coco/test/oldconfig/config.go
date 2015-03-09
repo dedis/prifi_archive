@@ -82,7 +82,7 @@ func traverseTree(p *sign.Node,
 	if err := f(p, hc); err != nil {
 		return err
 	}
-	for _, cn := range p.Children() {
+	for _, cn := range p.Children(0) {
 		c := hc.Hosts[cn.Name()]
 		err := traverseTree(c, hc, f)
 		if err != nil {
@@ -140,7 +140,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *sign.Node) error {
 	// recursively format children
 	fmt.Fprint(b, "\"children\":[")
 	i := 0
-	for _, n := range p.Children() {
+	for _, n := range p.Children(0) {
 		if i != 0 {
 			b.WriteString(", ")
 		}
@@ -261,7 +261,7 @@ func ConstructTree(
 	}
 	// if the parent of this call is empty then this must be the root node
 	if parent != "" && generate {
-		h.AddParent(parent)
+		h.AddParent(0, parent)
 	}
 	// log.Println("name: ", n.Name)
 	// log.Println("prikey: ", prikey)
@@ -276,7 +276,7 @@ func ConstructTree(
 		}
 
 		if generate {
-			h.AddChildren(cname)
+			h.AddChildren(0, cname)
 		}
 
 		// recursively construct the children
@@ -475,7 +475,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 		for i := 0; i < 2000; i++ {
 			// log.Println("attempting to connect to parent")
 			// connect with the parent
-			err = sn.Connect()
+			err = sn.Connect(0)
 			if err == nil {
 				//log.Infoln("hostconfig: connected to parent:")
 				break

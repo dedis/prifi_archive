@@ -49,6 +49,8 @@ func TestStaticFaulty(t *testing.T) {
 	}
 }
 
+var DefaultView = 0
+
 func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	// Crypto setup
 	suite := nist.NewAES128SHA256P256()
@@ -94,13 +96,13 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	nodes[2].Height = 0
 	nodes[3].Height = 0
 	// Add edges to parents
-	h[1].AddParent(h[0].Name())
-	h[2].AddParent(h[1].Name())
-	h[3].AddParent(h[1].Name())
+	h[1].AddParent(DefaultView, h[0].Name())
+	h[2].AddParent(DefaultView, h[1].Name())
+	h[3].AddParent(DefaultView, h[1].Name())
 	// Add edges to children, listen to children
-	h[0].AddChildren(h[1].Name())
+	h[0].AddChildren(DefaultView, h[1].Name())
 	h[0].Listen()
-	h[1].AddChildren(h[2].Name(), h[3].Name())
+	h[1].AddChildren(DefaultView, h[2].Name(), h[3].Name())
 	h[1].Listen()
 
 	for i := 0; i < nNodes; i++ {
@@ -117,7 +119,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].LogTest = []byte("Hello World")
-	return nodes[0].Announce(&sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 0})
+	return nodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 0})
 }
 
 // Configuration file data/exconf.json
@@ -182,7 +184,7 @@ func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int)
 	}
 	// Have root node initiate the signing protocol via a simple annoucement
 	hostConfig.SNodes[0].LogTest = []byte("Hello World")
-	hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 0})
+	hostConfig.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 0})
 
 	return nil
 }
@@ -190,7 +192,7 @@ func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int)
 func TestTreeFromBigConfig(t *testing.T) {
 	hc, err := oldconfig.LoadConfig("../test/data/exwax.json")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	err = hc.Run(sign.MerkleTree)
 	if err != nil {
@@ -200,7 +202,7 @@ func TestTreeFromBigConfig(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
+	err = hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	if err != nil {
 		t.Error(err)
 	}
@@ -227,7 +229,7 @@ func TestMultipleRounds(t *testing.T) {
 	// via a simple annoucement
 	for i := 0; i < N; i++ {
 		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
-		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: i})
+		err = hostConfig.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: i})
 		if err != nil {
 			t.Error(err)
 		}
@@ -235,39 +237,49 @@ func TestMultipleRounds(t *testing.T) {
 }
 
 func TestTCPStaticConfig(t *testing.T) {
+	time.Sleep(5 * time.Second)
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
 	}
+	defer func() {
+		for _, n := range hc.SNodes {
+			n.Close()
+		}
+		time.Sleep(1 * time.Second)
+	}()
+
 	err = hc.Run(sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// give it some time to set up
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
-	if err != nil {
-		t.Error(err)
-	}
-	for _, n := range hc.SNodes {
-		n.Close()
-	}
+	hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	log.Println("Test Done")
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {
+	time.Sleep(5 * time.Second)
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
-		t.Error(err)
+		t.Fatal("error loading configuration: ", err)
 	}
+	defer func() {
+		for _, n := range hc.SNodes {
+			n.Close()
+		}
+		time.Sleep(1 * time.Second)
+	}()
 	err = hc.Run(sign.MerkleTree)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("error running:", err)
 	}
 	// give it some time to set up
 	time.Sleep(2 * time.Second)
@@ -275,15 +287,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	N := 5
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
-		err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
-
-		if err != nil {
-			t.Error(err)
-		}
-	}
-	time.Sleep(10 * time.Second)
-	for _, n := range hc.SNodes {
-		n.Close()
+		hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}
 }
 

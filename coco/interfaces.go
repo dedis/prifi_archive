@@ -9,16 +9,16 @@ import (
 var DEBUG bool // to avoid veryfing paths and signatures all the time
 
 // Returns commitment contribution for a round
-type CommitFunc func() []byte
+type CommitFunc func(view int) []byte
 
 // Called at the end of a round
 // Allows client of Signer to receive signature, proof, and error via RPC
-type DoneFunc func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof)
+type DoneFunc func(view int, SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof)
 
 // todo: see where Signer should be located
 type Signer interface {
 	Name() string
-	IsRoot() bool
+	IsRoot(view int) bool
 	Suite() abstract.Suite
 	StartSigningRound() error
 

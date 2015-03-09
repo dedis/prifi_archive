@@ -32,18 +32,18 @@ func (sn *Node) AddChildrenMerkleRoots(Round int) {
 	}
 }
 
-func (sn *Node) AddLocalMerkleRoot(Round int) {
+func (sn *Node) AddLocalMerkleRoot(view, Round int) {
 	round := sn.Rounds[Round]
 	// add own local mtroot to leaves
 	if sn.CommitFunc != nil {
-		round.LocalMTRoot = sn.CommitFunc()
+		round.LocalMTRoot = sn.CommitFunc(view)
 	} else {
 		round.LocalMTRoot = make([]byte, hashid.Size)
 	}
 	round.Leaves = append(round.Leaves, round.LocalMTRoot)
 }
 
-func (sn *Node) ComputeCombinedMerkleRoot(Round int) {
+func (sn *Node) ComputeCombinedMerkleRoot(view, Round int) {
 	round := sn.Rounds[Round]
 	// add hash of whole log to leaves
 	round.Leaves = append(round.Leaves, round.HashedLog)
@@ -59,7 +59,7 @@ func (sn *Node) ComputeCombinedMerkleRoot(Round int) {
 
 	// Hashed Log has to come first in the proof; len(sn.CMTRoots)+1 proofs
 	round.Proofs = make(map[string]proof.Proof, 0)
-	children := sn.Children()
+	children := sn.Children(view)
 	for name := range children {
 		round.Proofs[name] = append(round.Proofs[name], right)
 	}
@@ -72,7 +72,7 @@ func (sn *Node) ComputeCombinedMerkleRoot(Round int) {
 
 // Create Merkle Proof for local client (timestamp server)
 // Send Merkle Proof to local client (timestamp server)
-func (sn *Node) SendLocalMerkleProof(chm *ChallengeMessage) error {
+func (sn *Node) SendLocalMerkleProof(view int, chm *ChallengeMessage) error {
 	if sn.DoneFunc != nil {
 		round := sn.Rounds[chm.Round]
 		proofForClient := make(proof.Proof, len(chm.Proof))
@@ -91,7 +91,7 @@ func (sn *Node) SendLocalMerkleProof(chm *ChallengeMessage) error {
 
 		// 'reply' to client
 		// TODO: add error to done function
-		sn.DoneFunc(chm.MTRoot, round.MTRoot, proofForClient)
+		sn.DoneFunc(view, chm.MTRoot, round.MTRoot, proofForClient)
 	}
 
 	return nil
@@ -99,7 +99,7 @@ func (sn *Node) SendLocalMerkleProof(chm *ChallengeMessage) error {
 
 // Create Personalized Merkle Proofs for children servers
 // Send Personalized Merkle Proofs to children servers
-func (sn *Node) SendChildrenChallengesProofs(chm *ChallengeMessage) error {
+func (sn *Node) SendChildrenChallengesProofs(view int, chm *ChallengeMessage) error {
 	round := sn.Rounds[chm.Round]
 	// proof from big root to our root will be sent to all children
 	baseProof := make(proof.Proof, len(chm.Proof))
@@ -107,7 +107,7 @@ func (sn *Node) SendChildrenChallengesProofs(chm *ChallengeMessage) error {
 
 	// for each child, create personalized part of proof
 	// embed it in SigningMessage, and send it
-	for name, conn := range sn.Children() {
+	for name, conn := range sn.Children(view) {
 		newChm := *chm
 		newChm.Proof = append(baseProof, round.Proofs[name]...)
 

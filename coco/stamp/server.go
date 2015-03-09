@@ -200,7 +200,7 @@ func (s *Server) Run(role string, nRounds int) {
 	case "test":
 		ticker := time.Tick(2000 * time.Millisecond)
 		for _ = range ticker {
-			s.AggregateCommits()
+			s.AggregateCommits(0)
 		}
 	case "regular":
 		// run until we close it
@@ -214,14 +214,14 @@ func (s *Server) Run(role string, nRounds int) {
 }
 
 func (s *Server) OnAnnounce() coco.CommitFunc {
-	return func() []byte {
+	return func(view int) []byte {
 		//log.Println("Aggregating Commits")
-		return s.AggregateCommits()
+		return s.AggregateCommits(view)
 	}
 }
 
 func (s *Server) OnDone() coco.DoneFunc {
-	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
+	return func(view int, SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -248,7 +248,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 
 }
 
-func (s *Server) AggregateCommits() []byte {
+func (s *Server) AggregateCommits(view int) []byte {
 	log.Println(s.Name(), "calling AggregateCommits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
@@ -276,7 +276,7 @@ func (s *Server) AggregateCommits() []byte {
 	s.mux.Unlock()
 
 	// non root servers keep track of rounds here
-	if !s.IsRoot() {
+	if !s.IsRoot(view) {
 		s.rLock.Lock()
 		s.nRounds++
 		mr := s.maxRounds

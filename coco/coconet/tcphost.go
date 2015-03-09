@@ -18,15 +18,15 @@ import (
 // Default timeout for any network operation
 const DefaultTCPTimeout time.Duration = 5 * time.Second
 
+var _ Host = &TCPHost{}
+
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
-	name   string // the hostname
-	parent string // the Peer representing parent, nil if root
+	name string // the hostname
 
-	childLock sync.Mutex
-	children  []string // a list of unique peers for each hostname
+	views *Views
 
-	rlock sync.Mutex
+	rlock sync.RWMutex
 	ready map[string]bool
 	peers map[string]Conn
 
@@ -65,13 +65,13 @@ func (h *TCPHost) Timeout() time.Duration {
 // NewTCPHost creates a new TCPHost with a given hostname.
 func NewTCPHost(hostname string) *TCPHost {
 	h := &TCPHost{name: hostname,
-		children: make([]string, 0),
-		peers:    make(map[string]Conn),
-		timeout:  DefaultTCPTimeout,
-		ready:    make(map[string]bool),
-		msglock:  sync.Mutex{},
-		msgchan:  make(chan NetworkMessg, 1),
-		errchan:  make(chan error, 1)}
+		views:   NewViews(),
+		peers:   make(map[string]Conn),
+		timeout: DefaultTCPTimeout,
+		ready:   make(map[string]bool),
+		msglock: sync.Mutex{},
+		msgchan: make(chan NetworkMessg, 1),
+		errchan: make(chan error, 1)}
 
 	return h
 }
@@ -147,22 +147,6 @@ func (h *TCPHost) Listen() error {
 			}
 			tp.SetPubKey(pubkey)
 
-			// accept children connections but no one else
-			found := false
-			h.childLock.Lock()
-			for _, c := range h.children {
-				if c == name {
-					found = true
-					break
-				}
-			}
-			h.childLock.Unlock()
-			if !found {
-				log.Errorln("connection request not from child:", name)
-				tp.Close()
-				continue
-			}
-
 			h.rlock.Lock()
 			h.ready[name] = true
 			h.peers[name] = tp
@@ -175,11 +159,20 @@ func (h *TCPHost) Listen() error {
 	return nil
 }
 
-func (h *TCPHost) Connect() error {
-	if h.parent == "" {
+func (h *TCPHost) Connect(view int) error {
+	parent := h.views.Parent(view)
+	if parent == "" {
 		return nil
 	}
-	conn, err := net.Dial("tcp", h.parent)
+
+	// if we have already set up this connection don't do anything
+	h.rlock.Lock()
+	if h.ready[parent] {
+		h.rlock.Unlock()
+		return nil
+	}
+	h.rlock.Unlock()
+	conn, err := net.Dial("tcp", parent)
 	if err != nil {
 		if coco.DEBUG {
 			log.Warnln("tcphost: failed to connect to parent:", err)
@@ -194,7 +187,7 @@ func (h *TCPHost) Connect() error {
 		log.Errorln(err)
 		return err
 	}
-	tp.SetName(h.parent)
+	tp.SetName(parent)
 
 	err = tp.Put(h.Pubkey)
 	if err != nil {
@@ -205,12 +198,16 @@ func (h *TCPHost) Connect() error {
 
 	h.rlock.Lock()
 	h.ready[tp.Name()] = true
-	h.peers[h.parent] = tp
+	h.peers[parent] = tp
 	h.rlock.Unlock()
 	if coco.DEBUG {
-		log.Infoln("CONNECTED TO PARENT:", h.parent)
+		log.Infoln("CONNECTED TO PARENT:", parent)
 	}
 	return nil
+}
+
+func (h *TCPHost) NewView(view int, parent string, children []string) {
+	h.views.NewView(view, parent, children)
 }
 
 func (h *TCPHost) Close() {
@@ -225,16 +222,16 @@ func (h *TCPHost) Close() {
 }
 
 // AddParent adds a parent node to the TCPHost.
-func (h *TCPHost) AddParent(c string) {
+func (h *TCPHost) AddParent(view int, c string) {
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c] = NewTCPConn(c)
 	}
-	h.parent = c
+	h.views.AddParent(view, c)
 }
 
 // AddChildren variadically adds multiple Peers as children to the TCPHost.
 // Only unique children will be stored.
-func (h *TCPHost) AddChildren(cs ...string) {
+func (h *TCPHost) AddChildren(view int, cs ...string) {
 	for _, c := range cs {
 		h.rlock.Lock()
 		// add a field in peers for this child
@@ -246,18 +243,12 @@ func (h *TCPHost) AddChildren(cs ...string) {
 			continue
 		}
 		h.rlock.Unlock()
-		h.childLock.Lock()
-		h.children = append(h.children, c)
-		// h.childrenMap[c] = h.peers[c]
-		h.childLock.Unlock()
+		h.views.AddChildren(view, c)
 	}
 }
 
-func (h *TCPHost) NChildren() int {
-	h.childLock.Lock()
-	l := len(h.children)
-	h.childLock.Unlock()
-	return l
+func (h *TCPHost) NChildren(view int) int {
+	return h.views.NChildren(view)
 }
 
 // Name returns the hostname of the TCPHost.
@@ -267,19 +258,19 @@ func (h *TCPHost) Name() string {
 
 // IsRoot returns true if the TCPHost is the root of it's tree (if it has no
 // parent).
-func (h *TCPHost) IsRoot() bool {
-	return h.parent == ""
+func (h *TCPHost) IsRoot(view int) bool {
+	return h.views.Parent(view) == ""
 }
 
-func (h *TCPHost) IsParent(peer string) bool {
-	return h.parent == peer
+func (h *TCPHost) IsParent(view int, peer string) bool {
+	return h.views.Parent(view) == peer
 }
 
-func (h *TCPHost) IsChild(peer string) bool {
+func (h *TCPHost) IsChild(view int, peer string) bool {
 	h.rlock.Lock()
 	_, ok := h.peers[peer]
 	h.rlock.Unlock()
-	return h.parent != peer && ok
+	return h.views.Parent(view) != peer && ok
 }
 
 // Peers returns the list of peers as a mapping from hostname to Conn
@@ -287,19 +278,19 @@ func (h *TCPHost) Peers() map[string]Conn {
 	return h.peers
 }
 
-func (h *TCPHost) Children() map[string]Conn {
-	h.childLock.Lock()
-	h.rlock.Lock()
+func (h *TCPHost) Children(view int) map[string]Conn {
+	h.rlock.RLock()
 
 	childrenMap := make(map[string]Conn, 0)
-	for _, c := range h.children {
+	children := h.views.Children(view)
+	for _, c := range children {
 		if !h.ready[c] {
 			continue
 		}
 		childrenMap[c] = h.peers[c]
 	}
-	h.rlock.Unlock()
-	h.childLock.Unlock()
+
+	h.rlock.RUnlock()
 
 	return childrenMap
 }
@@ -322,14 +313,15 @@ var ErrorConnClosed error = errors.New("connection closed")
 
 // PutUp sends a message (an interface{} value) up to the parent through
 // whatever 'network' interface the parent Peer implements.
-func (h *TCPHost) PutUp(data BinaryMarshaler) error {
-	h.rlock.Lock()
-	isReady := h.ready[h.parent]
-	parent := h.peers[h.parent]
-	h.rlock.Unlock()
+func (h *TCPHost) PutUp(view int, data BinaryMarshaler) error {
+	pname := h.views.Parent(view)
+	h.rlock.RLock()
+	isReady := h.ready[pname]
+	parent := h.peers[pname]
+	h.rlock.RUnlock()
 	if !isReady {
 		return ConnectionNotEstablished
-	} else if parent == nil && h.parent != "" {
+	} else if parent == nil && pname != "" {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
 	}
@@ -337,37 +329,18 @@ func (h *TCPHost) PutUp(data BinaryMarshaler) error {
 	return parent.Put(data)
 }
 
-// GetUp gets a message (an interface{} value) from the parent through
-// whatever 'network' interface the parent Peer implements.
-func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
-	h.rlock.Lock()
-	isReady := h.ready[h.parent]
-	parent := h.peers[h.parent]
-	h.rlock.Unlock()
-	if !isReady {
-		return ConnectionNotEstablished
-	} else if parent == nil && h.parent != "" {
-		// not the root and I have closed my parent connection
-		return ErrorConnClosed
-	}
-	return parent.Get(data)
-}
-
 var ErrorChildNotReady error = errors.New("child is not ready")
 
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
-func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
-	if len(data) != len(h.children) {
+func (h *TCPHost) PutDown(view int, data []BinaryMarshaler) error {
+	if len(data) != h.views.NChildren(view) {
 		panic("number of messages passed down != number of children")
 	}
 	// Try to send the message to all children
 	// If at least on of the attempts fails, return a non-nil error
 	var err error
-	h.childLock.Lock()
-	children := make([]string, len(h.children))
-	copy(children, h.children)
-	h.childLock.Unlock()
+	children := h.views.Children(view)
 	for i, c := range children {
 		h.rlock.Lock()
 		if !h.ready[c] {
@@ -407,102 +380,38 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
 	return c.Get(data)
 }
 
-// GetDown gets a message (an interface{} value) from all children through
-// whatever 'network' interface each child Peer implements.
-// Must be called after network topology is completely set: ie
-// all children must have already been added.
-func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
-	ch := make(chan NetworkMessg, 1)
-	errch := make(chan error, 1)
-
-	// copy children before ranging for thread safety
-	h.childLock.Lock()
-	children := make([]string, len(h.children))
-	copy(children, h.children)
-	h.childLock.Unlock()
-
-	// start children threads
-	go func() {
-		for i, c := range children {
-			go func(i int, c string) {
-
-				for {
-
-					data := h.pool.Get().(BinaryUnmarshaler)
-					e := h.whenReadyGet(c, data)
-					// check to see if the connection is Closed
-					if e == ErrorConnClosed {
-						errch <- errors.New("connection has been closed")
-						return
-					} else if e == io.EOF {
-						os.Exit(1)
-					}
-
-					ch <- NetworkMessg{Data: data, From: c}
-					errch <- e
-
-				}
-			}(i, c)
-		}
-	}()
-	return ch, errch
-}
-
 // each connection we should realistically always be getting from
 // TODO: each of these goroutines could be spawned when we initally connect to
 // them instead
 func (h *TCPHost) Get() (chan NetworkMessg, chan error) {
 	// copy children before ranging for thread safety
-	h.childLock.Lock()
-	children := make([]string, len(h.children))
-	copy(children, h.children)
-	h.childLock.Unlock()
 
 	// start children threads
-	for i, c := range children {
-		go func(i int, c string) {
-
+	for name := range h.peers {
+		go func(name string) {
 			for {
 				data := h.pool.Get().(BinaryUnmarshaler)
-				e := h.whenReadyGet(c, data)
+				err := h.whenReadyGet(name, data)
 				// check to see if the connection is Closed
-				if e == ErrorConnClosed {
+				if err == ErrorConnClosed {
+					// XXX: should we send to both channels
+					h.msglock.Lock()
+					h.msgchan <- NetworkMessg{Data: data, From: name}
 					h.errchan <- errors.New("connection has been closed")
+					h.msglock.Unlock()
 					return
-				} else if e == io.EOF {
+				} else if err == io.EOF {
 					os.Exit(1)
 				}
 
 				h.msglock.Lock()
-				h.msgchan <- NetworkMessg{Data: data, From: c}
-				h.errchan <- e
+				h.msgchan <- NetworkMessg{Data: data, From: name}
+				h.errchan <- err
 				h.msglock.Unlock()
 
 			}
-		}(i, c)
+		}(name)
 	}
-	go func() {
-		if h.parent == "" {
-			return
-		}
-		for {
-			data := h.pool.Get().(BinaryUnmarshaler)
-			e := h.whenReadyGet(h.parent, data)
-			if e == ErrorConnClosed {
-				h.errchan <- errors.New("connection has been closed")
-				return
-			} else if e == io.EOF {
-				os.Exit(1)
-			}
-
-			h.msglock.Lock()
-			h.msgchan <- NetworkMessg{Data: data, From: h.parent}
-			h.errchan <- e
-			h.msglock.Unlock()
-
-		}
-	}()
-
 	return h.msgchan, h.errchan
 }
 

@@ -39,30 +39,30 @@ type Host interface {
 	// Returns the internal data structure
 	// Invarient: children are always in the same order
 	Peers() map[string]Conn // returns the peers list: all connected nodes
-	Children() map[string]Conn
+	Children(view int) map[string]Conn
 
-	AddPeers(hostnames ...string)   // add a node but don't make it child or parent
-	AddParent(hostname string)      // ad a parent connection
-	AddChildren(hostname ...string) // add child connections
-	NChildren() int
+	AddPeers(hostnames ...string) // add a node but don't make it child or parent
+	NewView(view int, parent string, children []string)
 
-	IsRoot() bool              // true if this host is the root of the tree
-	IsParent(peer string) bool // true if this peer is the parent
-	IsChild(peer string) bool  // true if this peer is a child
+	AddParent(view int, hostname string)      // ad a parent connection
+	AddChildren(view int, hostname ...string) // add child connections
+	NChildren(view int) int
+
+	IsRoot(view int) bool                // true if this host is the root of the tree
+	IsParent(view int, peer string) bool // true if this peer is the parent
+	IsChild(view int, peer string) bool  // true if this peer is a child
 
 	// blocking network calls over the tree
-	PutUp(BinaryMarshaler) error              // send data to parent in host tree
-	GetUp(BinaryUnmarshaler) error            // get data from parent in host tree (blocking)
-	PutDown([]BinaryMarshaler) error          // send data to children in host tree
-	GetDown() (chan NetworkMessg, chan error) // get data from children in host tree
+	PutUp(view int, data BinaryMarshaler) error     // send data to parent in host tree
+	PutDown(view int, data []BinaryMarshaler) error // send data to children in host tree
 
 	Get() (chan NetworkMessg, chan error)
 	// ??? Could be replaced by listeners (condition variables) that wait for a
 	// change to the root status to the node (i.e. through an add parent call)
 	WaitTick() // Sleeps for network implementation dependent amount of time
 
-	Connect() error // connects to parent
-	Listen() error  // listen for incoming connections
+	Connect(view int) error // connects to parent
+	Listen() error          // listen for incoming connections
 
 	Close() // connections need to be cleaned up
 

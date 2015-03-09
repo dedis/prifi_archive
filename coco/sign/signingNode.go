@@ -30,6 +30,8 @@ const (
 	PubKey
 )
 
+var _ coco.Signer = &Node{}
+
 type Node struct {
 	coconet.Host
 
@@ -115,7 +117,7 @@ func (sn *Node) StartSigningRound() error {
 	var firstRoundTime time.Duration
 	var totalTime time.Duration
 	go func() {
-		err := sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		err := sn.Announce(0, &AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
 		if err != nil {
 			log.Println("Signature fails if at least one node says it failed")
 			log.Errorln(err)

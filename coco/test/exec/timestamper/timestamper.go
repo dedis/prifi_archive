@@ -60,7 +60,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 	if app == "sign" {
 		//log.Println("RUNNING Node")
 		// if I am root do the announcement message
-		if hc.SNodes[0].IsRoot() {
+		if hc.SNodes[0].IsRoot(0) {
 			time.Sleep(3 * time.Second)
 			start := time.Now()
 			iters := 10
@@ -69,7 +69,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 				start = time.Now()
 				//fmt.Println("ANNOUNCING")
 				hc.SNodes[0].LogTest = []byte("Hello World")
-				err = hc.SNodes[0].Announce(
+				err = hc.SNodes[0].Announce(0,
 					&sign.AnnouncementMessage{
 						LogTest: hc.SNodes[0].LogTest,
 						Round:   i})
@@ -100,7 +100,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 		for _, s := range stampers {
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
-				if s.IsRoot() {
+				if s.IsRoot(0) {
 					log.Println("RUNNING ROOT SERVER AT:", hostname, rounds)
 					log.Printf("Waiting: %d s\n", rootwait)
 					// wait for the other nodes to get set up

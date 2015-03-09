@@ -23,6 +23,7 @@ const (
 	Commitment
 	Challenge
 	Response
+	ViewChange
 	Default // for internal use
 	Error
 )
@@ -35,8 +36,10 @@ type SigningMessage struct {
 	Com  *CommitmentMessage
 	Chm  *ChallengeMessage
 	Rm   *ResponseMessage
+	Vc   *ViewChangeMessage
 	Err  *ErrorMessage
 	From string
+	View int
 }
 
 func NewSigningMessage() interface{} {
@@ -103,4 +106,13 @@ type ResponseMessage struct {
 
 type ErrorMessage struct {
 	Err string
+}
+
+// ViewChange message is passed from the new parent to its children
+//  i.e. all peers that are not its parent.
+// The node that receives the ViewChange request sets the sender to be
+// its parent for the view, and forwards the message to all its children,
+// so they can accept this node as its new parent.
+type ViewChangeMessage struct {
+	ViewNo int
 }
