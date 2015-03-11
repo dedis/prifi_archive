@@ -73,10 +73,12 @@ func RunTest(t T) (RunStats, error) {
 	log.Println("FAILURES PERCENT:", t.failures)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
 	err := cmd.Start()
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	// give it a while to start up
 	time.Sleep(30 * time.Second)
 
@@ -119,27 +121,36 @@ func RunTests(name string, ts []T) {
 		log.Fatal("error syncing test file:", err)
 	}
 
+	nTimes := 2
+	stopOnSuccess := true
 	for i, t := range ts {
-		// try three times
+		// run test t nTimes times
 		// take the average of all successfull runs
 		var runs []RunStats
-		for r := 0; r < 3; r++ {
+		for r := 0; r < nTimes; r++ {
 			run, err := RunTest(t)
 			if err == nil {
 				runs = append(runs, run)
+				if stopOnSuccess {
+					break
+				}
 			} else {
 				log.Println("error running test:", err)
 			}
+
+			// Clean Up after test
 			log.Println("KILLING REMAINING PROCESSES")
 			cmd := exec.Command("./deploy2deter", "-kill=true")
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Run()
 		}
+
 		if len(runs) == 0 {
 			log.Println("unable to get any data for test:", t)
 			continue
 		}
+
 		rs[i] = RunStatsAvg(runs)
 		_, err := f.Write(rs[i].CSV())
 		if err != nil {
