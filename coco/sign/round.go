@@ -43,9 +43,9 @@ type Round struct {
 	AccRound []byte
 }
 
-func NewRound() *Round {
+func NewRound(suite abstract.Suite) *Round {
 	round := &Round{}
 	round.ExceptionList = make([]abstract.Point, 0)
-
+	round.Log.Suite = suite
 	return round
 }

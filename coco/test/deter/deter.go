@@ -50,6 +50,7 @@ func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait 
 			" -hostname=" + n +
 			" -logger=" + loggerport +
 			" -debug=" + debug +
+			" -suite=" + suite +
 			" -rounds=" + strconv.Itoa(rounds) +
 			amroot +
 			" </dev/null 2>/dev/null 1>/dev/null &); "
@@ -65,6 +66,7 @@ var rate int
 var failures int
 var rounds int
 var kill bool
+var suite string
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
@@ -75,6 +77,7 @@ func init() {
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
 	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
 func main() {

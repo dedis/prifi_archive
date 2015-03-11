@@ -22,6 +22,7 @@ var debug bool
 var failures int
 var rounds int
 var amroot bool
+var suite string
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -36,6 +37,7 @@ func init() {
 	flag.BoolVar(&debug, "debug", false, "set debugging")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
 	flag.BoolVar(&amroot, "amroot", false, "am I root")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
 func main() {
@@ -69,6 +71,7 @@ func main() {
 		"-debug=" + strconv.FormatBool(debug),
 		"-rounds=" + strconv.Itoa(rounds),
 		"-amroot=" + strconv.FormatBool(amroot),
+		"-suite=" + suite,
 	}
 	cmd := exec.Command("./exec", args...)
 	//cmd.Stdout = log.StandardLogger().Writer()

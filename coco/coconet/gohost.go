@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/nist"
 )
 
 // Default timeout for any network operation
@@ -38,7 +37,12 @@ type GoHost struct {
 	mutimeout sync.Mutex
 	timeout   time.Duration // general timeout for any network operation
 
-	pool sync.Pool
+	pool  sync.Pool
+	suite abstract.Suite
+}
+
+func (h *GoHost) SetSuite(suite abstract.Suite) {
+	h.suite = suite
 }
 
 func (h *GoHost) GetDirectory() *GoDirectory {
@@ -104,7 +108,7 @@ func (h *GoHost) Listen() error {
 	copy(children, h.children)
 	h.childLock.Unlock()
 
-	suite := nist.NewAES128SHA256P256()
+	suite := h.suite
 	// each conn should have a Ready() bool, SetReady(bool)
 	for _, c := range children {
 		go func(c string) {

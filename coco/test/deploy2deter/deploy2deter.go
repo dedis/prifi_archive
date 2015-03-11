@@ -43,6 +43,7 @@ var failures int
 var kill bool
 var rounds int
 var nmachs int
+var suite string
 
 func init() {
 	flag.IntVar(&bf, "bf", 2, "branching factor: default binary")
@@ -54,6 +55,7 @@ func init() {
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run for")
 	flag.BoolVar(&kill, "kill", false, "kill all running processes (but don't start anything)")
 	flag.IntVar(&nmachs, "nmachs", 32, "number of machines to use")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
 func main() {
@@ -206,5 +208,6 @@ func main() {
 			" -rounds="+strconv.Itoa(rounds)+
 			" -debug="+strconv.FormatBool(debug)+
 			" -failures="+strconv.Itoa(failures)+
+			" -suite="+suite+
 			" -kill="+strconv.FormatBool(kill)))
 }

@@ -52,7 +52,6 @@ type ConfigFile struct {
 	Tree  *Node    `json:"tree"`
 }
 
-// why can't I just deal with nist.Point
 type JSONPoint json.RawMessage
 
 type Node struct {
@@ -335,12 +334,13 @@ func GetAddress() (string, error) {
 var StartConfigPort = 9000
 
 type ConfigOptions struct {
-	ConnType  string   // "go", tcp"
-	Hostnames []string // if not nil replace hostnames with these
-	GenHosts  bool     // if true generate random hostnames (all tcp)
-	Host      string   // hostname to load into memory: "" for all
-	Port      string   // if specified rewrites all ports to be this
-	Faulty    bool     // if true, use FaultyHost wrapper around Hosts
+	ConnType  string         // "go", tcp"
+	Hostnames []string       // if not nil replace hostnames with these
+	GenHosts  bool           // if true generate random hostnames (all tcp)
+	Host      string         // hostname to load into memory: "" for all
+	Port      string         // if specified rewrites all ports to be this
+	Faulty    bool           // if true, use FaultyHost wrapper around Hosts
+	Suite     abstract.Suite // suite to use for Hosts
 }
 
 // TODO: if in tcp mode associate each hostname in the file with a different
@@ -438,6 +438,9 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		}
 	}
 	suite := nist.NewAES128SHA256P256()
+	if opts.Suite != nil {
+		suite = opts.Suite
+	}
 	rand := suite.Cipher([]byte("example"))
 	fmt.Println("hosts", hosts)
 	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)

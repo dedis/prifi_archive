@@ -160,7 +160,7 @@ func (sn *Node) Announce(am *AnnouncementMessage) error {
 	// set up commit and response channels for the new round
 	Round := am.Round
 	sn.roundLock.Lock()
-	sn.Rounds[Round] = NewRound()
+	sn.Rounds[Round] = NewRound(sn.suite)
 	sn.ComCh[Round] = make(chan *SigningMessage, sn.NChildren())
 	sn.RmCh[Round] = make(chan *SigningMessage, sn.NChildren())
 	sn.roundLock.Unlock()

@@ -11,7 +11,6 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco"
 )
 
@@ -36,7 +35,12 @@ type TCPHost struct {
 	mupk   sync.RWMutex
 	Pubkey abstract.Point // own public key
 
-	pool sync.Pool
+	pool  sync.Pool
+	suite abstract.Suite
+}
+
+func (h *TCPHost) SetSuite(suite abstract.Suite) {
+	h.suite = suite
 }
 
 func (h *TCPHost) DefaultTimeout() time.Duration {
@@ -129,7 +133,7 @@ func (h *TCPHost) Listen() error {
 			tp.SetName(name)
 
 			// get and set public key
-			suite := nist.NewAES128SHA256P256()
+			suite := h.suite
 			pubkey := suite.Point()
 			err = tp.Get(pubkey)
 			if err != nil {

@@ -170,6 +170,7 @@ func (sn *Node) StartSigningRound() error {
 
 func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {
 	sn := &Node{Host: hn, suite: suite}
+	msgSuite = suite
 	sn.PrivKey = suite.Secret().Pick(random)
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
@@ -187,6 +188,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	h.Write([]byte(hn.Name()))
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
+	sn.Host.SetSuite(suite)
 	return sn
 }
 
@@ -209,6 +211,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	h.Write([]byte(hn.Name()))
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
+	sn.Host.SetSuite(suite)
 	return sn
 }
 

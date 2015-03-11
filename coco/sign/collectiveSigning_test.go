@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/edwards/ed25519"
 	"github.com/dedis/crypto/nist"
 	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
@@ -127,7 +129,22 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 //    / \   \
 //   2   3   5
 func TestSmallConfigHealthy(t *testing.T) {
-	if err := runTreeSmallConfig(sign.MerkleTree, 0); err != nil {
+	suite := nist.NewAES128SHA256P256()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSmallConfigHealthyNistQR512(t *testing.T) {
+	suite := nist.NewAES128SHA256QR512()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSmallConfigHealthyEd25519(t *testing.T) {
+	suite := ed25519.NewAES128SHA256Ed25519(true)
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -135,7 +152,8 @@ func TestSmallConfigHealthy(t *testing.T) {
 func TestSmallConfigFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTreeSmallConfig(sign.MerkleTree, 100, faultyNodes...); err != nil {
+	suite := nist.NewAES128SHA256P256()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 100, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -144,19 +162,21 @@ func TestSmallConfigFaulty2(t *testing.T) {
 	failureRate := 15
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 1, 2, 3, 4, 5)
-	if err := runTreeSmallConfig(sign.MerkleTree, failureRate, faultyNodes...); err != nil {
+	suite := nist.NewAES128SHA256P256()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, failureRate, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int) error {
+func runTreeSmallConfig(signType sign.Type, suite abstract.Suite, failureRate int, faultyNodes ...int) error {
 	var hostConfig *oldconfig.HostConfig
 	var err error
+	opts := oldconfig.ConfigOptions{Suite: suite}
+
 	if len(faultyNodes) > 0 {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", oldconfig.ConfigOptions{Faulty: true})
-	} else {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json")
+		opts.Faulty = true
 	}
+	hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", opts)
 	if err != nil {
 		return err
 	}
