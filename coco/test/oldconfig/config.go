@@ -444,6 +444,17 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	if connT != GoC {
 		hc.Dir = nil
 	}
+
+	// add a hostlist to each of the signing nodes
+	var hostList []string
+	for h := range hosts {
+		hostList = append(hostList, h)
+	}
+	for _, sn := range hc.SNodes {
+		sn.HostList = make([]string, len(hostList))
+		copy(sn.HostList, hostList)
+	}
+
 	return hc, err
 }
 

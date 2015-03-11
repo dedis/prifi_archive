@@ -42,6 +42,8 @@ type Node struct {
 	Type   Type
 	Height int
 
+	HostList []string
+
 	suite   abstract.Suite
 	PubKey  abstract.Point  // long lasting public key
 	PrivKey abstract.Secret // long lasting private key
