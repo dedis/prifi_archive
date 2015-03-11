@@ -110,6 +110,11 @@ func (sn *Node) logTotalTime(totalTime time.Duration) {
 var MAX_WILLING_TO_WAIT time.Duration = 50 * time.Second
 
 func (sn *Node) StartSigningRound() error {
+	// report view is being change, and sleep before retrying
+	if sn.ChangingView {
+		return ChangingViewError
+	}
+
 	// send an announcement message to all other TSServers
 	sn.nRounds++
 	log.Infoln("root starting signing round for round: ", sn.nRounds)
@@ -118,8 +123,10 @@ func (sn *Node) StartSigningRound() error {
 	total := time.Now()
 	var firstRoundTime time.Duration
 	var totalTime time.Duration
+
 	go func() {
 		err := sn.Announce(0, &AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+
 		if err != nil {
 			log.Println("Signature fails if at least one node says it failed")
 			log.Errorln(err)

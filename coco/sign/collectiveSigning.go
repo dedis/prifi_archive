@@ -30,6 +30,29 @@ func (sn *Node) Listen() error {
 	return nil
 }
 
+func (sn *Node) multiplexOnChildren(view int, sm *SigningMessage) {
+	messgs := make([]coconet.BinaryMarshaler, sn.NChildren(view))
+	for i := range messgs {
+		messgs[i] = sm
+	}
+	if err := sn.PutDown(view, messgs); err != nil {
+		log.Errorln("failed to putdown ViewChange announcement")
+	}
+}
+
+func (sn *Node) childrenForNewView() []string {
+	peers := sn.Peers()
+	children := make([]string, 0, len(peers)-1)
+	for p := range peers {
+		if p == parent {
+			continue
+		}
+		children = append(children, p)
+	}
+
+	return children
+}
+
 // Get multiplexes all messages from TCPHost using application logic
 func (sn *Node) get() {
 	sn.UpdateTimeout()
@@ -115,24 +138,10 @@ func (sn *Node) get() {
 				sn.roundLock.Unlock()
 				rmch <- sm
 			case ViewChange:
-				view := sm.Vc.ViewNo
-				parent := sm.From
-				peers := sn.Peers()
-				children := make([]string, 0, len(peers)-1)
-				for p := range peers {
-					if p == parent {
-						continue
-					}
-					children = append(children, p)
+				if err := sn.ViewChange(sm.Vc.ViewNo, sm.From); err != nil {
+					log.Errorln("view change error:", err)
 				}
-				sn.NewView(view, parent, children)
-				messgs := make([]coconet.BinaryMarshaler, sn.NChildren(view))
-				for i := range messgs {
-					messgs[i] = sm
-				}
-				if err := sn.PutDown(view, messgs); err != nil {
-					log.Errorln("failed to putdown ViewChange announcement")
-				}
+
 			case Error:
 				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
@@ -150,7 +159,7 @@ func (sn *Node) waitDownOnNM(ch chan coconet.NetworkMessg, errch chan error) (
 	return nm, err
 }
 
-// Used in Commit and Respond when waiting for children Commits and Responses
+// Used in Commit, Respond and ViewChange when waiting for children Commits and Responses
 // The commits and responses are read from the commit and respond channel
 // as they are put there by the getDown function
 func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration, what string) []*SigningMessage {
@@ -176,7 +185,27 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 	return messgs
 }
 
+func ViewChange(view int, parent string) {
+	children := sn.childrenForNewView()
+	sn.NewView(view, parent, children)
+	sn.multiplexOnChildren(view, sm)
+
+	messgs := sn.waitOn(view, sn.VcCh, sn.Timeout(), "viewchanges")
+	if len(messgs) == len(sn.Children()) {
+		// create and putup messg to confirm subtree view changed
+		vcm := &ViewChangedMessage{
+			Accepted: true}
+
+		err = sn.PutUp(view, &SigningMessage{
+			View: view,
+			Type: Commitment,
+			Com:  com})
+	}
+
+}
+
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
+
 	// set up commit and response channels for the new round
 	Round := am.Round
 	sn.roundLock.Lock()
@@ -496,6 +525,28 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 	if isroot {
 		sn.done <- Round
 	}
+	if sn.TimeForViewChange() {
+		if sn.IsNextRoot() {
+			// create new view
+			nextViewNo := view + 1
+			nextParent := ""
+			nextChildren := sn.childrenForNewView()
+			sn.NewView(nextViewNo, nextParent, nextChildren)
+
+			// announce my children of new view
+			sm := &SigningMessage{
+				Type: ViewChange,
+				View: nextViewNo,
+				Vc:   &ViewChangeMessgae{ViewNo: nextViewNo}}
+			sn.multiplexOnChildren(view, sm)
+
+			// TODO: should announce myself to user as new root
+			// once my peers accept me as new root
+
+		}
+
+		sn.ChangingView = true
+	}
 	return err
 }
 
@@ -562,6 +613,14 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 		// log.Println(round.MTRoot)
 	}
 	return nil
+}
+
+func (sn *Node) TimeForViewChange() bool {
+	if sn.LastSeenRound%RoundsPerView == 0 {
+		return true
+	}
+
+	return false
 }
 
 func (sn *Node) PutUpError(view int, err error) {

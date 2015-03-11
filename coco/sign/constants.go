@@ -3,4 +3,5 @@ package sign
 import "time"
 
 // Constants we expect might be used by other packages
-var ROUND_TIME time.Duration = 5 * time.Second
+// TODO: can this be replaced by the application using the signer?
+var ROUND_TIME time.Duration = 10 * time.Second

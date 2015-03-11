@@ -154,19 +154,40 @@ func (s *Server) ListenToClients() {
 	}
 }
 
-// Listen on client connections. If role is root also send annoucement
-// for all of the nRounds
-func (s *Server) Run(role string, nRounds int) {
-	defer log.Println("done running")
-	s.rLock.Lock()
-	s.maxRounds = nRounds
-	s.rLock.Unlock()
-	switch role {
+func (s *Server) reRunWith(nextRoot string, wasRoot bool) {
+	if nextRoot == s.name {
 
-	case "root":
-		// every 5 seconds start a new round
-		ticker := time.Tick(ROUND_TIME)
-		for _ = range ticker {
+		var messg string
+		if wasRoot {
+			messg = "server remained root"
+		} else {
+			messg = "server became root"
+		}
+
+		log.WithFields(log.Fields{
+			"file": logutils.File(),
+			"type": "role_change",
+		}).Infoln(messg)
+
+		// TODO: must wait for all regulars to confirm running on next view
+
+		s.runAsRoot(nRounds)
+	} else {
+		s.runAsRegular(nRounds)
+	}
+
+}
+
+func (s *Server) runAsRoot(nRounds int) {
+	// every 5 seconds start a new round
+	ticker := time.Tick(ROUND_TIME)
+
+	// TODO: check proper for
+	for {
+		select {
+		case nextRoot := <-s.viewChange:
+			reRunWith(nextRoot, true)
+		case <-ticker:
 			s.nRounds++
 			if s.nRounds > nRounds {
 				log.Errorln("exceeded the max round: terminating")
@@ -175,7 +196,17 @@ func (s *Server) Run(role string, nRounds int) {
 
 			start := time.Now()
 			log.Println("stamp server starting signing round for:", s.nRounds)
+
 			err := s.StartSigningRound()
+			if err == sign.ChangingViewError {
+				// report change in view, and continue with the select
+				log.WithFields(log.Fields{
+					"file": logutils.File(),
+					"type": "view_change",
+				}).Info("announce reported view change in progress")
+				break
+			}
+
 			if err != nil {
 				log.Errorln(err)
 				return
@@ -195,20 +226,44 @@ func (s *Server) Run(role string, nRounds int) {
 				"round": s.nRounds,
 				"time":  elapsed,
 			}).Info("root round")
+			return
+
 		}
+	}
+}
+
+func (s *Server) runAsRegular(nRounds int) {
+	select {
+	case <-s.closeChan:
+		log.WithFields(log.Fields{
+			"file": logutils.File(),
+			"type": "close",
+		}).Infoln("server has closed")
+
+	case nextRoot := <-s.viewChange:
+		reRunWith(nextRoot, false)
+	}
+}
+
+// Listen on client connections. If role is root also send annoucement
+// for all of the nRounds
+func (s *Server) Run(role string, nRounds int) {
+	defer log.Println("done running")
+	s.rLock.Lock()
+	s.maxRounds = nRounds
+	s.rLock.Unlock()
+	switch role {
+
+	case "root":
+		runAsRoot(nRounds)
+	case "regular":
+		runAsRegular(nRounds)
 
 	case "test":
 		ticker := time.Tick(2000 * time.Millisecond)
 		for _ = range ticker {
 			s.AggregateCommits(0)
 		}
-	case "regular":
-		// run until we close it
-		<-s.closeChan
-		log.WithFields(log.Fields{
-			"file": logutils.File(),
-			"type": "close",
-		}).Infoln("server has closed")
 	}
 
 }
