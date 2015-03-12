@@ -72,24 +72,24 @@ func (tc *TCPConn) Name() string {
 }
 
 // SetPubKey sets the public key.
-func (c *TCPConn) SetPubKey(pk abstract.Point) {
-	c.pkLock.Lock()
-	c.pubkey = pk
-	c.pkLock.Unlock()
+func (tc *TCPConn) SetPubKey(pk abstract.Point) {
+	tc.pkLock.Lock()
+	tc.pubkey = pk
+	tc.pkLock.Unlock()
 }
 
 // PubKey returns the public key of this peer.
-func (c *TCPConn) PubKey() abstract.Point {
-	c.pkLock.Lock()
-	pl := c.pubkey
-	c.pkLock.Unlock()
+func (tc *TCPConn) PubKey() abstract.Point {
+	tc.pkLock.Lock()
+	pl := tc.pubkey
+	tc.pkLock.Unlock()
 	return pl
 }
 
 // ErrNotEstablished indicates that the connection has not been successfully established
 // through a call to Connect yet. It does not indicate whether the failure was permanent or
 // temporary.
-var ErrNotEstablished error = errors.New("connection not established")
+var ErrNotEstablished = errors.New("connection not established")
 
 type temporary interface {
 	Temporary() bool

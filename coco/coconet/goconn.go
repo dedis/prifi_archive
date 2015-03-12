@@ -2,61 +2,66 @@ package coconet
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/dedis/crypto/abstract"
 )
 
-// directory is a testing structure for the goConn. It allows us to simulate
+// GoDirectory is a testing structure for the goConn. It allows us to simulate
 // tcp network connections locally (and is easily adaptable for network
 // connections). A single directory should be shared between all goConns's that
 // are operating in the same network 'space'. If they are on the same tree they
 // should share a directory.
 type GoDirectory struct {
-	sync.Mutex                        // protects accesses to channel and nameToPeer
-	channel    map[string]chan []byte // one channel per peer-to-peer connection
-	nameToPeer map[string]*GoConn     // keeps track of duplicate connections
+	// protects accesses to channel and nameToPeer
+	sync.RWMutex
+	// channel is a map from each peer-to-peer connection to channel.
+	channel map[string]chan []byte
+	// nameToPeer maps each connection (from-to) to a GoConn
+	nameToPeer map[string]*GoConn
 }
 
-/// newDirectory creates a new directory for registering goPeers.
+// NewGoDirectory creates a new directory for registering GoConns.
 func NewGoDirectory() *GoDirectory {
 	return &GoDirectory{channel: make(map[string]chan []byte),
 		nameToPeer: make(map[string]*GoConn)}
 }
 
-// goConn is a Conn type for representing connections in an in-memory tree. It
+// GoConn implements the Conn interface.
+// It emulates connections by using channels.
 // uses channels for communication.
 type GoConn struct {
-	// the directory maps each (from,to) pair to a channel for sending
-	// (from,to). When receiving one reads from the channel (from, to). Thus
-	// the sender "owns" the channel.
+	// The directory maps each (from,to) pair to a channel for sending (from,to).
+	// When receiving one reads from the channel (to, from).
+	// This corresponds to the channel the sender would write to.
+	// Thus the sender "owns" the channel.
 	dir    *GoDirectory
 	from   string
 	to     string
 	fromto string
 	tofrom string
 
+	// mupk guards the public key
 	mupk   sync.RWMutex
 	pubkey abstract.Point
 }
 
-// PeerExists is an ignorable error that says that this peer has already been
+// ErrPeerExists is an ignorable error that says that this peer has already been
 // registered to this directory.
-var PeerExists error = errors.New("peer already exists in given directory")
+var ErrPeerExists = errors.New("peer already exists in given directory")
 
-// NewGoPeer creates a goPeer registered in the given directory with the given
-// hostname. It returns an ignorable PeerExists error if this peer already
+// NewGoConn creates a GoConn registered in the given directory with the given
+// hostname. It returns an ignorable ErrPeerExists error if this peer already
 // exists.
 func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
 	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from, sync.RWMutex{}, nil}
 	dir.Lock()
-	fromto := gc.FromTo()
-	tofrom := gc.ToFrom()
 	defer dir.Unlock()
+	fromto := gc.fromto
+	tofrom := gc.tofrom
 	if c, ok := dir.nameToPeer[fromto]; ok {
 		// return the already existant peer\
-		return c, PeerExists
+		return c, ErrPeerExists
 	}
 	dir.nameToPeer[fromto] = gc
 	if _, ok := dir.channel[fromto]; !ok {
@@ -68,47 +73,43 @@ func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
 	return gc, nil
 }
 
-// Name returns the from+to identifier of the goConn.
+// Name implements the Conn Name interface.
+// It returns the To end of the connection.
 func (c *GoConn) Name() string {
 	return c.to
 }
 
-func (c *GoConn) FromTo() string {
-	return c.fromto
-}
-
-func (c *GoConn) ToFrom() string {
-	return c.tofrom
-}
-
+// Connect implements the Conn Connect interface.
+// For GoConn's it is a no-op.
 func (c *GoConn) Connect() error {
 	return nil
 }
 
+// Close implements the Conn Close interface.
+// For GoConn's it is a no-op.
 func (c *GoConn) Close() {}
 
+// SetPubKey sets the public key of the connection.
 func (c *GoConn) SetPubKey(pk abstract.Point) {
 	c.mupk.Lock()
 	c.pubkey = pk
 	c.mupk.Unlock()
 }
 
+// PubKey returns the public key of the connection.
 func (c *GoConn) PubKey() abstract.Point {
-	c.mupk.Lock()
+	c.mupk.RLock()
 	pl := c.pubkey
-	c.mupk.Unlock()
+	c.mupk.RUnlock()
 	return pl
 }
 
-// Put sends data to the goConn through the channel.
+// Put puts data on the connection.
 func (c *GoConn) Put(data BinaryMarshaler) error {
-	fromto := c.FromTo()
-	c.dir.Lock()
+	fromto := c.fromto
+	c.dir.RLock()
 	ch := c.dir.channel[fromto]
-	// the directory must be unlocked before sending data. otherwise the
-	// receiver would not be able to access this channel from the directory
-	// either.
-	c.dir.Unlock()
+	c.dir.RUnlock()
 	b, err := data.MarshalBinary()
 	if err != nil {
 		return err
@@ -119,21 +120,11 @@ func (c *GoConn) Put(data BinaryMarshaler) error {
 
 // Get receives data from the sender.
 func (c *GoConn) Get(bum BinaryUnmarshaler) error {
-	tofrom := c.ToFrom()
-	c.dir.Lock()
+	tofrom := c.tofrom
+	c.dir.RLock()
 	ch := c.dir.channel[tofrom]
-	// as in Put directory must be unlocked to allow other goroutines to reach
-	// their send lines.
-	c.dir.Unlock()
-
+	c.dir.RUnlock()
 	data := <-ch
 	err := bum.UnmarshalBinary(data)
-	if err != nil {
-		fmt.Println("failed to unmarshal binary from ", tofrom, ch, data)
-		fmt.Printf("\tinto: %#v\n", bum)
-		bum = nil
-	} else {
-		// fmt.Println("correct unmarshal binary from ", tofrom, ch, data)
-	}
 	return err
 }

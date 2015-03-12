@@ -54,11 +54,11 @@ func runTSSIntegration(failureRate int, faultyNodes ...int) error {
 	nRounds := 4
 
 	// load config with faulty or healthy hosts
+	opts := oldconfig.ConfigOptions{}
 	if len(faultyNodes) > 0 {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", oldconfig.ConfigOptions{Faulty: true})
-	} else {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json")
+		opts.Faulty = true
 	}
+	hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", opts)
 	if err != nil {
 		return err
 	}
@@ -87,14 +87,10 @@ func runTSSIntegration(failureRate int, faultyNodes ...int) error {
 		clientsLists[i] = createClientsForTSServer(ncps, s, hostConfig.Dir, 0+i+ncps)
 	}
 
-	var wg sync.WaitGroup
 	for i, s := range stampers[1:] {
 		go s.Run("regular", nRounds+2)
 		go s.ListenToClients()
-
-		wg.Add(1)
 		go func(clients []*stamp.Client, nRounds int, nMessages int, s *stamp.Server) {
-			defer wg.Done()
 			log.Println("clients Talk")
 			clientsTalk(clients, nRounds, nMessages, s)
 			log.Println("Clients done Talking")
@@ -102,8 +98,7 @@ func runTSSIntegration(failureRate int, faultyNodes ...int) error {
 
 	}
 
-	go stampers[0].Run("root", nRounds)
-	wg.Wait()
+	stampers[0].Run("root", nRounds)
 
 	// After clients receive messages back we need a better way
 	// of waiting to make sure servers check ElGamal sigs

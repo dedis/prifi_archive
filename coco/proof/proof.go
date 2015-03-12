@@ -5,11 +5,11 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"hash"
-	"strconv"
-
+	log "github.com/Sirupsen/logrus"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/hashid"
+	"hash"
+	"strconv"
 )
 
 type HashFunc func() hash.Hash
@@ -74,6 +74,7 @@ func CheckProof(newHash HashFunc, root hashid.HashId, leaf hashid.HashId, proof 
 	// log.Println("Proof", proof)
 	// log.Println("\n")
 	if proof.Check(newHash, root, leaf) == false {
+		log.Errorln("FAILED TO CHECK")
 		panic("check failed at leaf")
 	}
 	return true

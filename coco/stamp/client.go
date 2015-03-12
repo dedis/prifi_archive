@@ -184,7 +184,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	case err = <-myChan:
 		// log.Println("-------------client received  response from" + TSServerName)
 		break
-	case <-time.After(3 * ROUND_TIME):
+	case <-time.After(10 * ROUND_TIME):
 		if coco.DEBUG == true {
 			log.Errorln(errors.New("client timeouted on waiting for response from" + TSServerName))
 		}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"golang.org/x/net/context"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
@@ -47,7 +48,7 @@ func (sn *Node) get() {
 				sn.closed <- err
 				return
 			}
-			if err == coconet.ErrorConnClosed {
+			if err == coconet.ErrClosed {
 				continue
 			}
 		}
@@ -130,7 +131,9 @@ func (sn *Node) get() {
 				for i := range messgs {
 					messgs[i] = sm
 				}
-				if err := sn.PutDown(view, messgs); err != nil {
+				// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+				ctx := context.TODO()
+				if err := sn.PutDown(ctx, view, messgs); err != nil {
 					log.Errorln("failed to putdown ViewChange announcement")
 				}
 			case Error:
@@ -208,7 +211,9 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 		sm := SigningMessage{Type: Announcement, View: view, Am: am}
 		messgs[i] = &sm
 	}
-	if err := sn.PutDown(view, messgs); err != nil {
+	ctx := context.TODO()
+	//ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+	if err := sn.PutDown(ctx, view, messgs); err != nil {
 		return err
 	}
 
@@ -218,7 +223,9 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 // Create round lasting secret and commit point v and V
 // Initialize log structure for the round
 func (sn *Node) initCommitCrypto(Round int) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	// generate secret and point commitment for this round
 	rand := sn.suite.Cipher([]byte(sn.Name()))
 	round.Log = SNLog{}
@@ -233,9 +240,10 @@ func (sn *Node) initCommitCrypto(Round int) {
 }
 
 func (sn *Node) Commit(view int, Round int) error {
-
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
 	sn.LastSeenRound = max(Round, sn.LastSeenRound)
+	sn.roundLock.RUnlock()
 	if round == nil {
 		// was not announced of this round, should retreat
 		return nil
@@ -300,7 +308,9 @@ func (sn *Node) Commit(view int, Round int) error {
 // Finalize commits by initiating the challenge pahse if root
 // Send own commitment message up to parent if non-root
 func (sn *Node) actOnCommits(view, Round int) error {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	var err error
 
 	if sn.IsRoot(view) {
@@ -316,7 +326,9 @@ func (sn *Node) actOnCommits(view, Round int) error {
 			ExceptionList: round.ExceptionList,
 			Round:         Round}
 
-		err = sn.PutUp(view, &SigningMessage{
+		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+		ctx := context.TODO()
+		err = sn.PutUp(ctx, view, &SigningMessage{
 			View: view,
 			Type: Commitment,
 			Com:  com})
@@ -326,8 +338,11 @@ func (sn *Node) actOnCommits(view, Round int) error {
 
 // initiated by root, propagated by all others
 func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
+	log.Printf("%s received challenges\n", sn.Name())
+	sn.roundLock.RLock()
 	round := sn.Rounds[chm.Round]
 	sn.LastSeenRound = max(chm.Round, sn.LastSeenRound)
+	sn.roundLock.RUnlock()
 	if round == nil {
 		return nil
 	}
@@ -382,7 +397,9 @@ func (sn *Node) FillInWithDefaultMessages(view int, messgs []*SigningMessage) []
 }
 
 func (sn *Node) initResponseCrypto(Round int) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	// generate response   r = v - xc
 	round.r = sn.suite.Secret()
 	round.r.Mul(sn.PrivKey, round.c).Sub(round.Log.v, round.r)
@@ -391,8 +408,10 @@ func (sn *Node) initResponseCrypto(Round int) {
 }
 
 func (sn *Node) Respond(view, Round int) error {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
 	sn.LastSeenRound = max(Round, sn.LastSeenRound)
+	sn.roundLock.RUnlock()
 	if round == nil || round.Log.v == nil {
 		// If I was not announced of this round, or I failed to commit
 		return nil
@@ -463,7 +482,9 @@ func (sn *Node) Respond(view, Round int) error {
 }
 
 func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, exceptionX_hat abstract.Point) error {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	err := sn.VerifyResponses(view, Round)
 
 	isroot := sn.IsRoot(view)
@@ -486,7 +507,10 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 			ExceptionV_hat: exceptionV_hat,
 			ExceptionX_hat: exceptionX_hat,
 			Round:          Round}
-		return sn.PutUp(view, &SigningMessage{
+
+		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+		ctx := context.TODO()
+		return sn.PutUp(ctx, view, &SigningMessage{
 			Type: Response,
 			View: view,
 			Rm:   rm})
@@ -502,7 +526,9 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 // Called *only* by root node after receiving all commits
 func (sn *Node) FinalizeCommits(view int, Round int) error {
 	//Round := sn.Round // *only* in root
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
@@ -522,7 +548,9 @@ func (sn *Node) FinalizeCommits(view int, Round int) error {
 
 // Called by every node after receiving aggregate responses from descendants
 func (sn *Node) VerifyResponses(view, Round int) error {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 
 	// Check that: base**r_hat * X_hat**c == V_hat
 	// Equivalent to base**(r+xc) == base**(v) == T in vanillaElGamal
@@ -566,7 +594,9 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 
 func (sn *Node) PutUpError(view int, err error) {
 	// log.Println(sn.Name(), "put up response with err", err)
-	sn.PutUp(view, &SigningMessage{
+	// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+	ctx := context.TODO()
+	sn.PutUp(ctx, view, &SigningMessage{
 		Type: Error,
 		View: view,
 		Err:  &ErrorMessage{Err: err.Error()}})
@@ -582,7 +612,9 @@ func hashElGamal(suite abstract.Suite, message []byte, p abstract.Point) abstrac
 
 // Called when log for round if full and ready to be hashed
 func (sn *Node) HashLog(Round int) error {
+	sn.roundLock.Lock()
 	round := sn.Rounds[Round]
+	sn.roundLock.Unlock()
 	var err error
 	round.HashedLog, err = sn.hashLog(Round)
 	return err
@@ -590,7 +622,9 @@ func (sn *Node) HashLog(Round int) error {
 
 // Auxilary function to perform the actual hashing of the log
 func (sn *Node) hashLog(Round int) ([]byte, error) {
+	sn.roundLock.Lock()
 	round := sn.Rounds[Round]
+	sn.roundLock.Unlock()
 
 	h := sn.suite.Hash()
 	logBytes, err := round.Log.MarshalBinary()

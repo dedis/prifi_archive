@@ -55,7 +55,7 @@ type Node struct {
 	DoneFunc   coco.DoneFunc
 
 	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
-	roundLock sync.Mutex
+	roundLock sync.RWMutex
 	ComCh     map[int]chan *SigningMessage // a channel for each round's commits
 	RmCh      map[int]chan *SigningMessage // a channel for each round's responses
 	LogTest   []byte                       // for testing purposes
@@ -64,6 +64,9 @@ type Node struct {
 	closed      chan error // error sent when connection closed
 	done        chan int   // round number sent when round done
 	commitsDone chan int   // round number sent when announce/commit phase done
+
+	timeout  time.Duration
+	timeLock sync.RWMutex
 }
 
 func (sn *Node) SetFailureRate(v int) {
@@ -187,6 +190,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	h.Write([]byte(hn.Name()))
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
+	sn.Host.SetSuite(suite)
 	return sn
 }
 
@@ -209,6 +213,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	h.Write([]byte(hn.Name()))
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
+	sn.Host.SetSuite(suite)
 	return sn
 }
 
@@ -330,6 +335,23 @@ func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
 	for _, k := range keys {
 		sn.sub(a, k)
 	}
+}
+
+func (sn *Node) SetTimeout(t time.Duration) {
+	sn.timeLock.Lock()
+	sn.timeout = t
+	sn.timeLock.Unlock()
+}
+
+func (sn *Node) Timeout() time.Duration {
+	sn.timeLock.RLock()
+	t := sn.timeout
+	sn.timeLock.RUnlock()
+	return t
+}
+
+func (sn *Node) DefaultTimeout() time.Duration {
+	return 5 * time.Second
 }
 
 func max(a int, b int) int {

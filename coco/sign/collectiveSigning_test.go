@@ -101,9 +101,12 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	h[3].AddParent(DefaultView, h[1].Name())
 	// Add edges to children, listen to children
 	h[0].AddChildren(DefaultView, h[1].Name())
-	h[0].Listen()
 	h[1].AddChildren(DefaultView, h[2].Name(), h[3].Name())
-	h[1].Listen()
+
+	for _, host := range h {
+		host.Listen()
+		host.Connect(0)
+	}
 
 	for i := 0; i < nNodes; i++ {
 		if len(faultyNodes) > 0 {
