@@ -24,6 +24,7 @@ const (
 	Challenge
 	Response
 	ViewChange
+	ViewAccepted
 	Default // for internal use
 	Error
 )
@@ -36,7 +37,8 @@ type SigningMessage struct {
 	Com  *CommitmentMessage
 	Chm  *ChallengeMessage
 	Rm   *ResponseMessage
-	Vc   *ViewChangeMessage
+	Vcm  *ViewChangeMessage
+	Vam  *ViewAcceptedMessage
 	Err  *ErrorMessage
 	From string
 	View int
@@ -111,8 +113,15 @@ type ErrorMessage struct {
 // ViewChange message is passed from the new parent to its children
 //  i.e. all peers that are not its parent.
 // The node that receives the ViewChange request sets the sender to be
-// its parent for the view, and forwards the message to all its children,
-// so they can accept this node as its new parent.
+// its parent for the new view, and forwards the message to all its children,
+// so they can accept it as their new parent as well...
 type ViewChangeMessage struct {
+	ViewNo int
+}
+
+// Not a typical message of a view Change protocol
+// Sent up by a node to signal to its parent that the nodes in
+// its subtree have accepted the new view
+type ViewAcceptedMessage struct {
 	ViewNo int
 }

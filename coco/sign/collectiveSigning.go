@@ -40,7 +40,7 @@ func (sn *Node) multiplexOnChildren(view int, sm *SigningMessage) {
 	}
 }
 
-func (sn *Node) childrenForNewView() []string {
+func (sn *Node) childrenForNewView(parent string) []string {
 	peers := sn.Peers()
 	children := make([]string, 0, len(peers)-1)
 	for p := range peers {
@@ -138,10 +138,13 @@ func (sn *Node) get() {
 				sn.roundLock.Unlock()
 				rmch <- sm
 			case ViewChange:
-				if err := sn.ViewChange(sm.Vc.ViewNo, sm.From); err != nil {
+				if err := sn.ViewChange(sm.Vcm.ViewNo, sm.From, sm.Vcm); err != nil {
 					log.Errorln("view change error:", err)
 				}
-
+			case ViewAccepted:
+				sn.VamChLock.Lock()
+				sn.VamCh <- sm
+				sn.VamChLock.Unlock()
 			case Error:
 				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
@@ -185,26 +188,46 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 	return messgs
 }
 
-func ViewChange(view int, parent string) {
-	children := sn.childrenForNewView()
+var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted view")
+
+func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
+	children := sn.childrenForNewView(parent)
 	sn.NewView(view, parent, children)
-	sn.multiplexOnChildren(view, sm)
+	sn.multiplexOnChildren(view, &SigningMessage{Type: ViewChange, View: view, Vcm: vcm})
 
-	messgs := sn.waitOn(view, sn.VcCh, sn.Timeout(), "viewchanges")
-	if len(messgs) == len(sn.Children()) {
-		// create and putup messg to confirm subtree view changed
-		vcm := &ViewChangedMessage{
-			Accepted: true}
-
-		err = sn.PutUp(view, &SigningMessage{
-			View: view,
-			Type: Commitment,
-			Com:  com})
+	messgs := sn.waitOn(view, sn.VamCh, sn.Timeout(), "viewchanges")
+	if len(messgs) != len(sn.Children(view)) {
+		// currently we require all nodes to accept a new view
+		return ViewRejectedError
 	}
 
+	if sn.AmNextRoot {
+		// everyone confirmed me as new root
+		sn.viewChange <- "root"
+	} else {
+		// create and putup messg to confirm subtree view changed
+		vam := &ViewAcceptedMessage{
+			ViewNo: view}
+
+		err := sn.PutUp(view, &SigningMessage{
+			View: view,
+			Type: Commitment,
+			Vam:  vam})
+
+		if err != nil {
+			log.Fatal("Error Putting up ViewAccepted Message")
+		}
+
+		sn.viewChange <- "root"
+	}
+
+	return nil
 }
 
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
+	if sn.ChangingView {
+		return ChangingViewError
+	}
 
 	// set up commit and response channels for the new round
 	Round := am.Round
@@ -526,23 +549,25 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 		sn.done <- Round
 	}
 	if sn.TimeForViewChange() {
-		if sn.IsNextRoot() {
+		sn.AmNextRoot = false
+		if sn.RootFor(view+1) == sn.Name() {
+			sn.AmNextRoot = true
+		}
+
+		if sn.AmNextRoot {
 			// create new view
 			nextViewNo := view + 1
 			nextParent := ""
-			nextChildren := sn.childrenForNewView()
+			nextChildren := sn.childrenForNewView(nextParent)
 			sn.NewView(nextViewNo, nextParent, nextChildren)
 
-			// announce my children of new view
+			// announce my children of need to change view
+			// using current (old view) as communication channel
 			sm := &SigningMessage{
 				Type: ViewChange,
 				View: nextViewNo,
-				Vc:   &ViewChangeMessgae{ViewNo: nextViewNo}}
+				Vcm:  &ViewChangeMessage{ViewNo: nextViewNo}}
 			sn.multiplexOnChildren(view, sm)
-
-			// TODO: should announce myself to user as new root
-			// once my peers accept me as new root
-
 		}
 
 		sn.ChangingView = true

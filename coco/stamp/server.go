@@ -154,14 +154,11 @@ func (s *Server) ListenToClients() {
 	}
 }
 
-func (s *Server) reRunWith(nextRoot string, wasRoot bool) {
-	if nextRoot == s.name {
-
-		var messg string
+func (s *Server) reRunWith(nextRole string, wasRoot bool) {
+	if nextRoot == "root" {
+		var messg = "became root"
 		if wasRoot {
-			messg = "server remained root"
-		} else {
-			messg = "server became root"
+			messg = "remained root"
 		}
 
 		log.WithFields(log.Fields{
@@ -169,10 +166,12 @@ func (s *Server) reRunWith(nextRoot string, wasRoot bool) {
 			"type": "role_change",
 		}).Infoln(messg)
 
-		// TODO: must wait for all regulars to confirm running on next view
-
 		s.runAsRoot(nRounds)
 	} else {
+		var messg = "remained regular"
+		if wasRoot {
+			messg = "becameregular"
+		}
 		s.runAsRegular(nRounds)
 	}
 
@@ -182,16 +181,15 @@ func (s *Server) runAsRoot(nRounds int) {
 	// every 5 seconds start a new round
 	ticker := time.Tick(ROUND_TIME)
 
-	// TODO: check proper for
 	for {
 		select {
-		case nextRoot := <-s.viewChange:
-			reRunWith(nextRoot, true)
+		case nextRole := <-s.viewChange:
+			reRunWith(nextRole, true)
 		case <-ticker:
 			s.nRounds++
 			if s.nRounds > nRounds {
 				log.Errorln("exceeded the max round: terminating")
-				break
+				return
 			}
 
 			start := time.Now()
@@ -240,8 +238,8 @@ func (s *Server) runAsRegular(nRounds int) {
 			"type": "close",
 		}).Infoln("server has closed")
 
-	case nextRoot := <-s.viewChange:
-		reRunWith(nextRoot, false)
+	case nextRole := <-s.viewChange:
+		reRunWith(nextRole, false)
 	}
 }
 

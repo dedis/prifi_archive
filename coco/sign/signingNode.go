@@ -66,6 +66,20 @@ type Node struct {
 	closed      chan error // error sent when connection closed
 	done        chan int   // round number sent when round done
 	commitsDone chan int   // round number sent when announce/commit phase done
+
+	// "root" or "regular" are sent on this channel to
+	// notify the maker of the sn what role sn plays in the new view
+	viewChange   chan string
+	ChangingView bool // true if node is currently engaged in changing the view
+	AmNextRoot   bool // determined when new view is needed
+	VamChLock    sync.Mutex
+	VamCh        chan *SigningMessage // a channel for ViewAcceptedMessages
+}
+
+// Returns name of node who should be the root for the next view
+// round robin is used on the array of host names to determine the next root
+func (sn *Node) RootFor(view int) string {
+	return sn.HostList[view%len(sn.HostList)]
 }
 
 func (sn *Node) SetFailureRate(v int) {
@@ -108,6 +122,8 @@ func (sn *Node) logTotalTime(totalTime time.Duration) {
 }
 
 var MAX_WILLING_TO_WAIT time.Duration = 50 * time.Second
+
+var ChangingViewError error = errors.New("In the process of changing view")
 
 func (sn *Node) StartSigningRound() error {
 	// report view is being change, and sleep before retrying
@@ -190,6 +206,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.closed = make(chan error, 2)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
+	sn.viewChange = make(chan string, 1)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -212,6 +229,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.closed = make(chan error, 2)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
+	sn.viewChange = make(chan string, 1)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
