@@ -59,7 +59,7 @@ func (c *Client) handleServer(s coconet.Conn) error {
 		tsm := &TimeStampMessage{}
 		err := s.Get(tsm)
 		if err != nil {
-			if err == coconet.ConnectionNotEstablished {
+			if err == coconet.ErrNotEstablished {
 				continue
 			}
 			if coco.DEBUG {
@@ -165,7 +165,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 			ReqNo: myReqno,
 			Sreq:  &StampRequest{Val: val}})
 	if err != nil {
-		if err != coconet.ConnectionNotEstablished {
+		if err != coconet.ErrNotEstablished {
 			if coco.DEBUG {
 				log.Warn("error timestamping: ", err)
 			}

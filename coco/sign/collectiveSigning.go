@@ -38,7 +38,7 @@ func (sn *Node) get() {
 		nm := <-msgchan
 		err := <-errchan
 		if err != nil {
-			if err == coconet.ConnectionNotEstablished {
+			if err == coconet.ErrNotEstablished {
 				continue
 			}
 

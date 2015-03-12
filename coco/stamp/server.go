@@ -303,7 +303,7 @@ func (s *Server) AggregateCommits(view int) []byte {
 // Send message to client given by name
 func (s *Server) PutToClient(name string, data coconet.BinaryMarshaler) {
 	err := s.Clients[name].Put(data)
-	if err != nil && err != coconet.ConnectionNotEstablished {
+	if err != nil && err != coconet.ErrNotEstablished {
 		log.Warn("error putting to client:", err)
 	}
 }

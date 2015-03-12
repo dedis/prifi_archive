@@ -250,7 +250,7 @@ func (h *GoHost) PutUp(view int, data BinaryMarshaler) error {
 	parent := h.peers[pname]
 	h.rlock.RUnlock()
 	if !isReady {
-		return ConnectionNotEstablished
+		return ErrNotEstablished
 	} else if parent == nil && pname != "" {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
