@@ -203,7 +203,8 @@ func (s *Server) runAsRoot(nRounds int) {
 
 			err := s.StartSigningRound()
 			if err == sign.ChangingViewError {
-				// report change in view, and continue with the select
+				// report change in view, and continue with the select, retrying this round
+				s.nRounds--
 				log.WithFields(log.Fields{
 					"file": logutils.File(),
 					"type": "view_change",
@@ -230,7 +231,7 @@ func (s *Server) runAsRoot(nRounds int) {
 				"round": s.nRounds,
 				"time":  elapsed,
 			}).Info("root round")
-			return
+			break
 
 		}
 	}
