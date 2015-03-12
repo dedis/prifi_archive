@@ -291,6 +291,71 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	}
 }
 
+// Go channels, static configuration, multiple rounds
+func TestViewChangeChan(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = hostConfig.Run(sign.MerkleTree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
+	// Have root node initiate the signing protocol
+	// via a simple annoucement
+	N := 6
+	for i := 0; i < N; i++ {
+		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
+		err = hostConfig.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: i})
+		if err == sign.ChangingViewError {
+			log.Println("Attempted round", i, "but received view change. waiting then retrying")
+			time.Sleep(3 * time.Second)
+			i--
+			continue
+		}
+
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// TCP connections, static configuration, multiple rounds
+func TestViewChangeTCP(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
+	if err != nil {
+		t.Fatal("error loading configuration: ", err)
+	}
+	defer func() {
+		for _, n := range hc.SNodes {
+			n.Close()
+		}
+		time.Sleep(1 * time.Second)
+	}()
+	err = hc.Run(sign.MerkleTree)
+	if err != nil {
+		t.Fatal("error running:", err)
+	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
+	N := 6
+	for i := 0; i < N; i++ {
+		hc.SNodes[0].LogTest = []byte("hello world")
+		hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+	}
+}
+
 // func TestTreeBigConfigTCP(t *testing.T) {
 // 	if testing.Short() {
 // 		t.Skip("skipping test in short mode.")

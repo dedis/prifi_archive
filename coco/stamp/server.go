@@ -154,8 +154,8 @@ func (s *Server) ListenToClients() {
 	}
 }
 
-func (s *Server) reRunWith(nextRole string, wasRoot bool) {
-	if nextRoot == "root" {
+func (s *Server) reRunWith(nextRole string, nRounds int, wasRoot bool) {
+	if nextRole == "root" {
 		var messg = "became root"
 		if wasRoot {
 			messg = "remained root"
@@ -172,6 +172,12 @@ func (s *Server) reRunWith(nextRole string, wasRoot bool) {
 		if wasRoot {
 			messg = "becameregular"
 		}
+
+		log.WithFields(log.Fields{
+			"file": logutils.File(),
+			"type": "role_change",
+		}).Infoln(messg)
+
 		s.runAsRegular(nRounds)
 	}
 
@@ -183,8 +189,8 @@ func (s *Server) runAsRoot(nRounds int) {
 
 	for {
 		select {
-		case nextRole := <-s.viewChange:
-			reRunWith(nextRole, true)
+		case nextRole := <-s.ViewChangeCh():
+			s.reRunWith(nextRole, nRounds, true)
 		case <-ticker:
 			s.nRounds++
 			if s.nRounds > nRounds {
@@ -211,9 +217,9 @@ func (s *Server) runAsRoot(nRounds int) {
 			}
 
 			lr := s.LastRound()
-			if lr != s.nRounds {
+			if lr != int64(s.nRounds) {
 				log.Errorln("Signer and Stamper rounds out of sync:")
-				log.Errorln(strconv.Itoa(lr) + "," + strconv.Itoa(s.nRounds))
+				log.Errorln(strconv.Itoa(int(lr)) + "," + strconv.Itoa(s.nRounds))
 				return
 			}
 
@@ -238,8 +244,8 @@ func (s *Server) runAsRegular(nRounds int) {
 			"type": "close",
 		}).Infoln("server has closed")
 
-	case nextRole := <-s.viewChange:
-		reRunWith(nextRole, false)
+	case nextRole := <-s.ViewChangeCh():
+		s.reRunWith(nextRole, nRounds, false)
 	}
 }
 
@@ -253,9 +259,9 @@ func (s *Server) Run(role string, nRounds int) {
 	switch role {
 
 	case "root":
-		runAsRoot(nRounds)
+		s.runAsRoot(nRounds)
 	case "regular":
-		runAsRegular(nRounds)
+		s.runAsRegular(nRounds)
 
 	case "test":
 		ticker := time.Tick(2000 * time.Millisecond)

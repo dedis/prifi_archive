@@ -6,4 +6,7 @@ import "time"
 // TODO: can this be replaced by the application using the signer?
 var ROUND_TIME time.Duration = 10 * time.Second
 
-var RoundsPerView int = 10
+var RoundsPerView int = 3
+
+var FALSE int32 = 0
+var TRUE int32 = 1

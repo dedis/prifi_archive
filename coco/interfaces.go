@@ -22,7 +22,7 @@ type Signer interface {
 	Suite() abstract.Suite
 	StartSigningRound() error
 
-	LastRound() int // last round number seen by Signer
+	LastRound() int64 // last round number seen by Signer
 
 	// // proof can be nil for simple non Merkle Tree signatures
 	// // could add option field for Sign
@@ -37,4 +37,6 @@ type Signer interface {
 	// Allows user of Signer to inform Signer to run with simulated failures
 	// As to test robustness of Signer
 	SetFailureRate(val int)
+
+	ViewChangeCh() chan string
 }

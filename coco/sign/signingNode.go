@@ -50,8 +50,8 @@ type Node struct {
 
 	nRounds       int
 	Rounds        map[int]*Round
-	Round         int // *only* used by Root( by annoucer)
-	LastSeenRound int // largest round number I have seen
+	Round         int   // *only* used by Root( by annoucer)
+	LastSeenRound int64 // largest round number I have seen
 
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc
@@ -69,16 +69,22 @@ type Node struct {
 
 	// "root" or "regular" are sent on this channel to
 	// notify the maker of the sn what role sn plays in the new view
-	viewChange   chan string
-	ChangingView bool // true if node is currently engaged in changing the view
-	AmNextRoot   bool // determined when new view is needed
-	VamChLock    sync.Mutex
-	VamCh        chan *SigningMessage // a channel for ViewAcceptedMessages
+	viewChangeCh chan string
+	AmNextRoot   int32 // determined when new view is needed
+
+	ViewChangeLock sync.Mutex
+	VamCh          chan *SigningMessage // a channel for ViewAcceptedMessages
+	ChangingView   bool                 // true if node is currently engaged in changing the view
+}
+
+func (sn *Node) ViewChangeCh() chan string {
+	return sn.viewChangeCh
 }
 
 // Returns name of node who should be the root for the next view
 // round robin is used on the array of host names to determine the next root
 func (sn *Node) RootFor(view int) string {
+	// fmt.Println(sn.HostList)
 	return sn.HostList[view%len(sn.HostList)]
 }
 
@@ -206,7 +212,8 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.closed = make(chan error, 2)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
-	sn.viewChange = make(chan string, 1)
+
+	sn.viewChangeCh = make(chan string, 1)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -229,7 +236,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.closed = make(chan error, 2)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
-	sn.viewChange = make(chan string, 1)
+	sn.viewChangeCh = make(chan string, 1)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -272,7 +279,7 @@ func (sn *Node) Done() chan int {
 	return sn.done
 }
 
-func (sn *Node) LastRound() int {
+func (sn *Node) LastRound() int64 {
 	return sn.LastSeenRound
 }
 
@@ -359,7 +366,7 @@ func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
 	}
 }
 
-func max(a int, b int) int {
+func max(a int64, b int64) int64 {
 	if a > b {
 		return a
 	}
