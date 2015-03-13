@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,9 +30,14 @@ import (
 //    / \
 //   2   3
 func TestStaticMerkle(t *testing.T) {
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	sign.RoundsPerView = 100
+
 	if err := runStaticTest(sign.MerkleTree); err != nil {
 		t.Fatal(err)
 	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
 func TestStaticPubKey(t *testing.T) {
@@ -119,7 +125,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].LogTest = []byte("Hello World")
-	return nodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 0})
+	return nodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 1})
 }
 
 // Configuration file data/exconf.json
@@ -184,7 +190,7 @@ func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int)
 	}
 	// Have root node initiate the signing protocol via a simple annoucement
 	hostConfig.SNodes[0].LogTest = []byte("Hello World")
-	hostConfig.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 0})
+	hostConfig.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 1})
 
 	return nil
 }
@@ -202,7 +208,7 @@ func TestTreeFromBigConfig(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
+	err = hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	if err != nil {
 		t.Error(err)
 	}
@@ -258,7 +264,7 @@ func TestTCPStaticConfig(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("hello world")
-	hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
+	hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	log.Println("Test Done")
 }
 
