@@ -2,7 +2,6 @@ package sign
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"sync/atomic"
@@ -196,6 +195,11 @@ var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	sn.ViewChangeLock.Lock()
 	sn.ChangingView = true
+	// recheck if you are root for this view change
+	iAmNextRoot := FALSE
+	if sn.RootFor(vcm.ViewNo) == sn.Name() {
+		iAmNextRoot = TRUE
+	}
 	sn.ViewChangeLock.Unlock()
 
 	// Create a new view, but multiplex informationa about it using the old view
@@ -204,14 +208,13 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	// multiplex on children of next view using current view
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
-	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, sn.Timeout(), "viewchanges")
+	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, sn.Timeout(), "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
 	if len(messgs) != len(sn.Children(vcm.ViewNo)) {
 		// currently we require all nodes to accept a new view
 		return ViewRejectedError
 	}
 
-	anr := atomic.LoadInt32(&sn.AmNextRoot)
-	if anr == TRUE {
+	if iAmNextRoot == TRUE {
 		log.Println(sn.Name(), ": everyone confirmed me as new root")
 		sn.ChangingView = false
 		// everyone confirmed me as new root
@@ -222,9 +225,10 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 		vam := &ViewAcceptedMessage{
 			ViewNo: vcm.ViewNo}
 
-		fmt.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
+		// log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
 		err := sn.PutUp(vcm.ViewNo, &SigningMessage{
 			View: view,
+			From: sn.Name(),
 			Type: ViewAccepted,
 			Vam:  vam})
 
@@ -601,6 +605,7 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 		anr := atomic.LoadInt32(&sn.AmNextRoot)
 		if anr == TRUE {
+			log.Println(sn.Name(), "INITIATING VIEW CHANGE")
 			// create new view
 			nextViewNo := view + 1
 			nextParent := ""
@@ -680,8 +685,9 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 
 func (sn *Node) TimeForViewChange() bool {
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	rpv := atomic.LoadInt64(&RoundsPerView)
 	// if this round is last one for this view
-	if (lsr+int64(1))%int64(RoundsPerView) == 0 {
+	if lsr%rpv == 0 {
 		return true
 	}
 

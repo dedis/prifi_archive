@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,11 +52,30 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 	}
 }
 
-func TestTSSViewChange(t *testing.T) {
-	if err := runTSSIntegration(1, 8, 0); err != nil {
+// with 8 rounds and 1 round per view we see 7 successful view Changes, and 8 views
+func TestTSSViewChange1(t *testing.T) {
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	sign.RoundsPerView = 1
+	nRounds := 8
+
+	if err := runTSSIntegration(1, nRounds, 0); err != nil {
 		t.Fatal(err)
 	}
 
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
+}
+
+// with 8 rounds and 3 rounds per view we see 2 successful view Changes, and 3 views
+func TestTSSViewChange2(t *testing.T) {
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	sign.RoundsPerView = 3
+	nRounds := 8
+
+	if err := runTSSIntegration(1, nRounds, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
 // # Messages per round, # rounds, failure rate[0..100], list of faulty nodes
