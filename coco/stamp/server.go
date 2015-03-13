@@ -157,7 +157,6 @@ func (s *Server) ListenToClients() {
 // Listen on client connections. If role is root also send annoucement
 // for all of the nRounds
 func (s *Server) Run(role string, nRounds int) {
-	defer log.Println("done running")
 	s.rLock.Lock()
 	s.maxRounds = nRounds
 	s.rLock.Unlock()
@@ -170,7 +169,7 @@ func (s *Server) Run(role string, nRounds int) {
 			s.nRounds++
 			if s.nRounds > nRounds {
 				log.Errorln("exceeded the max round: terminating")
-				break
+				return
 			}
 
 			start := time.Now()

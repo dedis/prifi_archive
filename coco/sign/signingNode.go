@@ -48,8 +48,8 @@ type Node struct {
 
 	nRounds       int
 	Rounds        map[int]*Round
-	Round         int // *only* used by Root( by annoucer)
-	LastSeenRound int // largest round number I have seen
+	Round         int   // *only* used by Root( by annoucer)
+	LastSeenRound int64 // largest round number I have seen
 
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc
@@ -251,7 +251,7 @@ func (sn *Node) Done() chan int {
 }
 
 func (sn *Node) LastRound() int {
-	return sn.LastSeenRound
+	return int(sn.LastSeenRound)
 }
 
 func (sn *Node) CommitedFor(round *Round) bool {
@@ -354,7 +354,7 @@ func (sn *Node) DefaultTimeout() time.Duration {
 	return 5 * time.Second
 }
 
-func max(a int, b int) int {
+func max(a int64, b int64) int64 {
 	if a > b {
 		return a
 	}

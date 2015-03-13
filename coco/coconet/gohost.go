@@ -72,7 +72,6 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 
 // SetSuite sets the crypto suite which this Host is using.
 func (h *GoHost) SetSuite(s abstract.Suite) {
-	log.Println("set suite")
 	h.suite = s
 }
 
@@ -137,7 +136,6 @@ func (h *GoHost) Connect(view int) error {
 	h.ready[conn.Name()] = true
 	h.peers[parent] = conn
 	h.peerLock.Unlock()
-	log.Println("setup connection with peer")
 	return nil
 }
 
@@ -149,7 +147,7 @@ func (h *GoHost) Listen() error {
 	for _, c := range children {
 		go func(c string) {
 			if h.ready[c] {
-				log.Fatal("LISTENING: connection already established")
+				log.Fatal("listening: connection already established")
 			}
 
 			h.peerLock.Lock()
@@ -180,7 +178,6 @@ func (h *GoHost) Listen() error {
 			h.ready[c] = true
 			h.peers[c] = conn
 			h.peerLock.Unlock()
-			log.Println("connection with child established")
 		}(c)
 	}
 	return nil
@@ -269,7 +266,6 @@ func (h *GoHost) AddPeers(cs ...string) {
 // PutUp sends a message to the parent on the given view, potentially timing out.
 func (h *GoHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) error {
 	// defer fmt.Println(h.Name(), "done put up", h.parent)
-	// log.Printf("%s PUTTING UP up: %#v", h.Name(), data)
 
 	pname := h.views.Parent(view)
 	done := make(chan error)

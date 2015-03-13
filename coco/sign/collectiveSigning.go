@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -192,7 +193,7 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	if sn.IsRoot(view) {
 		// sequential round number
 		sn.Round = Round
-		sn.LastSeenRound = Round
+		sn.LastSeenRound = int64(Round)
 
 		// Create my back link to previous round
 		sn.SetBackLink(Round)
@@ -242,7 +243,7 @@ func (sn *Node) initCommitCrypto(Round int) {
 func (sn *Node) Commit(view int, Round int) error {
 	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
-	sn.LastSeenRound = max(Round, sn.LastSeenRound)
+	sn.LastSeenRound = max(int64(Round), sn.LastSeenRound)
 	sn.roundLock.RUnlock()
 	if round == nil {
 		// was not announced of this round, should retreat
@@ -338,10 +339,9 @@ func (sn *Node) actOnCommits(view, Round int) error {
 
 // initiated by root, propagated by all others
 func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
-	log.Printf("%s received challenges\n", sn.Name())
+	atomic.StoreInt64(&sn.LastSeenRound, max(int64(chm.Round), atomic.LoadInt64(&sn.LastSeenRound)))
 	sn.roundLock.RLock()
 	round := sn.Rounds[chm.Round]
-	sn.LastSeenRound = max(chm.Round, sn.LastSeenRound)
 	sn.roundLock.RUnlock()
 	if round == nil {
 		return nil
@@ -410,14 +410,13 @@ func (sn *Node) initResponseCrypto(Round int) {
 func (sn *Node) Respond(view, Round int) error {
 	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
-	sn.LastSeenRound = max(Round, sn.LastSeenRound)
+	atomic.StoreInt64(&sn.LastSeenRound, max(int64(Round), sn.LastSeenRound))
 	sn.roundLock.RUnlock()
 	if round == nil || round.Log.v == nil {
 		// If I was not announced of this round, or I failed to commit
 		return nil
 	}
 
-	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	sn.initResponseCrypto(Round)
 
 	// wait on responses from children

@@ -48,6 +48,7 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 }
 
 func runTSSIntegration(failureRate int, faultyNodes ...int) error {
+	//stamp.ROUND_TIME = 1 * time.Second
 	var hostConfig *oldconfig.HostConfig
 	var err error
 	nMessages := 4 // per round
@@ -98,11 +99,13 @@ func runTSSIntegration(failureRate int, faultyNodes ...int) error {
 
 	}
 
+	log.Println("RUNNING ROOT")
 	stampers[0].Run("root", nRounds)
-
+	log.Println("Done running root")
 	// After clients receive messages back we need a better way
 	// of waiting to make sure servers check ElGamal sigs
-	time.Sleep(1 * time.Second)
+	// time.Sleep(1 * time.Second)
+	log.Println("DONE with test")
 	return nil
 }
 

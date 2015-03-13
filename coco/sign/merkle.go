@@ -184,7 +184,6 @@ func (sn *Node) checkChildrenProofs(Round int) {
 }
 
 func (sn *Node) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
-	log.Printf("%s verifying all proofs\n", sn.Name())
 	sn.roundLock.RLock()
 	round := sn.Rounds[chm.Round]
 	sn.roundLock.RUnlock()
