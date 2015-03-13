@@ -85,15 +85,6 @@ func (sn *Node) get() {
 			default:
 				return
 
-			// if it is an announcement or challenge it should be from parent
-			// Change views after a set number of rounds per view.
-			// This allows for deterministic testing and more practical test setup.
-			// Should the view-change be broadcast, or should we just trust (for now)
-			// that if we recieve a view change request, it is coming (honestly) from
-			// our new view's parent? This simplification might be easier to start with.
-			// TODO: this could be expanded fairly easily to use Announcement messages
-			// as leader "heart-beats" and when the leader is deemed dead we could also
-			// announce a view change.
 			case Announcement:
 				if !sn.IsParent(sm.View, sm.From) {
 					log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
@@ -143,10 +134,9 @@ func (sn *Node) get() {
 					log.Errorln("view change error:", err)
 				}
 			case ViewAccepted:
-				sn.ViewChangeLock.Lock()
-				// fmt.Println(sn.Name(), "got view accepted")
+				sn.VamChLock.Lock()
 				sn.VamCh <- sm
-				sn.ViewChangeLock.Unlock()
+				sn.VamChLock.Unlock()
 			case Error:
 				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
@@ -193,19 +183,16 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted view")
 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
-	sn.ViewChangeLock.Lock()
-	sn.ChangingView = true
-	// recheck if you are root for this view change
+	atomic.StoreInt64(&sn.ChangingView, TRUE)
+	// check if you are root for this view change
 	iAmNextRoot := FALSE
 	if sn.RootFor(vcm.ViewNo) == sn.Name() {
 		iAmNextRoot = TRUE
 	}
-	sn.ViewChangeLock.Unlock()
 
-	// Create a new view, but multiplex informationa about it using the old view
+	// Create a new view, but multiplex information about it using the old view
 	children := sn.childrenForNewView(parent)
 	sn.NewView(vcm.ViewNo, parent, children)
-	// multiplex on children of next view using current view
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, sn.Timeout(), "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
@@ -215,15 +202,14 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	}
 
 	if iAmNextRoot == TRUE {
-		log.Println(sn.Name(), ": everyone confirmed me as new root")
-		sn.ChangingView = false
 		// everyone confirmed me as new root
+		log.Println(sn.Name(), ": everyone confirmed me as new root")
+		atomic.StoreInt64(&sn.ChangingView, FALSE)
 		sn.ViewNo = vcm.ViewNo
 		sn.viewChangeCh <- "root"
 	} else {
 		// create and putup messg to confirm subtree view changed
-		vam := &ViewAcceptedMessage{
-			ViewNo: vcm.ViewNo}
+		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo}
 
 		// log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
 		err := sn.PutUp(vcm.ViewNo, &SigningMessage{
@@ -237,13 +223,12 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 		}
 
 		// View Changed
-		sn.ViewChangeLock.Lock()
-		sn.ChangingView = false
-		if sn.VamCh == nil {
-			sn.VamCh = make(chan *SigningMessage, sn.NChildren(vcm.ViewNo))
+		atomic.StoreInt64(&sn.ChangingView, FALSE)
+		// channel for getting ViewAcceptedMessages with right size buffer
+		sn.VamChLock.Lock()
+		sn.VamCh = make(chan *SigningMessage, sn.NChildren(vcm.ViewNo))
+		sn.VamChLock.Unlock()
 
-		}
-		sn.ViewChangeLock.Unlock()
 		sn.viewChangeCh <- "regular"
 	}
 
@@ -251,19 +236,14 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 }
 
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
-	sn.ViewChangeLock.Lock()
-	changingView := sn.ChangingView
-	sn.ViewChangeLock.Unlock()
-
-	if changingView {
+	changingView := atomic.LoadInt64(&sn.ChangingView)
+	if changingView == TRUE {
 		return ChangingViewError
 	}
 
-	sn.ViewChangeLock.Lock()
-	if sn.VamCh == nil {
-		sn.VamCh = make(chan *SigningMessage, sn.NChildren(view))
-	}
-	sn.ViewChangeLock.Unlock()
+	sn.VamChLock.Lock()
+	sn.VamCh = make(chan *SigningMessage, sn.NChildren(view))
+	sn.VamChLock.Unlock()
 
 	// set up commit and response channels for the new round
 	Round := am.Round
@@ -599,12 +579,12 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 	if sn.TimeForViewChange() {
 
-		atomic.SwapInt32(&sn.AmNextRoot, FALSE)
+		atomic.SwapInt64(&sn.AmNextRoot, FALSE)
 		if sn.RootFor(view+1) == sn.Name() {
-			atomic.SwapInt32(&sn.AmNextRoot, TRUE)
+			atomic.SwapInt64(&sn.AmNextRoot, TRUE)
 		}
 
-		anr := atomic.LoadInt32(&sn.AmNextRoot)
+		anr := atomic.LoadInt64(&sn.AmNextRoot)
 		if anr == TRUE {
 			log.Println(sn.Name(), "INITIATING VIEW CHANGE")
 			// create new view

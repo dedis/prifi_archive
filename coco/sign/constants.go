@@ -8,5 +8,5 @@ var ROUND_TIME time.Duration = 10 * time.Second
 
 var RoundsPerView int64 = 3
 
-var FALSE int32 = 0
-var TRUE int32 = 1
+var FALSE int64 = 0
+var TRUE int64 = 1

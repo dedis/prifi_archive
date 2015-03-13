@@ -71,12 +71,12 @@ type Node struct {
 	// "root" or "regular" are sent on this channel to
 	// notify the maker of the sn what role sn plays in the new view
 	viewChangeCh chan string
-	AmNextRoot   int32 // determined when new view is needed
+	ChangingView int64 // TRUE if node is currently engaged in changing the view
+	AmNextRoot   int64 // determined when new view is needed
 	ViewNo       int   // *only* used by Root( by annoucer)
 
-	ViewChangeLock sync.Mutex
-	VamCh          chan *SigningMessage // a channel for ViewAcceptedMessages
-	ChangingView   bool                 // true if node is currently engaged in changing the view
+	VamChLock sync.Mutex
+	VamCh     chan *SigningMessage // a channel for ViewAcceptedMessages
 }
 
 func (sn *Node) ViewChangeCh() chan string {
@@ -137,12 +137,9 @@ func (sn *Node) StartSigningRound() error {
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
 	sn.nRounds = int(lsr)
 
-	sn.ViewChangeLock.Lock()
-	changingView := sn.ChangingView
-	sn.ViewChangeLock.Unlock()
-
 	// report view is being change, and sleep before retrying
-	if changingView {
+	changingView := atomic.LoadInt64(&sn.ChangingView)
+	if changingView == TRUE {
 		return ChangingViewError
 	}
 

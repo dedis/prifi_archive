@@ -55,7 +55,7 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 // with 8 rounds and 1 round per view we see 7 successful view Changes, and 8 views
 func TestTSSViewChange1(t *testing.T) {
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	sign.RoundsPerView = 1
+	atomic.StoreInt64(&sign.RoundsPerView, 1)
 	nRounds := 8
 
 	if err := runTSSIntegration(1, nRounds, 0); err != nil {
@@ -68,7 +68,7 @@ func TestTSSViewChange1(t *testing.T) {
 // with 8 rounds and 3 rounds per view we see 2 successful view Changes, and 3 views
 func TestTSSViewChange2(t *testing.T) {
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	sign.RoundsPerView = 3
+	atomic.StoreInt64(&sign.RoundsPerView, 3)
 	nRounds := 8
 
 	if err := runTSSIntegration(1, nRounds, 0); err != nil {
