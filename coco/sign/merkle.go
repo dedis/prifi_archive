@@ -112,7 +112,7 @@ func (sn *Node) SendChildrenChallengesProofs(view int, chm *ChallengeMessage) er
 		newChm.Proof = append(baseProof, round.Proofs[name]...)
 
 		var messg coconet.BinaryMarshaler
-		messg = &SigningMessage{Type: Challenge, Chm: &newChm}
+		messg = &SigningMessage{View: view, Type: Challenge, Chm: &newChm}
 
 		// send challenge message to child
 		// log.Println("connection: sending children challenge proofs:", name, conn)

@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -71,6 +72,7 @@ type Node struct {
 	// notify the maker of the sn what role sn plays in the new view
 	viewChangeCh chan string
 	AmNextRoot   int32 // determined when new view is needed
+	ViewNo       int   // *only* used by Root( by annoucer)
 
 	ViewChangeLock sync.Mutex
 	VamCh          chan *SigningMessage // a channel for ViewAcceptedMessages
@@ -132,14 +134,22 @@ var MAX_WILLING_TO_WAIT time.Duration = 50 * time.Second
 var ChangingViewError error = errors.New("In the process of changing view")
 
 func (sn *Node) StartSigningRound() error {
+	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	sn.nRounds = int(lsr)
+	log.Infoln(sn.Name(), "LAST SEEN ROUND", lsr)
+
+	sn.ViewChangeLock.Lock()
+	changingView := sn.ChangingView
+	sn.ViewChangeLock.Unlock()
+
 	// report view is being change, and sleep before retrying
-	if sn.ChangingView {
+	if changingView {
 		return ChangingViewError
 	}
 
 	// send an announcement message to all other TSServers
 	sn.nRounds++
-	log.Infoln("root starting signing round for round: ", sn.nRounds)
+	log.Infoln("root", sn.Name(), "starting signing round for round: ", sn.nRounds, "on view", sn.ViewNo)
 
 	first := time.Now()
 	total := time.Now()
@@ -147,7 +157,7 @@ func (sn *Node) StartSigningRound() error {
 	var totalTime time.Duration
 
 	go func() {
-		err := sn.Announce(0, &AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		err := sn.Announce(sn.ViewNo, &AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
 
 		if err != nil {
 			log.Println("Signature fails if at least one node says it failed")

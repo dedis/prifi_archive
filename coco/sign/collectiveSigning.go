@@ -97,27 +97,27 @@ func (sn *Node) get() {
 			// announce a view change.
 			case Announcement:
 				if !sn.IsParent(sm.View, sm.From) {
-					log.Fatalln("received announcement from non-parent")
+					log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
 					return
 				}
 				if err := sn.Announce(sm.View, sm.Am); err != nil {
-					log.Errorln("announce error:", err)
+					log.Errorln(sn.Name(), "announce error:", err)
 				}
 
 			case Challenge:
 				if !sn.IsParent(sm.View, sm.From) {
-					log.Fatalln("received announcement from non-parent")
+					log.Fatalln(sn.Name(), "received challenge from non-parent on view", sm.View)
 					return
 				}
 
 				if err := sn.Challenge(sm.View, sm.Chm); err != nil {
-					log.Errorln("challenge error:", err)
+					log.Errorln(sn.Name(), "challenge error:", err)
 				}
 
 			// if it is a commitment or response it is from the child
 			case Commitment:
 				if !sn.IsChild(sm.View, sm.From) {
-					log.Fatalln("received announcement from non-parent")
+					log.Fatalln(sn.Name(), "received commitment from non-child on view", sm.View)
 					return
 				}
 
@@ -129,7 +129,7 @@ func (sn *Node) get() {
 				comch <- sm
 			case Response:
 				if !sn.IsChild(sm.View, sm.From) {
-					log.Fatalln("received announcement from non-parent")
+					log.Fatalln(sn.Name(), "received response from non-child on view", sm.View)
 					return
 				}
 
@@ -145,7 +145,7 @@ func (sn *Node) get() {
 				}
 			case ViewAccepted:
 				sn.ViewChangeLock.Lock()
-				fmt.Println(sn.Name(), "got view accepted")
+				// fmt.Println(sn.Name(), "got view accepted")
 				sn.VamCh <- sm
 				sn.ViewChangeLock.Unlock()
 			case Error:
@@ -194,11 +194,15 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted view")
 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
+	sn.ViewChangeLock.Lock()
+	sn.ChangingView = true
+	sn.ViewChangeLock.Unlock()
+
 	// Create a new view, but multiplex informationa about it using the old view
 	children := sn.childrenForNewView(parent)
 	sn.NewView(vcm.ViewNo, parent, children)
 	// multiplex on children of next view using current view
-	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{Type: ViewChange, View: view, Vcm: vcm})
+	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, sn.Timeout(), "viewchanges")
 	if len(messgs) != len(sn.Children(vcm.ViewNo)) {
@@ -207,11 +211,11 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	}
 
 	anr := atomic.LoadInt32(&sn.AmNextRoot)
-	fmt.Println(sn.Name(), "says that he is next root is", anr)
 	if anr == TRUE {
 		log.Println(sn.Name(), ": everyone confirmed me as new root")
 		sn.ChangingView = false
 		// everyone confirmed me as new root
+		sn.ViewNo = vcm.ViewNo
 		sn.viewChangeCh <- "root"
 	} else {
 		// create and putup messg to confirm subtree view changed
@@ -236,7 +240,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 
 		}
 		sn.ViewChangeLock.Unlock()
-		sn.viewChangeCh <- "root"
+		sn.viewChangeCh <- "regular"
 	}
 
 	return nil
@@ -461,7 +465,7 @@ func (sn *Node) FillInWithDefaultMessages(view int, messgs []*SigningMessage) []
 		}
 
 		if !found {
-			allmessgs = append(allmessgs, &SigningMessage{Type: Default, View: view, From: c})
+			allmessgs = append(allmessgs, &SigningMessage{View: view, Type: Default, From: c})
 		}
 	}
 
@@ -604,9 +608,6 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 			sn.ViewChange(nextViewNo, nextParent, vcm)
 		}
 
-		sn.ViewChangeLock.Lock()
-		sn.ChangingView = true
-		sn.ViewChangeLock.Unlock()
 	}
 
 	return err

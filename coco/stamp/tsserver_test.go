@@ -34,24 +34,34 @@ func init() {
 }
 
 func TestTSSIntegrationHealthy(t *testing.T) {
-	if err := runTSSIntegration(0); err != nil {
+	if err := runTSSIntegration(4, 4, 0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestTSSIntegrationFaulty(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping faulty test in short mode.")
+	}
+
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTSSIntegration(20, faultyNodes...); err != nil {
+	if err := runTSSIntegration(4, 4, 20, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func runTSSIntegration(failureRate int, faultyNodes ...int) error {
+func TestTSSViewChange(t *testing.T) {
+	if err := runTSSIntegration(1, 4, 0); err != nil {
+		t.Fatal(err)
+	}
+
+}
+
+// # Messages per round, # rounds, failure rate[0..100], list of faulty nodes
+func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) error {
 	var hostConfig *oldconfig.HostConfig
 	var err error
-	nMessages := 4 // per round
-	nRounds := 4
 
 	// load config with faulty or healthy hosts
 	if len(faultyNodes) > 0 {
@@ -181,11 +191,21 @@ func TestTCPTimestampFromConfigHealthy(t *testing.T) {
 }
 
 func TestTCPTimestampFromConfigFaulty(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping faulty test in short mode.")
+	}
+
+	// temporarily increase rounds per view to avoid view change
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
+
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
 	if err := runTCPTimestampFromConfig(20, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
+
+	sign.RoundsPerView = aux
 }
 
 func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
@@ -272,7 +292,7 @@ func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
 
 	// give it some time before closing the connections
 	// so that no essential messages are denied passing through the network
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 	for _, h := range hc.SNodes {
 		h.Close()
 	}

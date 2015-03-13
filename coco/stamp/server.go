@@ -156,9 +156,9 @@ func (s *Server) ListenToClients() {
 
 func (s *Server) reRunWith(nextRole string, nRounds int, wasRoot bool) {
 	if nextRole == "root" {
-		var messg = "became root"
+		var messg = s.Name() + "became root"
 		if wasRoot {
-			messg = "remained root"
+			messg = s.Name() + "remained root"
 		}
 
 		log.WithFields(log.Fields{
@@ -168,9 +168,9 @@ func (s *Server) reRunWith(nextRole string, nRounds int, wasRoot bool) {
 
 		s.runAsRoot(nRounds)
 	} else {
-		var messg = "remained regular"
+		var messg = s.Name() + "remained regular"
 		if wasRoot {
-			messg = "becameregular"
+			messg = s.Name() + "became regular"
 		}
 
 		log.WithFields(log.Fields{
@@ -208,7 +208,7 @@ func (s *Server) runAsRoot(nRounds int) {
 				log.WithFields(log.Fields{
 					"file": logutils.File(),
 					"type": "view_change",
-				}).Info("announce reported view change in progress")
+				}).Info("Tried to stary signing round on " + s.Name() + " but it reports view change in progress")
 				break
 			}
 

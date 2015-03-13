@@ -12,7 +12,7 @@ import (
 func (sn *Node) SendChildrenChallenges(view int, chm *ChallengeMessage) error {
 	for _, child := range sn.Children(view) {
 		var messg coconet.BinaryMarshaler
-		messg = &SigningMessage{Type: Challenge, Chm: chm}
+		messg = &SigningMessage{View: view, Type: Challenge, Chm: chm}
 
 		if err := child.Put(messg); err != nil {
 			return err
