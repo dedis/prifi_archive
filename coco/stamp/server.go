@@ -33,7 +33,6 @@ type Server struct {
 	Proofs []proof.Proof
 
 	rLock     sync.Mutex
-	nRounds   int
 	maxRounds int
 	closeChan chan bool
 }
@@ -156,9 +155,9 @@ func (s *Server) ListenToClients() {
 
 func (s *Server) LogReRun(nextRole string, curRole string) {
 	if nextRole == "root" {
-		var messg = s.Name() + "became root"
+		var messg = s.Name() + " became root"
 		if curRole == "root" {
-			messg = s.Name() + "remained root"
+			messg = s.Name() + " remained root"
 		}
 
 		log.WithFields(log.Fields{
@@ -167,9 +166,9 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 		}).Infoln(messg)
 
 	} else {
-		var messg = s.Name() + "remained regular"
+		var messg = s.Name() + " remained regular"
 		if curRole == "root" {
-			messg = s.Name() + "became regular"
+			messg = s.Name() + " became regular"
 		}
 
 		log.WithFields(log.Fields{
@@ -191,19 +190,17 @@ func (s *Server) runAsRoot(nRounds int) string {
 			return nextRole
 			// s.reRunWith(nextRole, nRounds, true)
 		case <-ticker:
-			s.nRounds++
-			if s.nRounds > nRounds {
-				log.Errorln("exceeded the max round: terminating")
+			if s.LastRound() >= int64(nRounds) {
+				log.Errorln(s.Name(), "reports exceeded the max round: terminating", s.LastRound(), ">=", nRounds)
 				return ""
 			}
 
 			start := time.Now()
-			log.Println("stamp server starting signing round for:", s.nRounds)
+			log.Println(s.Name(), "is STAMP SERVER STARTING SIGNING ROUND FOR:", s.LastRound())
 
 			err := s.StartSigningRound()
 			if err == sign.ChangingViewError {
-				// report change in view, and continue with the select, retrying this round
-				s.nRounds--
+				// report change in view, and continue with the select
 				log.WithFields(log.Fields{
 					"file": logutils.File(),
 					"type": "view_change",
@@ -216,18 +213,11 @@ func (s *Server) runAsRoot(nRounds int) string {
 				return ""
 			}
 
-			lr := s.LastRound()
-			if lr != int64(s.nRounds) {
-				log.Errorln("Signer and Stamper rounds out of sync:")
-				log.Errorln(strconv.Itoa(int(lr)) + "," + strconv.Itoa(s.nRounds))
-				return ""
-			}
-
 			elapsed := time.Since(start)
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),
 				"type":  "root_round",
-				"round": s.nRounds,
+				"round": s.LastRound(),
 				"time":  elapsed,
 			}).Info("root round")
 			break
@@ -349,11 +339,11 @@ func (s *Server) AggregateCommits(view int) []byte {
 	// non root servers keep track of rounds here
 	if !s.IsRoot(view) {
 		s.rLock.Lock()
-		s.nRounds++
+		lsr := s.LastRound()
 		mr := s.maxRounds
 		s.rLock.Unlock()
 		// if this is our last round then close the connections
-		if s.nRounds >= mr && mr >= 0 {
+		if lsr >= int64(mr) && mr >= 0 {
 			s.closeChan <- true
 		}
 	}
@@ -362,9 +352,9 @@ func (s *Server) AggregateCommits(view int) []byte {
 	s.Root, s.Proofs = proof.ProofTree(s.Suite().Hash, s.Leaves)
 	if coco.DEBUG == true {
 		if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
-			log.Println("Local Proofs of", s.Name(), "successful for round "+strconv.Itoa(s.nRounds))
+			log.Println("Local Proofs of", s.Name(), "successful for round "+strconv.Itoa(int(s.LastRound())))
 		} else {
-			panic("Local Proofs" + s.Name() + " unsuccessful for round " + strconv.Itoa(s.nRounds))
+			panic("Local Proofs" + s.Name() + " unsuccessful for round " + strconv.Itoa(int(s.LastRound())))
 		}
 	}
 

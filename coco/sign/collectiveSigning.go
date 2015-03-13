@@ -273,11 +273,14 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	sn.RmCh[Round] = make(chan *SigningMessage, sn.NChildren(view))
 	sn.roundLock.Unlock()
 
+	// update max seen round
+	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	atomic.StoreInt64(&sn.LastSeenRound, max(int64(Round), lsr))
+
 	// the root is the only node that keeps track of round # internally
 	if sn.IsRoot(view) {
 		// sequential round number
 		sn.Round = Round
-		atomic.StoreInt64(&sn.LastSeenRound, int64(Round))
 
 		// Create my back link to previous round
 		sn.SetBackLink(Round)
@@ -595,8 +598,6 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 	}
 
 	if sn.TimeForViewChange() {
-		lsr := atomic.LoadInt64(&sn.LastSeenRound)
-		log.Println(sn.Name(), "says Time for View Change after round", lsr)
 
 		atomic.SwapInt32(&sn.AmNextRoot, FALSE)
 		if sn.RootFor(view+1) == sn.Name() {

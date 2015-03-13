@@ -136,7 +136,6 @@ var ChangingViewError error = errors.New("In the process of changing view")
 func (sn *Node) StartSigningRound() error {
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
 	sn.nRounds = int(lsr)
-	log.Infoln(sn.Name(), "LAST SEEN ROUND", lsr)
 
 	sn.ViewChangeLock.Lock()
 	changingView := sn.ChangingView
