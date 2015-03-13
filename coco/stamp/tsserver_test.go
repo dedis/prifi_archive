@@ -52,7 +52,7 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 }
 
 func TestTSSViewChange(t *testing.T) {
-	if err := runTSSIntegration(1, 4, 0); err != nil {
+	if err := runTSSIntegration(1, 8, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -181,6 +181,12 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	}
 	for _, c := range clients {
 		c.Close()
+	}
+}
+
+func TestTCPTimestampFromConfigViewChange(t *testing.T) {
+	if err := runTCPTimestampFromConfig(0); err != nil {
+		t.Fatal(err)
 	}
 }
 

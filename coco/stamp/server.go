@@ -154,10 +154,10 @@ func (s *Server) ListenToClients() {
 	}
 }
 
-func (s *Server) reRunWith(nextRole string, nRounds int, wasRoot bool) {
+func (s *Server) LogReRun(nextRole string, curRole string) {
 	if nextRole == "root" {
 		var messg = s.Name() + "became root"
-		if wasRoot {
+		if curRole == "root" {
 			messg = s.Name() + "remained root"
 		}
 
@@ -166,10 +166,9 @@ func (s *Server) reRunWith(nextRole string, nRounds int, wasRoot bool) {
 			"type": "role_change",
 		}).Infoln(messg)
 
-		s.runAsRoot(nRounds)
 	} else {
 		var messg = s.Name() + "remained regular"
-		if wasRoot {
+		if curRole == "root" {
 			messg = s.Name() + "became regular"
 		}
 
@@ -178,24 +177,24 @@ func (s *Server) reRunWith(nextRole string, nRounds int, wasRoot bool) {
 			"type": "role_change",
 		}).Infoln(messg)
 
-		s.runAsRegular(nRounds)
 	}
 
 }
 
-func (s *Server) runAsRoot(nRounds int) {
+func (s *Server) runAsRoot(nRounds int) string {
 	// every 5 seconds start a new round
 	ticker := time.Tick(ROUND_TIME)
 
 	for {
 		select {
 		case nextRole := <-s.ViewChangeCh():
-			s.reRunWith(nextRole, nRounds, true)
+			return nextRole
+			// s.reRunWith(nextRole, nRounds, true)
 		case <-ticker:
 			s.nRounds++
 			if s.nRounds > nRounds {
 				log.Errorln("exceeded the max round: terminating")
-				return
+				return ""
 			}
 
 			start := time.Now()
@@ -214,14 +213,14 @@ func (s *Server) runAsRoot(nRounds int) {
 
 			if err != nil {
 				log.Errorln(err)
-				return
+				return ""
 			}
 
 			lr := s.LastRound()
 			if lr != int64(s.nRounds) {
 				log.Errorln("Signer and Stamper rounds out of sync:")
 				log.Errorln(strconv.Itoa(int(lr)) + "," + strconv.Itoa(s.nRounds))
-				return
+				return ""
 			}
 
 			elapsed := time.Since(start)
@@ -237,16 +236,17 @@ func (s *Server) runAsRoot(nRounds int) {
 	}
 }
 
-func (s *Server) runAsRegular(nRounds int) {
+func (s *Server) runAsRegular() string {
 	select {
 	case <-s.closeChan:
 		log.WithFields(log.Fields{
 			"file": logutils.File(),
 			"type": "close",
 		}).Infoln("server has closed")
+		return ""
 
 	case nextRole := <-s.ViewChangeCh():
-		s.reRunWith(nextRole, nRounds, false)
+		return nextRole
 	}
 }
 
@@ -257,18 +257,29 @@ func (s *Server) Run(role string, nRounds int) {
 	s.rLock.Lock()
 	s.maxRounds = nRounds
 	s.rLock.Unlock()
-	switch role {
 
-	case "root":
-		s.runAsRoot(nRounds)
-	case "regular":
-		s.runAsRegular(nRounds)
+	var nextRole string // next role when view changes
+	for {
+		switch role {
 
-	case "test":
-		ticker := time.Tick(2000 * time.Millisecond)
-		for _ = range ticker {
-			s.AggregateCommits(0)
+		case "root":
+			nextRole = s.runAsRoot(nRounds)
+			break
+		case "regular":
+			nextRole = s.runAsRegular()
+			break
+		case "test":
+			ticker := time.Tick(2000 * time.Millisecond)
+			for _ = range ticker {
+				s.AggregateCommits(0)
+			}
 		}
+
+		if nextRole == "" {
+			return
+		}
+		s.LogReRun(nextRole, role)
+		role = nextRole
 	}
 
 }
