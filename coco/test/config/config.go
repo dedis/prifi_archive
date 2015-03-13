@@ -1,8 +1,9 @@
 package config
 
 import (
-	"log"
 	"net"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/prifi/coco/test/graphs"
 )

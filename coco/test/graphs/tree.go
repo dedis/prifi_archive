@@ -2,6 +2,7 @@ package graphs
 
 import (
 	"encoding/hex"
+	"fmt"
 
 	"github.com/dedis/crypto/abstract"
 )
@@ -27,10 +28,20 @@ func (t *Tree) TraverseTree(f func(*Tree)) {
 // generate keys for the tree
 func (t *Tree) GenKeys(suite abstract.Suite, rand abstract.Cipher) {
 	t.TraverseTree(func(t *Tree) {
-		privKey := suite.Secret().Pick(rand)
-		pubKey := suite.Point().Mul(nil, privKey)
-
-		t.PriKey = string(hex.EncodeToString(privKey.Encode()))
-		t.PubKey = string(hex.EncodeToString(pubKey.Encode()))
+		PrivKey := suite.Secret().Pick(rand)
+		PubKey := suite.Point().Mul(nil, PrivKey)
+		prk, _ := PrivKey.MarshalBinary()
+		pbk, _ := PubKey.MarshalBinary()
+		t.PriKey = string(hex.EncodeToString(prk))
+		t.PubKey = string(hex.EncodeToString(pbk))
 	})
+}
+
+func PrintTreeNode(t *Tree) {
+	fmt.Println(t.Name)
+
+	for _, c := range t.Children {
+		fmt.Println("\t", c.Name)
+	}
+
 }
