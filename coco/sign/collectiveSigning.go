@@ -555,9 +555,9 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 	// if no error send up own response
 	if err == nil && !isroot {
-		// if round.Log.v == nil && sn.ShouldIFail("response") {
-		// 	return nil
-		// }
+		if round.Log.v == nil && sn.ShouldIFail("response") {
+			return nil
+		}
 
 		// create and putup own response message
 		rm := &ResponseMessage{
@@ -659,6 +659,10 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 
 	if isroot {
 		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
+		nel := len(round.ExceptionList)
+		nhl := len(sn.HostList)
+		p := strconv.FormatFloat(float64(nel)/float64(nhl), 'f', 6, 64)
+		log.Infoln(sn.Name(), "failed", nel, "out of", nhl, "percentage", p)
 		// log.Println(round.MTRoot)
 	}
 	return nil

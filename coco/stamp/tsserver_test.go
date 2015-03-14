@@ -45,11 +45,17 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 		t.Skip("skipping faulty test in short mode.")
 	}
 
+	// not mixing view changes with faults
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 100)
+
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
 	if err := runTSSIntegration(4, 4, 20, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
 // with 8 rounds and 1 round per view we see 7 successful view Changes, and 8 views
@@ -221,9 +227,9 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 		t.Skip("skipping faulty test in short mode.")
 	}
 
-	// temporarily increase rounds per view to avoid view change
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	// not mixing view changes with faults
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 100)
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
@@ -231,7 +237,7 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sign.RoundsPerView = aux
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
 func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
