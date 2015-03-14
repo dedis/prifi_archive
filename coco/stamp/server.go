@@ -62,11 +62,17 @@ func NewServer(signer coco.Signer) *Server {
 	}
 	s.Queue[s.READING] = make([]MustReplyMessage, 0)
 	s.Queue[s.PROCESSING] = make([]MustReplyMessage, 0)
-	s.closeChan = make(chan bool)
+	s.closeChan = make(chan bool, 5)
 	return s
 }
 
 var clientNumber int = 0
+
+func (s *Server) Close() {
+	log.Printf("closing stampserver: %p", s)
+	s.closeChan <- true
+	s.Signer.Close()
+}
 
 // listen for clients connections
 // this server needs to be running on a different port
@@ -80,7 +86,7 @@ func (s *Server) Listen() error {
 
 	go func() {
 		for {
-			// log.Println("LISTENING TO CLIENTS, ", s.name)
+			log.Printf("LISTENING TO CLIENTS: %p", s)
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
@@ -99,8 +105,8 @@ func (s *Server) Listen() error {
 						tsm := TimeStampMessage{}
 						err := c.Get(&tsm)
 						if err != nil {
-							log.Errorln("Failed to get from child:", err)
-							c.Close()
+							log.Errorf("%p Failed to get from child:", s, err)
+							s.Close()
 							return
 						}
 						switch tsm.Type {
@@ -127,15 +133,21 @@ func (s *Server) Listen() error {
 // Used for goconns
 // should only be used if clients are created in batch
 func (s *Server) ListenToClients() {
+	log.Printf("LISTENING TO CLIENTS: %p", s, s.Clients)
 	for _, c := range s.Clients {
 		go func(c coconet.Conn) {
 			for {
 				tsm := TimeStampMessage{}
 				err := c.Get(&tsm)
+				if err == coconet.ErrClosed {
+					log.Errorf("%p Failed to get from client:", s, err)
+					s.Close()
+					return
+				}
 				if err != nil {
 					log.WithFields(log.Fields{
 						"file": logutils.File(),
-					}).Errorln("Failed To Get Message:", err)
+					}).Errorf("%p failed To get message:", s, err)
 				}
 				switch tsm.Type {
 				default:
@@ -164,6 +176,7 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 			"file": logutils.File(),
 			"type": "role_change",
 		}).Infoln(messg)
+		log.Printf("role change: %p", s)
 
 	} else {
 		var messg = s.Name() + " remained regular"
@@ -175,6 +188,7 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 			"file": logutils.File(),
 			"type": "role_change",
 		}).Infoln(messg)
+		log.Printf("role change: %p", s)
 
 	}
 
@@ -249,6 +263,7 @@ func (s *Server) Run(role string, nRounds int) {
 	// 	log.Infoln(s.Name(), "CLOSE AFTER RUN")
 	// 	s.Close()
 	// }()
+	go func() { err := s.Signer.Listen(); s.Close(); log.Error(err) }()
 
 	s.rLock.Lock()
 	s.maxRounds = nRounds
@@ -373,7 +388,11 @@ func (s *Server) AggregateCommits(view int) []byte {
 // Send message to client given by name
 func (s *Server) PutToClient(name string, data coconet.BinaryMarshaler) {
 	err := s.Clients[name].Put(data)
+	if err == coconet.ErrClosed {
+		s.Close()
+		return
+	}
 	if err != nil && err != coconet.ErrNotEstablished {
-		log.Warn("error putting to client:", err)
+		log.Warnf("%p error putting to client: %v", s, err)
 	}
 }

@@ -41,4 +41,5 @@ type Signer interface {
 	ViewChangeCh() chan string
 
 	Close()
+	Listen() error
 }

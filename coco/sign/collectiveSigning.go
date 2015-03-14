@@ -28,8 +28,14 @@ var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 // Start listening for messages coming from parent(up)
 func (sn *Node) Listen() error {
 	sn.setPool()
-	go sn.get()
-	return nil
+	err := sn.get()
+	return err
+}
+
+func (sn *Node) Close() {
+	sn.closed <- io.EOF
+	log.Printf("signing node: closing: %p", sn)
+	sn.Host.Close()
 }
 
 func (sn *Node) multiplexOnChildren(view int, sm *SigningMessage) {
@@ -59,7 +65,7 @@ func (sn *Node) childrenForNewView(parent string) []string {
 }
 
 // Get multiplexes all messages from TCPHost using application logic
-func (sn *Node) get() {
+func (sn *Node) get() error {
 	sn.UpdateTimeout()
 	msgchan, errchan := sn.Host.Get()
 	for {
@@ -68,9 +74,8 @@ func (sn *Node) get() {
 
 		if !ok1 || !ok2 || err == coconet.ErrClosed || err == io.EOF {
 			log.Errorf("getting from closed host")
-			// indicate that the Host has closed
-			sn.closed <- io.EOF
-			return
+			sn.Close()
+			return coconet.ErrClosed
 		}
 
 		// if it is a non-fatal error try again
@@ -138,7 +143,6 @@ func (sn *Node) get() {
 					if err == coconet.ErrClosed || err == io.EOF {
 						sn.closed <- io.EOF
 						sn.Close()
-						return
 					}
 					log.Errorln("view change error:", err)
 				}

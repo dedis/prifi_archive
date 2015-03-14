@@ -368,7 +368,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		connT = TcpC
 	}
 
-	dir := coconet.NewGoDirectory()
+	dir := hc.Dir
 	hosts := make(map[string]coconet.Host)
 	nameToAddr := make(map[string]string)
 
@@ -456,7 +456,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 }
 
 // run the given hostnames
-func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
+func (hc *HostConfig) Run(stamper bool, signType sign.Type, hostnameSlice ...string) error {
 	hostnames := make(map[string]*sign.Node)
 	if hostnameSlice == nil {
 		hostnames = hc.Hosts
@@ -507,12 +507,10 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	// wait for a little bit for connections to establish fully
 	// get rid of waits they hide true bugs
 	// time.Sleep(1000 * time.Millisecond)
-	for _, sn := range hostnames {
-		go func(sn *sign.Node) {
-			// start listening for messages from within the tree
-			// i.e. signing messages
-			sn.Listen()
-		}(sn)
+	if !stamper {
+		for _, sn := range hostnames {
+			go sn.Listen()
+		}
 	}
 	return nil
 }

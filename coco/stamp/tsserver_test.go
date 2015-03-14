@@ -99,6 +99,7 @@ func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) 
 	if err != nil {
 		return err
 	}
+	log.Printf("load config returned dir: %p", hostConfig.Dir)
 
 	// set FailureRates
 	if len(faultyNodes) > 0 {
@@ -107,7 +108,7 @@ func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) 
 		}
 	}
 
-	err = hostConfig.Run(sign.MerkleTree)
+	err = hostConfig.Run(true, sign.MerkleTree)
 	if err != nil {
 		return err
 	}
@@ -141,6 +142,7 @@ func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) 
 	}
 
 	log.Println("RUNNING ROOT")
+	stampers[0].ListenToClients()
 	stampers[0].Run("root", nRounds)
 	log.Println("Done running root")
 	// After clients receive messages back we need a better way
@@ -160,7 +162,7 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hc.Run(sign.MerkleTree)
+	err = hc.Run(true, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +272,7 @@ func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
 		}
 	}
 
-	err = hc.Run(sign.MerkleTree)
+	err = hc.Run(true, sign.MerkleTree)
 	if err != nil {
 		return err
 	}

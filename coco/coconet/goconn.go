@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/dedis/crypto/abstract"
 )
 
@@ -30,6 +31,17 @@ func NewGoDirectory() *GoDirectory {
 		channel:    make(map[string]chan []byte),
 		nameToPeer: make(map[string]*GoConn),
 		closed:     make(map[string]bool)}
+}
+
+func (d *GoDirectory) Close() {
+	d.Lock()
+	for k := range d.closed {
+		d.closed[k] = true
+	}
+	for k := range d.channel {
+		d.closed[k] = true
+	}
+	d.Unlock()
 }
 
 // GoConn implements the Conn interface.
@@ -73,9 +85,11 @@ func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
 	dir.nameToPeer[fromto] = gc
 	if _, ok := dir.channel[fromto]; !ok {
 		dir.channel[fromto] = make(chan []byte, 1)
+		dir.closed[fromto] = false
 	}
 	if _, ok := dir.channel[tofrom]; !ok {
 		dir.channel[tofrom] = make(chan []byte, 1)
+		dir.closed[tofrom] = false
 	}
 	return gc, nil
 }
@@ -140,16 +154,18 @@ func (c *GoConn) Put(data BinaryMarshaler) error {
 	if err != nil {
 		return err
 	}
+	ticker := time.Tick(1000 * time.Millisecond)
 
 retry:
 	select {
 	case ch <- b:
-	case <-time.After(200 * time.Millisecond):
+	case <-ticker:
 		c.dir.RLock()
-		closed := c.dir.closed[fromto]
+		closed, ok := c.dir.closed[fromto]
 		c.dir.RUnlock()
 
 		if closed {
+			log.Println("detected closed channel: putting:", fromto, ok)
 			return ErrClosed
 		}
 		goto retry
@@ -165,22 +181,26 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	tofrom := c.tofrom
 	c.dir.RLock()
 	ch := c.dir.channel[tofrom]
-	closed := c.dir.closed[tofrom]
+	closed, ok := c.dir.closed[tofrom]
 	c.dir.RUnlock()
 
-	if closed {
+	if closed || !ok {
 		return ErrClosed
 	}
+
 	var data []byte
+	ticker := time.Tick(1000 * time.Millisecond)
 retry:
 	select {
 	case data = <-ch:
-	case <-time.After(200 * time.Millisecond):
+	case <-ticker:
 		c.dir.RLock()
-		closed := c.dir.closed[tofrom]
+		closed, ok := c.dir.closed[tofrom]
 		c.dir.RUnlock()
 
+		// if the channel has been closed then exit
 		if closed {
+			log.Println("detected closed channl: getting:", tofrom, ok)
 			return ErrClosed
 		}
 		goto retry

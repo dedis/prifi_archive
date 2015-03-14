@@ -217,7 +217,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closed = make(chan error, 2)
+	sn.closed = make(chan error, 10)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 

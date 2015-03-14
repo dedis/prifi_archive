@@ -65,8 +65,8 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 		views:   NewViews(),
 		peers:   make(map[string]Conn),
 		dir:     dir,
-		msgchan: make(chan NetworkMessg, 0),
-		errchan: make(chan error, 0)}
+		msgchan: make(chan NetworkMessg, 10),
+		errchan: make(chan error, 10)}
 	h.peerLock = sync.RWMutex{}
 	h.ready = make(map[string]bool)
 	return h
@@ -214,17 +214,13 @@ func (h *GoHost) AddChildren(view int, cs ...string) {
 
 // Close closes the connections.
 func (h *GoHost) Close() {
-	log.Println("closing gohost")
+	log.Printf("closing gohost: %p", h)
+	h.dir.Close()
 	h.peerLock.RLock()
 	for _, c := range h.peers {
 		c.Close()
 	}
 	h.peerLock.RUnlock()
-	h.dir.Lock()
-	for key, _ := range h.dir.closed {
-		h.dir.closed[key] = true
-	}
-	h.dir.Unlock()
 	atomic.SwapInt64(&h.closed, 1)
 }
 
