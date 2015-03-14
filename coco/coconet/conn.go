@@ -28,6 +28,9 @@ type Conn interface {
 	// Close closes the connection. Any blocked Put or Get operations will
 	// be unblocked and return errors.
 	Close()
+
+	// Indicates whether the connection has been closed
+	Closed() bool
 }
 
 // Taken from: http://golang.org/pkg/encoding/#BinaryMarshaler

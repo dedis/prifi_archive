@@ -19,12 +19,16 @@ type GoDirectory struct {
 	channel map[string]chan []byte
 	// nameToPeer maps each connection (from-to) to a GoConn
 	nameToPeer map[string]*GoConn
+	// closed
+	closed map[string]bool
 }
 
 // NewGoDirectory creates a new directory for registering GoConns.
 func NewGoDirectory() *GoDirectory {
-	return &GoDirectory{channel: make(map[string]chan []byte),
-		nameToPeer: make(map[string]*GoConn)}
+	return &GoDirectory{
+		channel:    make(map[string]chan []byte),
+		nameToPeer: make(map[string]*GoConn),
+		closed:     make(map[string]bool)}
 }
 
 // GoConn implements the Conn interface.
@@ -44,6 +48,8 @@ type GoConn struct {
 	// mupk guards the public key
 	mupk   sync.RWMutex
 	pubkey abstract.Point
+
+	closed bool
 }
 
 // ErrPeerExists is an ignorable error that says that this peer has already been
@@ -54,7 +60,7 @@ var ErrPeerExists = errors.New("peer already exists in given directory")
 // hostname. It returns an ignorable ErrPeerExists error if this peer already
 // exists.
 func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
-	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from, sync.RWMutex{}, nil}
+	gc := &GoConn{dir, from, to, from + "::::" + to, to + "::::" + from, sync.RWMutex{}, nil, false}
 	dir.Lock()
 	defer dir.Unlock()
 	fromto := gc.fromto
@@ -85,9 +91,19 @@ func (c *GoConn) Connect() error {
 	return nil
 }
 
+func (c *GoConn) Closed() bool {
+	return c.closed
+}
+
 // Close implements the Conn Close interface.
-// For GoConn's it is a no-op.
-func (c *GoConn) Close() {}
+func (c *GoConn) Close() {
+	c.dir.Lock()
+	c.closed = true
+	c.dir.closed[c.fromto] = true
+	c.dir.closed[c.tofrom] = true
+	c.dir.Unlock()
+
+}
 
 // SetPubKey sets the public key of the connection.
 func (c *GoConn) SetPubKey(pk abstract.Point) {
@@ -106,10 +122,19 @@ func (c *GoConn) PubKey() abstract.Point {
 
 // Put puts data on the connection.
 func (c *GoConn) Put(data BinaryMarshaler) error {
+	if c.Closed() {
+		return ErrClosed
+	}
 	fromto := c.fromto
 	c.dir.RLock()
 	ch := c.dir.channel[fromto]
+	closed := c.dir.closed[fromto]
 	c.dir.RUnlock()
+
+	if closed {
+		return ErrClosed
+	}
+
 	b, err := data.MarshalBinary()
 	if err != nil {
 		return err
@@ -120,10 +145,19 @@ func (c *GoConn) Put(data BinaryMarshaler) error {
 
 // Get receives data from the sender.
 func (c *GoConn) Get(bum BinaryUnmarshaler) error {
+	if c.Closed() {
+		return ErrClosed
+	}
 	tofrom := c.tofrom
 	c.dir.RLock()
 	ch := c.dir.channel[tofrom]
+	closed := c.dir.closed[tofrom]
 	c.dir.RUnlock()
+
+	if closed {
+		return ErrClosed
+	}
+
 	data := <-ch
 	err := bum.UnmarshalBinary(data)
 	return err

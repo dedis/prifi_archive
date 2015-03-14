@@ -93,6 +93,7 @@ func runTSSIntegration(failureRate int, faultyNodes ...int) error {
 		go s.ListenToClients()
 		go func(clients []*stamp.Client, nRounds int, nMessages int, s *stamp.Server) {
 			log.Println("clients Talk")
+			time.Sleep(1 * time.Second)
 			clientsTalk(clients, nRounds, nMessages, s)
 			log.Println("Clients done Talking")
 		}(clientsLists[i], nRounds, nMessages, s)
@@ -137,6 +138,7 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	go stampers[0].ListenToClients()
 	log.Println("About to start sending client messages")
 
+	time.Sleep(1 * time.Second)
 	for r := 0; r < nRounds; r++ {
 		var wg sync.WaitGroup
 		for _, c := range clients {

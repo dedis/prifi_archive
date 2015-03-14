@@ -37,25 +37,25 @@ func (sn *Node) get() {
 	sn.UpdateTimeout()
 	msgchan, errchan := sn.Host.Get()
 	for {
-		nm := <-msgchan
-		err := <-errchan
-		if err != nil {
-			if err == coconet.ErrNotEstablished {
-				continue
-			}
+		nm, ok1 := <-msgchan
+		err, ok2 := <-errchan
 
-			log.Warnf("signing node: error getting: %v", err)
-			if err == io.EOF {
-				sn.closed <- err
-				return
-			}
-			if err == coconet.ErrClosed {
-				continue
-			}
+		if !ok1 || !ok2 || err == coconet.ErrClosed || err == io.EOF {
+			log.Errorf("getting from closed host")
+			// indicate that the Host has closed
+			sn.closed <- io.EOF
+			return
+		}
+
+		// if it is a non-fatal error try again
+		if err != nil {
+			log.Errorln("error getting message: continueing")
+			continue
 		}
 
 		// interpret network message as Siging Message
 		sm := nm.Data.(*SigningMessage)
+		//log.Printf("got message: %#v with error %v\n", sm, err)
 		sm.From = nm.From
 		go func(sm *SigningMessage) {
 			switch sm.Type {

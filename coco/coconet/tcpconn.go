@@ -3,7 +3,6 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
-	"io"
 	"net"
 	"sync"
 
@@ -24,6 +23,8 @@ type TCPConn struct {
 	// pkLock guards the public key
 	pkLock sync.Mutex
 	pubkey abstract.Point
+
+	closed bool
 }
 
 // NewTCPConnFromNet wraps a net.Conn creating a new TCPConn using conn as the
@@ -45,6 +46,10 @@ func NewTCPConn(hostname string) *TCPConn {
 	tp := &TCPConn{}
 	tp.name = hostname
 	return tp
+}
+
+func (tc *TCPConn) Closed() bool {
+	return tc.closed
 }
 
 // Connect connects to the endpoint specified.
@@ -105,10 +110,13 @@ func IsTemporary(err error) bool {
 // Returns io.EOF on an irrecoverable error.
 // Returns actual error if it is Temporary.
 func (tc *TCPConn) Put(bm BinaryMarshaler) error {
+	if tc.Closed() {
+		log.Errorln("tcpconn: put: connection closed")
+		return ErrClosed
+	}
 	tc.encLock.Lock()
 	if tc.enc == nil {
 		tc.encLock.Unlock()
-		log.Println("Conn not established")
 		return ErrNotEstablished
 	}
 	enc := tc.enc
@@ -117,10 +125,10 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 	err := enc.Encode(bm)
 	if err != nil {
 		if IsTemporary(err) {
-			log.Errorln("TEMPORARY ERROR")
 			return err
 		}
-		return io.EOF
+		tc.Close()
+		return ErrClosed
 	}
 	return err
 }
@@ -129,8 +137,11 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 // Returns io.EOF on an irrecoveralbe error.
 // Returns given error if it is Temporary.
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
+	if tc.Closed() {
+		log.Errorln("tcpconn: get: connection closed")
+		return ErrClosed
+	}
 	tc.encLock.Lock()
-
 	for tc.dec == nil {
 		tc.encLock.Unlock()
 		return ErrNotEstablished
@@ -140,16 +151,19 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 	err := dec.Decode(bum)
 	if err != nil {
 		if IsTemporary(err) {
-			log.Errorln("TEMPORARY ERROR")
 			return err
 		}
-		return io.EOF
+		// if it is an irrecoverable error
+		// close the channel and return that it has been closed
+		tc.Close()
+		return ErrClosed
 	}
 	return err
 }
 
 // Close closes the connection.
 func (tc *TCPConn) Close() {
+	log.Errorln("tcpconn: closing connection")
 	tc.encLock.Lock()
 	defer tc.encLock.Unlock()
 	if tc.conn != nil {
@@ -157,6 +171,7 @@ func (tc *TCPConn) Close() {
 		// connection. but we don't care if we close a connection twice.
 		tc.conn.Close()
 	}
+	tc.closed = true
 	tc.conn = nil
 	tc.enc = nil
 	tc.dec = nil

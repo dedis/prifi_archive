@@ -20,7 +20,8 @@ var _ Host = &TCPHost{}
 // TCPHost implements the Host interface.
 // It uses TCPConns as its underlying connection type.
 type TCPHost struct {
-	name string
+	name     string
+	listener net.Listener
 
 	views *Views
 
@@ -39,6 +40,9 @@ type TCPHost struct {
 	msgchan chan NetworkMessg
 	errchan chan error
 	suite   abstract.Suite
+
+	// 1 if closed, 0 if not closed
+	closed int64
 }
 
 // NewTCPHost creates a new TCPHost with a given hostname.
@@ -101,11 +105,16 @@ func (h *TCPHost) Listen() error {
 		log.Println("failed to listen:", err)
 		return err
 	}
+	h.listener = ln
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				log.Errorln("failed to accept connection: ", err)
+				// if the host has been closed then stop listening
+				if atomic.LoadInt64(&h.closed) == 1 {
+					return
+				}
 				continue
 			}
 
@@ -225,21 +234,31 @@ func (h *TCPHost) NewView(view int, parent string, children []string) {
 
 // Close closes all the connections currently open.
 func (h *TCPHost) Close() {
+	log.Println("tcphost: closing")
+	// stop accepting new connections
+	atomic.StoreInt64(&h.closed, 1)
+	h.listener.Close()
+	// close peer connections
 	h.peerLock.Lock()
-	for k, p := range h.peers {
+	for _, p := range h.peers {
 		if p != nil {
 			p.Close()
 		}
-		h.peers[k] = nil
 	}
 	h.peerLock.Unlock()
 }
 
+func (h *TCPHost) Closed() bool {
+	return atomic.LoadInt64(&h.closed) == 1
+}
+
 // AddParent adds a parent node to the TCPHost, for the given view.
 func (h *TCPHost) AddParent(view int, c string) {
+	h.peerLock.RLock()
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c] = NewTCPConn(c)
 	}
+	h.peerLock.RUnlock()
 	h.views.AddParent(view, c)
 }
 
@@ -247,9 +266,11 @@ func (h *TCPHost) AddParent(view int, c string) {
 func (h *TCPHost) AddChildren(view int, cs ...string) {
 	for _, c := range cs {
 		// if the peer doesn't exist add it to peers
+		h.peerLock.RLock()
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c] = NewTCPConn(c)
 		}
+		h.peerLock.RUnlock()
 
 		h.views.AddChildren(view, c)
 	}
@@ -309,9 +330,11 @@ func (h *TCPHost) Children(view int) map[string]Conn {
 // AddPeers adds the list of peers.
 func (h *TCPHost) AddPeers(cs ...string) {
 	// XXX does it make sense to add peers that are not children or parents
+	h.peerLock.Lock()
 	for _, c := range cs {
 		h.peers[c] = NewTCPConn(c)
 	}
+	h.peerLock.Unlock()
 }
 
 // ErrClosed indicates that the connection has been closed.
@@ -321,27 +344,38 @@ var ErrClosed = errors.New("connection closed")
 func (h *TCPHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) error {
 	pname := h.views.Parent(view)
 	done := make(chan error)
-
+	canceled := int64(0)
 	go func() {
-	retry:
-		h.peerLock.RLock()
-		isReady := h.ready[pname]
-		parent := h.peers[pname]
-		h.peerLock.RUnlock()
-		if !isReady {
-			time.Sleep(250 * time.Millisecond)
-			goto retry
-		} else if parent == nil && pname != "" {
-			// not the root and I have closed my parent connection
-			done <- ErrClosed
+		// try until this is canceled, closed, or successful
+		for {
+			if atomic.LoadInt64(&canceled) == 1 {
+				return
+			}
+
+			h.peerLock.RLock()
+			isReady := h.ready[pname]
+			parent := h.peers[pname]
+			h.peerLock.RUnlock()
+			if !isReady {
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
+
+			if parent.Closed() {
+				done <- ErrClosed
+				return
+			}
+			// if the connection has been closed put will fail
+			done <- parent.Put(data)
+			return
 		}
-		done <- parent.Put(data)
 	}()
 
 	select {
 	case err := <-done:
 		return err
 	case <-ctx.Done():
+		atomic.StoreInt64(&canceled, 1)
 		return ctx.Err()
 	}
 }
@@ -362,22 +396,27 @@ func (h *TCPHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler)
 		wg.Add(1)
 		go func(i int, c string) {
 			defer wg.Done()
-		retry:
-			if atomic.LoadInt64(&canceled) == 1 {
-				return
+			// try until it is canceled, successful, or timedout
+			for {
+				// check to see if it has been canceled
+				if atomic.LoadInt64(&canceled) == 1 {
+					return
+				}
+
+				// if it is not ready try again later
+				h.peerLock.RLock()
+				ready := h.ready[c]
+				conn := h.peers[c]
+				h.peerLock.RUnlock()
+				if ready {
+					if e := conn.Put(data[i]); e != nil {
+						err = e
+					}
+					return
+				}
+				time.Sleep(250 * time.Millisecond)
 			}
 
-			h.peerLock.RLock()
-			if !h.ready[c] {
-				h.peerLock.RUnlock()
-				time.Sleep(250 * time.Millisecond)
-				goto retry
-			}
-			conn := h.peers[c]
-			h.peerLock.RUnlock()
-			if e := conn.Put(data[i]); e != nil {
-				err = e
-			}
 		}(i, c)
 	}
 	done := make(chan struct{})
@@ -408,12 +447,18 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
 		if isReady {
 			break
 		}
+		// if the host has been closed stop trying
+		if h.Closed() {
+			log.Println("whenReadyGet: host has been closed")
+			return ErrClosed
+		}
 		// XXX see if we should change Sleep with condition variable...
 		// TODO: exponential backoff?
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	if c == nil {
+	if c.Closed() {
+		log.Println("whenReadyGet: connection has been closed")
 		return ErrClosed
 	}
 
@@ -428,6 +473,7 @@ func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
 func (h *TCPHost) Get() (chan NetworkMessg, chan error) {
 	h.peerLock.RLock()
 	for name := range h.peers {
+		// stream messages from all the peers
 		go func(name string) {
 			for {
 				data := h.pool.Get().(BinaryUnmarshaler)
@@ -438,6 +484,10 @@ func (h *TCPHost) Get() (chan NetworkMessg, chan error) {
 				h.errchan <- err
 				h.msglock.Unlock()
 
+				// if the connection has been closed stop getting from this peer
+				if err == ErrClosed {
+					return
+				}
 			}
 		}(name)
 	}

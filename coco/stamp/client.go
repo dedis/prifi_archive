@@ -49,7 +49,6 @@ func (c *Client) Name() string {
 
 func (c *Client) Close() {
 	for _, c := range c.Servers {
-		log.Println("CLOSING SERVER")
 		c.Close()
 	}
 }

@@ -49,6 +49,8 @@ type GoHost struct {
 	msglock sync.Mutex
 	msgchan chan NetworkMessg
 	errchan chan error
+
+	closed int64
 }
 
 // GetDirectory returns the underlying directory used for GoHosts.
@@ -190,24 +192,39 @@ func (h *GoHost) NewView(view int, parent string, children []string) {
 
 // AddParent adds a parent node to the specified view.
 func (h *GoHost) AddParent(view int, c string) {
+	h.peerLock.RLock()
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
+	h.peerLock.RUnlock()
 	h.views.AddParent(view, c)
 }
 
 // AddChildren adds children to the specified view.
 func (h *GoHost) AddChildren(view int, cs ...string) {
 	for _, c := range cs {
+		h.peerLock.RLock()
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 		}
+		h.peerLock.RUnlock()
 		h.views.AddChildren(view, c)
 	}
 }
 
 // Close closes the connections.
-func (h *GoHost) Close() {}
+func (h *GoHost) Close() {
+	h.peerLock.RLock()
+	for _, c := range h.peers {
+		c.Close()
+	}
+	h.peerLock.RUnlock()
+	atomic.SwapInt64(&h.closed, 1)
+}
+
+func (h *GoHost) Closed() bool {
+	return atomic.LoadInt64(&h.closed) == 1
+}
 
 // NChildren returns the number of children specified by the given view.
 func (h *GoHost) NChildren(view int) int {
@@ -258,9 +275,11 @@ func (h *GoHost) Children(view int) map[string]Conn {
 
 // AddPeers adds the list of peers to the host.
 func (h *GoHost) AddPeers(cs ...string) {
+	h.peerLock.Lock()
 	for _, c := range cs {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
+	h.peerLock.Unlock()
 }
 
 // PutUp sends a message to the parent on the given view, potentially timing out.
@@ -269,26 +288,31 @@ func (h *GoHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) erro
 
 	pname := h.views.Parent(view)
 	done := make(chan error)
+	var canceled int64
 	go func() {
-	retry:
-		h.peerLock.RLock()
-		isReady := h.ready[pname]
-		parent := h.peers[pname]
-		h.peerLock.RUnlock()
-		if !isReady {
+		for {
+			if atomic.LoadInt64(&canceled) == 1 {
+				return
+			}
+			h.peerLock.RLock()
+			ready := h.ready[pname]
+			parent := h.peers[pname]
+			h.peerLock.RUnlock()
+
+			if ready {
+				// if closed put will return ErrClosed
+				done <- parent.Put(data)
+				return
+			}
 			time.Sleep(250 * time.Millisecond)
-			goto retry
-		} else if parent == nil && pname != "" {
-			// not the root and I have closed my parent connection
-			done <- ErrClosed
 		}
-		done <- parent.Put(data)
 	}()
 
 	select {
 	case err := <-done:
 		return err
 	case <-ctx.Done():
+		atomic.StoreInt64(&canceled, 1)
 		return ctx.Err()
 	}
 }
@@ -306,20 +330,23 @@ func (h *GoHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler) 
 		wg.Add(1)
 		go func(i int, c string) {
 			defer wg.Done()
-		retry:
-			if atomic.LoadInt64(&canceled) == 1 {
-				return
-			}
-			h.peerLock.RLock()
-			if !h.ready[c] {
+			for {
+				if atomic.LoadInt64(&canceled) == 1 {
+					return
+				}
+				h.peerLock.RLock()
+				ready := h.ready[c]
+				conn := h.peers[c]
 				h.peerLock.RUnlock()
+
+				if ready {
+					e := conn.Put(data[i])
+					if e != nil {
+						err = e
+					}
+					return
+				}
 				time.Sleep(250 * time.Millisecond)
-				goto retry
-			}
-			conn := h.peers[c]
-			h.peerLock.RUnlock()
-			if e := conn.Put(data[i]); e != nil {
-				err = e
 			}
 		}(i, c)
 	}
@@ -352,6 +379,9 @@ func (h *GoHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
 		if isReady {
 			break
 		}
+		if h.Closed() {
+			return ErrClosed
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if c == nil {
@@ -374,6 +404,10 @@ func (h *GoHost) Get() (chan NetworkMessg, chan error) {
 				h.msgchan <- NetworkMessg{Data: data, From: name}
 				h.errchan <- err
 				h.msglock.Unlock()
+
+				if err == ErrClosed {
+					return
+				}
 
 			}
 		}(name)
