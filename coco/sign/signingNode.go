@@ -58,7 +58,7 @@ type Node struct {
 	DoneFunc   coco.DoneFunc
 
 	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
-	roundLock sync.Mutex
+	roundLock sync.RWMutex
 	ComCh     map[int]chan *SigningMessage // a channel for each round's commits
 	RmCh      map[int]chan *SigningMessage // a channel for each round's responses
 	LogTest   []byte                       // for testing purposes
@@ -77,6 +77,9 @@ type Node struct {
 
 	VamChLock sync.Mutex
 	VamCh     chan *SigningMessage // a channel for ViewAcceptedMessages
+
+	timeout  time.Duration
+	timeLock sync.RWMutex
 }
 
 func (sn *Node) ViewChangeCh() chan string {
@@ -86,7 +89,6 @@ func (sn *Node) ViewChangeCh() chan string {
 // Returns name of node who should be the root for the next view
 // round robin is used on the array of host names to determine the next root
 func (sn *Node) RootFor(view int) string {
-	// fmt.Println(sn.HostList)
 	return sn.HostList[view%len(sn.HostList)]
 }
 
@@ -226,6 +228,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	h.Write([]byte(hn.Name()))
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
+	sn.Host.SetSuite(suite)
 	return sn
 }
 
@@ -249,6 +252,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	h.Write([]byte(hn.Name()))
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
+	sn.Host.SetSuite(suite)
 	return sn
 }
 
@@ -370,6 +374,23 @@ func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
 	for _, k := range keys {
 		sn.sub(a, k)
 	}
+}
+
+func (sn *Node) SetTimeout(t time.Duration) {
+	sn.timeLock.Lock()
+	sn.timeout = t
+	sn.timeLock.Unlock()
+}
+
+func (sn *Node) Timeout() time.Duration {
+	sn.timeLock.RLock()
+	t := sn.timeout
+	sn.timeLock.RUnlock()
+	return t
+}
+
+func (sn *Node) DefaultTimeout() time.Duration {
+	return 500 * time.Millisecond
 }
 
 func max(a int64, b int64) int64 {

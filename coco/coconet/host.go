@@ -2,77 +2,85 @@ package coconet
 
 import (
 	"sync"
-	"time"
 
 	"github.com/dedis/crypto/abstract"
+	"golang.org/x/net/context"
 )
 
-// Host is an abstract node on the Host tree. The Host has a Name and can send
-// and receive data from its parent. It can also send and receive from its
-// children. All gets are blocking. For this reason, when starting up a Host,
-// one should set up handlers for GetUp and GetDown, so this node can always be
-// listening for new requests.
+// Host is an abstract node on the Host tree.
+// Representing this tree, it has the ability to PutUp and PutDown
+// to its parent and children respectively.
+// It also can Get from all its connections.
+// It is up to the caller to de-multiplex the messages sent back from Get.
 //
-// i.e.
-// ...
-// hn := NewHostNode(hostname)
-// hn.AddParent(parent)
-// hn.AddChildren(children...)
-// // if requests can be initiated by parents
-// go func() {
-//    for {
-//        req := hn.GetUp()
-//        HandleParentRequests(req)
-//    }
-// }
-// // if requests can be initiated by children
-// go func() {
-//    for {
-//        req := hn.GetDown()
-//        HandleChildRequests(req)
-//    }
-// }
-//
+// A Host also implements multiple views of this tree.
+// Each view is a unique tree (parent, children) configuration.
+// Applications using Hosts can specify which view to use for operations.
 type Host interface {
+	// Name returns the name of this host.
 	Name() string
 
-	// Returns the internal data structure
-	// Invarient: children are always in the same order
-	Peers() map[string]Conn // returns the peers list: all connected nodes
-	Children(view int) map[string]Conn
+	// Peers returns a mapping from peer names to Connections.
+	Peers() map[string]Conn
 
-	AddPeers(hostnames ...string) // add a node but don't make it child or parent
+	// AddPeers adds new peers to the host, but does not make it either child or parent.
+	AddPeers(hostnames ...string)
+
+	// NewView creates a NewView to operate on.
+	// It creates a view with the given view number, which corresponds to the tree
+	// with the specified parent and children.
 	NewView(view int, parent string, children []string)
 
-	AddParent(view int, hostname string)      // ad a parent connection
-	AddChildren(view int, hostname ...string) // add child connections
+	// AddParent adds a parent to the view specified.
+	// Used for building a view incrementally.
+	AddParent(view int, hostname string)
+	// AddChildren adds children to the view specified.
+	// Used for building a view incrementally.
+	AddChildren(view int, hostname ...string)
+
+	// NChildren returns the number of children for the given view.
 	NChildren(view int) int
+	// Children returns the children for a given view.
+	Children(view int) map[string]Conn
 
-	IsRoot(view int) bool                // true if this host is the root of the tree
-	IsParent(view int, peer string) bool // true if this peer is the parent
-	IsChild(view int, peer string) bool  // true if this peer is a child
+	// IsRoot returns true if this host is the root for the given view.
+	IsRoot(view int) bool
+	// IsParent returns true if the given peer is the parent for a specified view.
+	IsParent(view int, peer string) bool
+	// IsChild returns true if the given peer is the child for a specified view.
+	IsChild(view int, peer string) bool
 
-	// blocking network calls over the tree
-	PutUp(view int, data BinaryMarshaler) error     // send data to parent in host tree
-	PutDown(view int, data []BinaryMarshaler) error // send data to children in host tree
+	// PutUp puts the given data up to the parent in the specified view.
+	// The context is used to timeout the request.
+	PutUp(ctx context.Context, view int, data BinaryMarshaler) error
+	// PutDown puts the given data down to the children in the specified view.
+	// The context is used to timeout the request.
+	PutDown(ctx context.Context, view int, data []BinaryMarshaler) error
 
+	// Get returns a channel on which all received messages will be put.
+	// It always returns a reference to the same channel.
+	// Multiple listeners will receive disjoint sets of messages.
+	// When receiving from the channels always recieve from both the network
+	// messages channel as well as the error channel.
 	Get() (chan NetworkMessg, chan error)
-	// ??? Could be replaced by listeners (condition variables) that wait for a
-	// change to the root status to the node (i.e. through an add parent call)
-	WaitTick() // Sleeps for network implementation dependent amount of time
 
-	Connect(view int) error // connects to parent
-	Listen() error          // listen for incoming connections
+	// Connect connects to the parent in the given view.
+	Connect(view int) error
+	// Listen listens for incoming connections.
+	Listen() error
 
-	Close() // connections need to be cleaned up
+	// Close closes all the connections in the Host.
+	Close()
 
-	SetTimeout(time.Duration)
-	Timeout() time.Duration
-	DefaultTimeout() time.Duration
-
+	// SetSuite sets the suite to use for the Host.
+	SetSuite(abstract.Suite)
+	// PubKey returns the public key of the Host.
 	PubKey() abstract.Point
+	// SetPubKey sets the public key of the Host.
 	SetPubKey(abstract.Point)
 
+	// Pool is a pool of BinaryUnmarshallers to use when generating NetworkMessg's.
 	Pool() sync.Pool
+	// SetPool sets the pool of the Host.
 	SetPool(sync.Pool)
 }

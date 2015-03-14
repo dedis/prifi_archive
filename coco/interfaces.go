@@ -39,4 +39,6 @@ type Signer interface {
 	SetFailureRate(val int)
 
 	ViewChangeCh() chan string
+
+	Close()
 }

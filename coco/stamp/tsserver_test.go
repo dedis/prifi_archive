@@ -62,7 +62,7 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 func TestTSSViewChange1(t *testing.T) {
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
 	atomic.StoreInt64(&sign.RoundsPerView, 1)
-	nRounds := 8
+	nRounds := 3
 
 	if err := runTSSIntegration(1, nRounds, 0); err != nil {
 		t.Fatal(err)
@@ -86,15 +86,16 @@ func TestTSSViewChange2(t *testing.T) {
 
 // # Messages per round, # rounds, failure rate[0..100], list of faulty nodes
 func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) error {
+	//stamp.ROUND_TIME = 1 * time.Second
 	var hostConfig *oldconfig.HostConfig
 	var err error
 
 	// load config with faulty or healthy hosts
+	opts := oldconfig.ConfigOptions{}
 	if len(faultyNodes) > 0 {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", oldconfig.ConfigOptions{Faulty: true})
-	} else {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json")
+		opts.Faulty = true
 	}
+	hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", opts)
 	if err != nil {
 		return err
 	}
@@ -116,6 +117,10 @@ func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) 
 	stampers := make([]*stamp.Server, len(hostConfig.SNodes))
 	for i := range stampers {
 		stampers[i] = stamp.NewServer(hostConfig.SNodes[i])
+		// defer func() {
+		// 	log.Infoln("CLOSING STAMPER**********")
+		// 	hostConfig.SNodes[i].Close()
+		// }()
 	}
 
 	clientsLists := make([][]*stamp.Client, len(hostConfig.SNodes[1:]))
@@ -123,27 +128,25 @@ func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) 
 		clientsLists[i] = createClientsForTSServer(ncps, s, hostConfig.Dir, 0+i+ncps)
 	}
 
-	var wg sync.WaitGroup
 	for i, s := range stampers[1:] {
-		go s.Run("regular", nRounds+2)
+		go s.Run("regular", nRounds)
 		go s.ListenToClients()
-
-		wg.Add(1)
 		go func(clients []*stamp.Client, nRounds int, nMessages int, s *stamp.Server) {
-			defer wg.Done()
 			log.Println("clients Talk")
+			time.Sleep(1 * time.Second)
 			clientsTalk(clients, nRounds, nMessages, s)
 			log.Println("Clients done Talking")
 		}(clientsLists[i], nRounds, nMessages, s)
 
 	}
 
-	go stampers[0].Run("root", nRounds)
-	wg.Wait()
-
+	log.Println("RUNNING ROOT")
+	stampers[0].Run("root", nRounds)
+	log.Println("Done running root")
 	// After clients receive messages back we need a better way
 	// of waiting to make sure servers check ElGamal sigs
-	time.Sleep(1 * time.Second)
+	// time.Sleep(1 * time.Second)
+	log.Println("DONE with test")
 	return nil
 }
 
@@ -175,6 +178,7 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	go stampers[0].ListenToClients()
 	log.Println("About to start sending client messages")
 
+	time.Sleep(1 * time.Second)
 	for r := 0; r < nRounds; r++ {
 		var wg sync.WaitGroup
 		for _, c := range clients {

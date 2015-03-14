@@ -49,7 +49,6 @@ func (c *Client) Name() string {
 
 func (c *Client) Close() {
 	for _, c := range c.Servers {
-		log.Println("CLOSING SERVER")
 		c.Close()
 	}
 }
@@ -59,7 +58,7 @@ func (c *Client) handleServer(s coconet.Conn) error {
 		tsm := &TimeStampMessage{}
 		err := s.Get(tsm)
 		if err != nil {
-			if err == coconet.ConnectionNotEstablished {
+			if err == coconet.ErrNotEstablished {
 				continue
 			}
 			if coco.DEBUG {
@@ -165,7 +164,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 			ReqNo: myReqno,
 			Sreq:  &StampRequest{Val: val}})
 	if err != nil {
-		if err != coconet.ConnectionNotEstablished {
+		if err != coconet.ErrNotEstablished {
 			if coco.DEBUG {
 				log.Warn("error timestamping: ", err)
 			}
@@ -184,7 +183,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 	case err = <-myChan:
 		// log.Println("-------------client received  response from" + TSServerName)
 		break
-	case <-time.After(3 * ROUND_TIME):
+	case <-time.After(10 * ROUND_TIME):
 		if coco.DEBUG == true {
 			log.Errorln(errors.New("client timeouted on waiting for response from" + TSServerName))
 		}

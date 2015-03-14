@@ -183,6 +183,7 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 func (s *Server) runAsRoot(nRounds int) string {
 	// every 5 seconds start a new round
 	ticker := time.Tick(ROUND_TIME)
+	log.Infoln(s.Name(), "running as root", s.LastRound(), int64(nRounds))
 
 	for {
 		select {
@@ -190,13 +191,9 @@ func (s *Server) runAsRoot(nRounds int) string {
 			return nextRole
 			// s.reRunWith(nextRole, nRounds, true)
 		case <-ticker:
-			if s.LastRound() >= int64(nRounds) {
-				log.Errorln(s.Name(), "reports exceeded the max round: terminating", s.LastRound(), ">=", nRounds)
-				return ""
-			}
 
 			start := time.Now()
-			log.Println(s.Name(), "is STAMP SERVER STARTING SIGNING ROUND FOR:", s.LastRound())
+			log.Println(s.Name(), "is STAMP SERVER STARTING SIGNING ROUND FOR:", s.LastRound(), "of", nRounds)
 
 			err := s.StartSigningRound()
 			if err == sign.ChangingViewError {
@@ -220,8 +217,13 @@ func (s *Server) runAsRoot(nRounds int) string {
 				"round": s.LastRound(),
 				"time":  elapsed,
 			}).Info("root round")
-			break
 
+			if s.LastRound() >= int64(nRounds) {
+				log.Errorln(s.Name(), "reports exceeded the max round: terminating", s.LastRound(), ">=", nRounds)
+				return "close"
+			}
+
+			break
 		}
 	}
 }
@@ -232,7 +234,7 @@ func (s *Server) runAsRegular() string {
 		log.WithFields(log.Fields{
 			"file": logutils.File(),
 			"type": "close",
-		}).Infoln("server has closed")
+		}).Infoln("server" + s.Name() + "has closed")
 		return ""
 
 	case nextRole := <-s.ViewChangeCh():
@@ -243,7 +245,11 @@ func (s *Server) runAsRegular() string {
 // Listen on client connections. If role is root also send annoucement
 // for all of the nRounds
 func (s *Server) Run(role string, nRounds int) {
-	defer log.Println("done running")
+	// defer func() {
+	// 	log.Infoln(s.Name(), "CLOSE AFTER RUN")
+	// 	s.Close()
+	// }()
+
 	s.rLock.Lock()
 	s.maxRounds = nRounds
 	s.rLock.Unlock()
@@ -254,10 +260,8 @@ func (s *Server) Run(role string, nRounds int) {
 
 		case "root":
 			nextRole = s.runAsRoot(nRounds)
-			break
 		case "regular":
 			nextRole = s.runAsRegular()
-			break
 		case "test":
 			ticker := time.Tick(2000 * time.Millisecond)
 			for _ = range ticker {
@@ -265,6 +269,11 @@ func (s *Server) Run(role string, nRounds int) {
 			}
 		}
 
+		log.Println(s.Name(), "nextRole: ", nextRole)
+		if nextRole == "close" {
+			s.Close()
+			return
+		}
 		if nextRole == "" {
 			return
 		}
@@ -310,7 +319,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 }
 
 func (s *Server) AggregateCommits(view int) []byte {
-	log.Println(s.Name(), "calling AggregateCommits")
+	//log.Println(s.Name(), "calling AggregateCommits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
 	Queue := s.Queue
@@ -364,7 +373,7 @@ func (s *Server) AggregateCommits(view int) []byte {
 // Send message to client given by name
 func (s *Server) PutToClient(name string, data coconet.BinaryMarshaler) {
 	err := s.Clients[name].Put(data)
-	if err != nil && err != coconet.ConnectionNotEstablished {
+	if err != nil && err != coconet.ErrNotEstablished {
 		log.Warn("error putting to client:", err)
 	}
 }

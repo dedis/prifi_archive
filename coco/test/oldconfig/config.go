@@ -378,7 +378,6 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 				nameToAddr[h] = h
 				// it doesn't make sense to only make 1 go host
 				if opts.Faulty == true {
-					hosts[h] = &coconet.FaultyHost{}
 					gohost := coconet.NewGoHost(h, dir)
 					hosts[h] = coconet.NewFaultyHost(gohost)
 				} else {
@@ -424,8 +423,6 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 				// only create the tcp hosts requested
 				if opts.Host == "" || opts.Host == addr {
 					if opts.Faulty == true {
-						fmt.Println("new faulty", addr)
-						hosts[addr] = &coconet.FaultyHost{}
 						tcpHost := coconet.NewTCPHost(addr)
 						hosts[addr] = coconet.NewFaultyHost(tcpHost)
 					} else {
@@ -473,6 +470,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 			hostnames[h] = sn
 		}
 	}
+	// set all hosts to be listening
 	for _, sn := range hostnames {
 		sn.Type = signType
 		sn.Host.Listen()
@@ -485,10 +483,10 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 		maxTime := time.Duration(2000)
 		for i := 0; i < 2000; i++ {
 			// log.Println("attempting to connect to parent")
-			// connect with the parent
+			// the host should connect with the parent
 			err = sn.Connect(0)
 			if err == nil {
-				//log.Infoln("hostconfig: connected to parent:")
+				// log.Infoln("hostconfig: connected to parent:")
 				break
 			}
 
@@ -498,7 +496,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 				startTime = maxTime
 			}
 		}
-		// log.Println("Succssfully connected to parent")
+		log.Println("Succssfully connected to parent")
 		if err != nil {
 			log.Fatal("failed to connect to parent")
 			return errors.New("failed to connect")

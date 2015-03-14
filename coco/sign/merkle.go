@@ -18,7 +18,9 @@ import (
 )
 
 func (sn *Node) AddChildrenMerkleRoots(Round int) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	// children commit roots
 	round.CMTRoots = make([]hashid.HashId, len(round.Leaves))
 	copy(round.CMTRoots, round.Leaves)
@@ -33,7 +35,9 @@ func (sn *Node) AddChildrenMerkleRoots(Round int) {
 }
 
 func (sn *Node) AddLocalMerkleRoot(view, Round int) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	// add own local mtroot to leaves
 	if sn.CommitFunc != nil {
 		round.LocalMTRoot = sn.CommitFunc(view)
@@ -44,7 +48,9 @@ func (sn *Node) AddLocalMerkleRoot(view, Round int) {
 }
 
 func (sn *Node) ComputeCombinedMerkleRoot(view, Round int) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	// add hash of whole log to leaves
 	round.Leaves = append(round.Leaves, round.HashedLog)
 
@@ -74,7 +80,9 @@ func (sn *Node) ComputeCombinedMerkleRoot(view, Round int) {
 // Send Merkle Proof to local client (timestamp server)
 func (sn *Node) SendLocalMerkleProof(view int, chm *ChallengeMessage) error {
 	if sn.DoneFunc != nil {
+		sn.roundLock.RLock()
 		round := sn.Rounds[chm.Round]
+		sn.roundLock.RUnlock()
 		proofForClient := make(proof.Proof, len(chm.Proof))
 		copy(proofForClient, chm.Proof)
 
@@ -100,7 +108,9 @@ func (sn *Node) SendLocalMerkleProof(view int, chm *ChallengeMessage) error {
 // Create Personalized Merkle Proofs for children servers
 // Send Personalized Merkle Proofs to children servers
 func (sn *Node) SendChildrenChallengesProofs(view int, chm *ChallengeMessage) error {
+	sn.roundLock.RLock()
 	round := sn.Rounds[chm.Round]
+	sn.roundLock.RUnlock()
 	// proof from big root to our root will be sent to all children
 	baseProof := make(proof.Proof, len(chm.Proof))
 	copy(baseProof, chm.Proof)
@@ -128,7 +138,9 @@ func (sn *Node) SendChildrenChallengesProofs(view int, chm *ChallengeMessage) er
 // Needed given that the leaves are sorted before passed to the function that create
 // the Merkle Tree and its Proofs
 func (sn *Node) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId, Round int) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	// separate proofs for children servers mt roots
 	for i := 0; i < len(round.CMTRoots); i++ {
 		name := round.CMTRootNames[i]
@@ -152,7 +164,9 @@ func (sn *Node) SeparateProofs(proofs []proof.Proof, leaves []hashid.HashId, Rou
 // Check that starting from its own committed message each child can reach our subtrees' mtroot
 // Also checks that starting from local mt root we can get to  our subtrees' mtroot <-- could be in diff fct
 func (sn *Node) checkChildrenProofs(Round int) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	sn.roundLock.RUnlock()
 	cmtAndLocal := make([]hashid.HashId, len(round.CMTRoots))
 	copy(cmtAndLocal, round.CMTRoots)
 	cmtAndLocal = append(cmtAndLocal, round.LocalMTRoot)
@@ -170,7 +184,9 @@ func (sn *Node) checkChildrenProofs(Round int) {
 }
 
 func (sn *Node) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
+	sn.roundLock.RLock()
 	round := sn.Rounds[chm.Round]
+	sn.roundLock.RUnlock()
 	// proof from client to my root
 	proof.CheckProof(sn.Suite().Hash, round.MTRoot, round.LocalMTRoot, round.Proofs["local"])
 	// proof from my root to big root
