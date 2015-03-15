@@ -52,7 +52,6 @@ type ConfigFile struct {
 	Tree  *Node    `json:"tree"`
 }
 
-// why can't I just deal with nist.Point
 type JSONPoint json.RawMessage
 
 type Node struct {
@@ -335,12 +334,13 @@ func GetAddress() (string, error) {
 var StartConfigPort = 9000
 
 type ConfigOptions struct {
-	ConnType  string   // "go", tcp"
-	Hostnames []string // if not nil replace hostnames with these
-	GenHosts  bool     // if true generate random hostnames (all tcp)
-	Host      string   // hostname to load into memory: "" for all
-	Port      string   // if specified rewrites all ports to be this
-	Faulty    bool     // if true, use FaultyHost wrapper around Hosts
+	ConnType  string         // "go", tcp"
+	Hostnames []string       // if not nil replace hostnames with these
+	GenHosts  bool           // if true generate random hostnames (all tcp)
+	Host      string         // hostname to load into memory: "" for all
+	Port      string         // if specified rewrites all ports to be this
+	Faulty    bool           // if true, use FaultyHost wrapper around Hosts
+	Suite     abstract.Suite // suite to use for Hosts
 }
 
 // TODO: if in tcp mode associate each hostname in the file with a different
@@ -423,7 +423,14 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 			if _, ok := hc.Hosts[addr]; !ok {
 				// only create the tcp hosts requested
 				if opts.Host == "" || opts.Host == addr {
-					hosts[addr] = coconet.NewTCPHost(addr)
+					if opts.Faulty == true {
+						fmt.Println("new faulty", addr)
+						hosts[addr] = &coconet.FaultyHost{}
+						tcpHost := coconet.NewTCPHost(addr)
+						hosts[addr] = coconet.NewFaultyHost(tcpHost)
+					} else {
+						hosts[addr] = coconet.NewTCPHost(addr)
+					}
 				} else {
 					hosts[addr] = nil // it is there but not backed
 				}
@@ -431,11 +438,26 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		}
 	}
 	suite := nist.NewAES128SHA256P256()
+	if opts.Suite != nil {
+		suite = opts.Suite
+	}
 	rand := suite.Cipher([]byte("example"))
+	fmt.Println("hosts", hosts)
 	_, err = ConstructTree(cf.Tree, hc, "", suite, rand, hosts, nameToAddr, opts)
 	if connT != GoC {
 		hc.Dir = nil
 	}
+
+	// add a hostlist to each of the signing nodes
+	var hostList []string
+	for h := range hosts {
+		hostList = append(hostList, h)
+	}
+	for _, sn := range hc.SNodes {
+		sn.HostList = make([]string, len(hostList))
+		copy(sn.HostList, hostList)
+	}
+
 	return hc, err
 }
 
@@ -456,10 +478,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	}
 	for _, sn := range hostnames {
 		sn.Type = signType
-		//go func(sn *sign.Node) {
-		// start listening for messages from within the tree
 		sn.Host.Listen()
-		//}(sn)
 	}
 
 	for _, sn := range hostnames {
@@ -467,10 +486,12 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 		// exponential backoff for attempting to connect to parent
 		startTime := time.Duration(200)
 		maxTime := time.Duration(2000)
-		for i := 0; i < 20; i++ {
+		for i := 0; i < 2000; i++ {
 			// log.Println("attempting to connect to parent")
+			// connect with the parent
 			err = sn.Connect()
 			if err == nil {
+				//log.Infoln("hostconfig: connected to parent:")
 				break
 			}
 
@@ -482,16 +503,19 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 		}
 		// log.Println("Succssfully connected to parent")
 		if err != nil {
+			log.Fatal("failed to connect to parent")
 			return errors.New("failed to connect")
 		}
 	}
 
-	// need to make sure connections are setup properly first
+	// need to make sure network connections are setup properly first
 	// wait for a little bit for connections to establish fully
-	time.Sleep(1000 * time.Millisecond)
+	// get rid of waits they hide true bugs
+	// time.Sleep(1000 * time.Millisecond)
 	for _, sn := range hostnames {
 		go func(sn *sign.Node) {
 			// start listening for messages from within the tree
+			// i.e. signing messages
 			sn.Listen()
 		}(sn)
 	}
@@ -500,7 +524,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 
 // run each host in hostnameSlice with the number of clients given
 func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*stamp.Server, []*stamp.Client, error) {
-	log.Println("RunTimestamper")
+	//log.Println("RunTimestamper")
 	hostnames := make(map[string]*sign.Node)
 	// make a list of hostnames we want to run
 	if hostnameSlice == nil {
@@ -520,16 +544,16 @@ func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*
 	stampers := make([]*stamp.Server, 0, len(hostnames))
 	for _, sn := range hc.SNodes {
 		if _, ok := hostnames[sn.Name()]; !ok {
-			log.Println("signing node not in hostnmaes")
+			log.Errorln("signing node not in hostnmaes")
 			continue
 		}
 		stampers = append(stampers, stamp.NewServer(sn))
 		if hc.Dir == nil {
-			log.Println("listening for clients")
+			//log.Println("listening for clients")
 			stampers[len(stampers)-1].Listen()
 		}
 	}
-	log.Println("stampers:", stampers)
+	//log.Println("stampers:", stampers)
 	clientsLists := make([][]*stamp.Client, len(hc.SNodes[1:]))
 	for i, s := range stampers[1:] {
 		// cant assume the type of connection
@@ -548,7 +572,7 @@ func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*
 			log.Fatal("port is not valid integer")
 		}
 		hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
-		log.Println("client connecting to:", hp)
+		//log.Println("client connecting to:", hp)
 
 		for j := range clients {
 			clients[j] = stamp.NewClient("client" + strconv.Itoa((i-1)*len(stampers)+j))
@@ -557,10 +581,10 @@ func (hc *HostConfig) RunTimestamper(nclients int, hostnameSlice ...string) ([]*
 			// if we are using tcp connections
 			if hc.Dir == nil {
 				// the timestamp server serves at the old port + 1
-				log.Println("new tcp conn")
+				//log.Println("new tcp conn")
 				c = coconet.NewTCPConn(hp)
 			} else {
-				log.Println("new go conn")
+				//log.Println("new go conn")
 				c, _ = coconet.NewGoConn(hc.Dir, clients[j].Name(), s.Name())
 				stoc, _ := coconet.NewGoConn(hc.Dir, s.Name(), clients[j].Name())
 				s.Clients[clients[j].Name()] = stoc

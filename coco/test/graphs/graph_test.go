@@ -3,6 +3,8 @@ package graphs
 import (
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -18,7 +20,7 @@ func TestTreeFromList(t *testing.T) {
 	hostsPerNode := 2
 	bf := 2
 
-	root, usedHosts, err := TreeFromList(nodeNames, hostsPerNode, bf)
+	root, usedHosts, _, err := TreeFromList(nodeNames, hostsPerNode, bf)
 	if err != nil {
 		panic(err)
 	}
@@ -30,9 +32,9 @@ func TestTreeFromList(t *testing.T) {
 	// }
 	// fmt.Println(string(b))
 
-	if len(usedHosts) != len(nodeNames)*hostsPerNode {
-		t.Error("Should have been able to use all hosts")
-	}
+	// if len(usedHosts) != len(nodeNames)*hostsPerNode {
+	// 	t.Error("Should have been able to use all hosts")
+	// }
 	fmt.Println("used hosts", usedHosts)
 	root.TraverseTree(PrintTreeNode)
 
@@ -49,4 +51,70 @@ func TestTreeFromList(t *testing.T) {
 	// machine1:32610
 	// 	 machine2:32610
 	// machine2:32610
+}
+
+//        1
+//       /  \
+//      2    2
+//     / \  / \
+//    1  1  1
+// two 2s not used to avoid akward tree
+func TestTreeFromList2(t *testing.T) {
+	// 2 machines with 4 hosts each and branching factor of 2
+	// this means only 6 of the 8 hosts should be used, depth will be 2
+	nodeNames := make([]string, 0)
+	nodeNames = append(nodeNames, "machine0", "machine1")
+	hostsPerNode := 4
+	bf := 2
+
+	root, usedHosts, _, err := TreeFromList(nodeNames, hostsPerNode, bf)
+	if err != nil {
+		panic(err)
+	}
+
+	if len(usedHosts) != 6 {
+		t.Error("Should have been able to use only 6 hosts")
+	}
+	fmt.Println("used hosts", usedHosts)
+	root.TraverseTree(PrintTreeNode)
+}
+
+func checkColoring(t *Tree) bool {
+	p := strings.Split(t.Name, ":")[0]
+	for _, c := range t.Children {
+		h := strings.Split(c.Name, ":")[0]
+		if h == p {
+			return false
+		}
+		if !checkColoring(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func TestTreeFromListColoring(t *testing.T) {
+	nodes := make([]string, 0)
+	for i := 0; i < 20; i++ {
+		nodes = append(nodes, "host"+strconv.Itoa(i))
+	}
+	for hpn := 1; hpn < 10; hpn++ {
+		for bf := 1; bf <= hpn*len(nodes); bf++ {
+			t.Log("generating tree:", hpn, bf)
+			root, hosts, retDepth, err := TreeFromList(nodes, hpn, bf)
+			if err != nil {
+				panic(err)
+			}
+			if !checkColoring(root) {
+				t.Fatal("failed to properly color:", nodes, hpn, bf)
+			}
+			t.Log("able to use:", len(hosts), " of: ", hpn*len(nodes))
+
+			depth := Depth(root)
+			if depth != retDepth {
+				panic("Returned tree depth != actual treedepth")
+			}
+			t.Log("depth:", depth)
+		}
+	}
 }

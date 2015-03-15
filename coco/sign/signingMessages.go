@@ -39,6 +39,8 @@ type SigningMessage struct {
 	From string
 }
 
+var msgSuite abstract.Suite = nist.NewAES128SHA256P256()
+
 func NewSigningMessage() interface{} {
 	return &SigningMessage{}
 }
@@ -51,9 +53,8 @@ func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
 	var cons = make(protobuf.Constructors)
 	var point abstract.Point
 	var secret abstract.Secret
-	var suite = nist.NewAES128SHA256P256()
-	cons[reflect.TypeOf(&point).Elem()] = func() interface{} { return suite.Point() }
-	cons[reflect.TypeOf(&secret).Elem()] = func() interface{} { return suite.Secret() }
+	cons[reflect.TypeOf(&point).Elem()] = func() interface{} { return msgSuite.Point() }
+	cons[reflect.TypeOf(&secret).Elem()] = func() interface{} { return msgSuite.Secret() }
 	return protobuf.DecodeWithConstructors(data, sm, cons)
 }
 

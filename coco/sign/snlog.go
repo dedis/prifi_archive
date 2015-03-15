@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco/hashid"
 )
 
@@ -19,14 +18,15 @@ type SNLog struct {
 
 	// merkle tree roots of children in strict order
 	CMTRoots hashid.HashId // concatenated hash ids of children
+	Suite    abstract.Suite
 }
 
 func (snLog SNLog) MarshalBinary() ([]byte, error) {
 	// abstract.Write used to encode/ marshal crypto types
 	b := bytes.Buffer{}
-	abstract.Write(&b, &snLog.v, nist.NewAES128SHA256P256())
-	abstract.Write(&b, &snLog.V, nist.NewAES128SHA256P256())
-	abstract.Write(&b, &snLog.V_hat, nist.NewAES128SHA256P256())
+	abstract.Write(&b, &snLog.v, snLog.Suite)
+	abstract.Write(&b, &snLog.V, snLog.Suite)
+	abstract.Write(&b, &snLog.V_hat, snLog.Suite)
 	// gob is used to encode non-crypto types
 	enc := gob.NewEncoder(&b)
 	err := enc.Encode(snLog.CMTRoots)
@@ -36,7 +36,7 @@ func (snLog SNLog) MarshalBinary() ([]byte, error) {
 func (snLog *SNLog) UnmarshalBinary(data []byte) error {
 	// abstract.Read used to decode/ unmarshal crypto types
 	b := bytes.NewBuffer(data)
-	err := abstract.Read(b, snLog, nist.NewAES128SHA256P256())
+	err := abstract.Read(b, snLog, snLog.Suite)
 	// gob is used to decode non-crypto types
 	rem, _ := snLog.MarshalBinary()
 	snLog.CMTRoots = data[len(rem):]

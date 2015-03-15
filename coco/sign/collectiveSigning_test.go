@@ -5,7 +5,10 @@ import (
 	"log"
 	"strconv"
 	"testing"
+	"time"
 
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/edwards/ed25519"
 	"github.com/dedis/crypto/nist"
 	_ "github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
@@ -104,7 +107,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 
 	for i := 0; i < nNodes; i++ {
 		if len(faultyNodes) > 0 {
-			nodes[i].TestingFailures = true
+			nodes[i].FailureRate = 1
 		}
 
 		go func(i int) {
@@ -126,7 +129,22 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 //    / \   \
 //   2   3   5
 func TestSmallConfigHealthy(t *testing.T) {
-	if err := runTreeSmallConfig(sign.MerkleTree); err != nil {
+	suite := nist.NewAES128SHA256P256()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSmallConfigHealthyNistQR512(t *testing.T) {
+	suite := nist.NewAES128SHA256QR512()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSmallConfigHealthyEd25519(t *testing.T) {
+	suite := ed25519.NewAES128SHA256Ed25519(true)
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -134,31 +152,47 @@ func TestSmallConfigHealthy(t *testing.T) {
 func TestSmallConfigFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTreeSmallConfig(sign.MerkleTree, faultyNodes...); err != nil {
+	suite := nist.NewAES128SHA256P256()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 100, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func runTreeSmallConfig(signType sign.Type, faultyNodes ...int) error {
+func TestSmallConfigFaulty2(t *testing.T) {
+	failureRate := 15
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 1, 2, 3, 4, 5)
+	suite := nist.NewAES128SHA256P256()
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, failureRate, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runTreeSmallConfig(signType sign.Type, suite abstract.Suite, failureRate int, faultyNodes ...int) error {
 	var hostConfig *oldconfig.HostConfig
 	var err error
+	opts := oldconfig.ConfigOptions{Suite: suite}
+
 	if len(faultyNodes) > 0 {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", oldconfig.ConfigOptions{Faulty: true})
-	} else {
-		hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json")
+		opts.Faulty = true
 	}
+	hostConfig, err = oldconfig.LoadConfig("../test/data/exconf.json", opts)
 	if err != nil {
 		return err
 	}
 
 	for _, fh := range faultyNodes {
 		fmt.Println("Setting", hostConfig.SNodes[fh].Name(), "as faulty")
-		hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("response", true)
+		if failureRate == 100 {
+			hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).SetDeadFor("commit", true)
+
+		}
+		// hostConfig.SNodes[fh].Host.(*coconet.FaultyHost).Die()
 	}
 
 	if len(faultyNodes) > 0 {
 		for i := range hostConfig.SNodes {
-			hostConfig.SNodes[i].TestingFailures = true
+			hostConfig.SNodes[i].FailureRate = failureRate
 		}
 	}
 
@@ -182,6 +216,9 @@ func TestTreeFromBigConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
 	hc.SNodes[0].LogTest = []byte("hello world")
 	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	if err != nil {
@@ -203,11 +240,14 @@ func TestMultipleRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	for i := 0; i < N; i++ {
 		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
-		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: 0})
+		err = hostConfig.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: i})
 		if err != nil {
 			t.Error(err)
 		}
@@ -223,6 +263,9 @@ func TestTCPStaticConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
 	hc.SNodes[0].LogTest = []byte("hello world")
 	err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
 	if err != nil {
@@ -246,14 +289,19 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// give it some time to set up
+	time.Sleep(2 * time.Second)
+
 	N := 5
 	for i := 0; i < N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
-		err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 0})
+		err = hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+
 		if err != nil {
 			t.Error(err)
 		}
 	}
+	time.Sleep(10 * time.Second)
 	for _, n := range hc.SNodes {
 		n.Close()
 	}

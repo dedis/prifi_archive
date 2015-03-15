@@ -43,5 +43,15 @@ func PrintTreeNode(t *Tree) {
 	for _, c := range t.Children {
 		fmt.Println("\t", c.Name)
 	}
+}
 
+func Depth(t *Tree) int {
+	md := 0
+	for _, c := range t.Children {
+		dc := Depth(c)
+		if dc > md {
+			md = dc
+		}
+	}
+	return md + 1
 }

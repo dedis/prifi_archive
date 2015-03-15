@@ -72,4 +72,6 @@ type Host interface {
 
 	Pool() sync.Pool
 	SetPool(sync.Pool)
+
+	SetSuite(abstract.Suite)
 }
