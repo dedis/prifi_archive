@@ -57,6 +57,7 @@ type Node struct {
 	Rounds        map[int]*Round
 	Round         int   // *only* used by Root( by annoucer)
 	LastSeenRound int64 // largest round number I have seen
+	RoundsAsRoot  int64 // latest continuous streak of rounds with sn root
 
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc

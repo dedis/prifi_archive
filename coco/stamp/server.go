@@ -217,7 +217,7 @@ func (s *Server) runAsRoot(nRounds int) string {
 					"type": "view_change",
 				}).Info("Tried to stary signing round on " + s.Name() + " but it reports view change in progress")
 				// skip # of failed round
-				s.SetLastSeenRound(s.LastRound() + 1)
+				// s.SetLastSeenRound(s.LastRound() + 1)
 				break
 			}
 

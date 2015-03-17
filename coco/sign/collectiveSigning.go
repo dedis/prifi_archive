@@ -249,6 +249,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			return ViewRejectedError
 		}
 	} else {
+		sn.RoundsAsRoot = 0
 		// create and putup messg to confirm subtree view changed
 		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo, Votes: votes}
 
@@ -285,14 +286,16 @@ func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 }
 
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
-	if sn.IsRoot(view) && sn.FailAsRootEvery != 0 && am.Round%sn.FailAsRootEvery == 0 {
-		log.Errorln(sn.Name() + "was imposed failure on round" + strconv.Itoa(am.Round))
-		return ChangingViewError
+	if sn.IsRoot(view) && sn.FailAsRootEvery != 0 {
+		if sn.RoundsAsRoot != 0 && sn.RoundsAsRoot%int64(sn.FailAsRootEvery) == 0 {
+			log.Errorln(sn.Name()+"was imposed failure on round"+strconv.Itoa(am.Round), "after round", sn.RoundsAsRoot, "rounds")
+			return ChangingViewError
+
+		}
 	}
 
 	changingView := atomic.LoadInt64(&sn.ChangingView)
 	if changingView == TRUE {
-		log.Println(sn.Name(), "in announce: changingViewError")
 		return ChangingViewError
 	}
 
@@ -314,6 +317,7 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 
 	// the root is the only node that keeps track of round # internally
 	if sn.IsRoot(view) {
+		sn.RoundsAsRoot += 1
 		// sequential round number
 		sn.roundLock.Lock()
 		sn.Round = Round

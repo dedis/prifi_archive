@@ -158,7 +158,8 @@ func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsF
 	// set root failures
 	if failAsRootEvery > 0 {
 		for i := range hostConfig.SNodes {
-			hostConfig.SNodes[i].FailAsRootEvery = (i + 1) * 2
+			// hostConfig.SNodes[i].FailAsRootEvery = (i + 1) * 2
+			hostConfig.SNodes[i].FailAsRootEvery = failAsRootEvery
 
 		}
 	}
