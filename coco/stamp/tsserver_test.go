@@ -35,7 +35,9 @@ func init() {
 }
 
 func TestTSSIntegrationHealthy(t *testing.T) {
-	if err := runTSSIntegration(4, 4, 0); err != nil {
+	failAsRootEvery := 0     // never fail on announce
+	failAsFollowerEvery := 0 // never fail on commit or response
+	if err := runTSSIntegration(4, 4, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -48,10 +50,12 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 	// not mixing view changes with faults
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
 	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	failAsRootEvery := 0     // never fail on announce
+	failAsFollowerEvery := 0 // never fail on commit or response
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTSSIntegration(4, 4, 20, faultyNodes...); err != nil {
+	if err := runTSSIntegration(4, 4, 20, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -63,8 +67,10 @@ func TestTSSViewChange1(t *testing.T) {
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
 	atomic.StoreInt64(&sign.RoundsPerView, 1)
 	nRounds := 3
+	failAsRootEvery := 0     // never fail on announce
+	failAsFollowerEvery := 0 // never fail on commit or response
 
-	if err := runTSSIntegration(1, nRounds, 0); err != nil {
+	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,8 +82,49 @@ func TestTSSViewChange2(t *testing.T) {
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
 	atomic.StoreInt64(&sign.RoundsPerView, 3)
 	nRounds := 8
+	failAsRootEvery := 0     // never fail on announce
+	failAsFollowerEvery := 0 // never fail on commit or response
 
-	if err := runTSSIntegration(1, nRounds, 0); err != nil {
+	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+		t.Fatal(err)
+	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
+}
+
+// Root of View fails on its 3rd round of being root
+// View Change is initiated as a result
+// RoundsPerView very large to avoid other reason for ViewChange
+func TestTSSViewChangeOnRootFailure(t *testing.T) {
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 1000)
+	nRounds := 12
+	failAsRootEvery := 3     // fail on announce every 3rd round
+	failAsFollowerEvery := 0 // never fail on commit or response
+
+	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+		t.Fatal(err)
+	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
+}
+
+// Root of View fails on its 3rd round of being root
+// View Change is initiated as a result
+// RoundsPerView very large to avoid other reason for ViewChange
+func TestTSSViewChangeOnFollowerFailure(t *testing.T) {
+	return
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 1000)
+	nRounds := 12
+	failAsRootEvery := 0 // never fail on announce
+	// selected faultyNodes will fail on commit and response every 3 rounds
+	// if they are followers in the view
+	failAsFollowerEvery := 3
+
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 2, 4)
+	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,7 +132,7 @@ func TestTSSViewChange2(t *testing.T) {
 }
 
 // # Messages per round, # rounds, failure rate[0..100], list of faulty nodes
-func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) error {
+func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsFollowerEvery int, faultyNodes ...int) error {
 	//stamp.ROUND_TIME = 1 * time.Second
 	var hostConfig *oldconfig.HostConfig
 	var err error
@@ -101,11 +148,23 @@ func runTSSIntegration(nMessages, nRounds, failureRate int, faultyNodes ...int) 
 	}
 	log.Printf("load config returned dir: %p", hostConfig.Dir)
 
-	// set FailureRates
+	// set FailureRates as pure percentages
 	if len(faultyNodes) > 0 {
 		for i := range hostConfig.SNodes {
 			hostConfig.SNodes[i].FailureRate = failureRate
 		}
+	}
+
+	// set root failures
+	if failAsRootEvery > 0 {
+		for i := range hostConfig.SNodes {
+			hostConfig.SNodes[i].FailAsRootEvery = (i + 1) * 2
+
+		}
+	}
+	// set followerfailures
+	for _, f := range faultyNodes {
+		hostConfig.SNodes[f].FailAsFollowerEvery = failAsFollowerEvery
 	}
 
 	err = hostConfig.Run(true, sign.MerkleTree)

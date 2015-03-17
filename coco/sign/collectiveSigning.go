@@ -47,7 +47,7 @@ func (sn *Node) multiplexOnChildren(view int, sm *SigningMessage) {
 	// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
 	ctx := context.TODO()
 	if err := sn.PutDown(ctx, view, messgs); err != nil {
-		log.Errorln("failed to putdown ViewChange announcement")
+		log.Errorln("failed to putdown messg to children")
 	}
 }
 
@@ -68,6 +68,9 @@ func (sn *Node) childrenForNewView(parent string) []string {
 func (sn *Node) get() error {
 	sn.UpdateTimeout()
 	msgchan, errchan := sn.Host.Get()
+	// heartbeat for intiating viewChanges, allows intial 500s setup time
+	sn.heartbeat = time.NewTimer(500 * time.Second)
+
 	for {
 		nm, ok1 := <-msgchan
 		err, ok2 := <-errchan
@@ -83,7 +86,6 @@ func (sn *Node) get() error {
 			log.Errorln("error getting message: continueing")
 			continue
 		}
-
 		// interpret network message as Siging Message
 		sm := nm.Data.(*SigningMessage)
 		//log.Printf("got message: %#v with error %v\n", sm, err)
@@ -93,12 +95,12 @@ func (sn *Node) get() error {
 			// if it is a bad message just ignore it
 			default:
 				return
-
 			case Announcement:
 				if !sn.IsParent(sm.View, sm.From) {
 					log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
 					return
 				}
+				sn.ReceivedHeartbeat(sm.View)
 				if err := sn.Announce(sm.View, sm.Am); err != nil {
 					log.Errorln(sn.Name(), "announce error:", err)
 				}
@@ -139,6 +141,7 @@ func (sn *Node) get() error {
 				sn.roundLock.Unlock()
 				rmch <- sm
 			case ViewChange:
+				sn.ReceivedHeartbeat(sm.View)
 				if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 					if err == coconet.ErrClosed || err == io.EOF {
 						sn.closed <- io.EOF
@@ -150,11 +153,25 @@ func (sn *Node) get() error {
 				sn.VamChLock.Lock()
 				sn.VamCh <- sm
 				sn.VamChLock.Unlock()
+			case ViewConfirmed:
+				sn.ReceivedHeartbeat(sm.View)
+				sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 			case Error:
 				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
 		}(sm)
 	}
+
+}
+
+func (sn *Node) ReceivedHeartbeat(view int) {
+	sn.hbLock.Lock()
+	sn.heartbeat.Stop()
+	sn.heartbeat = time.AfterFunc(ROUND_TIME+ROUND_TIME/2, func() {
+		log.Println(sn.Name(), "NO HEARTBEAT - try view change")
+		sn.TryViewChange(view + 1)
+	})
+	sn.hbLock.Unlock()
 
 }
 
@@ -209,21 +226,31 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, sn.Timeout(), "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
-	if len(messgs) != len(sn.Children(vcm.ViewNo)) {
-		// currently we require all nodes to accept a new view
-		return ViewRejectedError
+	votes := 1
+	for _, messg := range messgs {
+		votes += messg.Vam.Votes
 	}
 
 	var err error
 	if iAmNextRoot == TRUE {
-		// everyone confirmed me as new root
-		log.Println(sn.Name(), ": everyone confirmed me as new root")
-		atomic.StoreInt64(&sn.ChangingView, FALSE)
-		sn.ViewNo = vcm.ViewNo
-		sn.viewChangeCh <- "root"
+		log.Println(sn.Name(), "as root received", votes, "of", len(sn.HostList))
+		if votes > len(sn.HostList)*2/3 {
+			// quorum confirmed me as new root
+			log.Println(sn.Name(), "quorum", votes, "of", len(sn.HostList), "confirmed me as new root")
+			vcfm := &ViewConfirmedMessage{ViewNo: vcm.ViewNo}
+			sm := &SigningMessage{Type: ViewConfirmed, Vcfm: vcfm, From: sn.Name(), View: vcm.ViewNo}
+			sn.multiplexOnChildren(vcm.ViewNo, sm)
+
+			// TODO: note: regulars will be done with view change after root
+			atomic.StoreInt64(&sn.ChangingView, FALSE)
+			atomic.StoreInt64(&sn.ViewNo, int64(vcm.ViewNo))
+			sn.viewChangeCh <- "root"
+		} else {
+			return ViewRejectedError
+		}
 	} else {
 		// create and putup messg to confirm subtree view changed
-		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo}
+		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo, Votes: votes}
 
 		// log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
 		err = sn.PutUp(context.TODO(), vcm.ViewNo, &SigningMessage{
@@ -231,27 +258,41 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			From: sn.Name(),
 			Type: ViewAccepted,
 			Vam:  vam})
+		if err != nil {
+			log.Fatal(sn.Name(), "Error Putting up ViewAccepted Message")
+		}
 
-		// if err != nil {
-		// 	log.Fatal(sn.Name(), "Error Putting up ViewAccepted Message")
-		// }
-
-		// View Changed
-		atomic.StoreInt64(&sn.ChangingView, FALSE)
-		// channel for getting ViewAcceptedMessages with right size buffer
-		sn.VamChLock.Lock()
-		sn.VamCh = make(chan *SigningMessage, sn.NChildren(vcm.ViewNo))
-		sn.VamChLock.Unlock()
-
-		sn.viewChangeCh <- "regular"
 	}
 
 	return err
 }
 
+func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
+	log.Println(sn.Name(), "view CHANGED to", view)
+	// View Changed
+	atomic.StoreInt64(&sn.ChangingView, FALSE)
+	// channel for getting ViewAcceptedMessages with right size buffer
+	sn.VamChLock.Lock()
+	sn.VamCh = make(chan *SigningMessage, sn.NChildren(view))
+	sn.VamChLock.Unlock()
+
+	log.Println("bef reg")
+	sn.viewChangeCh <- "regular"
+	log.Println("after reg")
+
+	log.Println("in view change, children for view", view, sn.Children(view))
+	sn.multiplexOnChildren(view, sm)
+}
+
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
+	if sn.IsRoot(view) && sn.FailAsRootEvery != 0 && am.Round%sn.FailAsRootEvery == 0 {
+		log.Errorln(sn.Name() + "was imposed failure on round" + strconv.Itoa(am.Round))
+		return ChangingViewError
+	}
+
 	changingView := atomic.LoadInt64(&sn.ChangingView)
 	if changingView == TRUE {
+		log.Println(sn.Name(), "in announce: changingViewError")
 		return ChangingViewError
 	}
 
@@ -274,7 +315,9 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	// the root is the only node that keeps track of round # internally
 	if sn.IsRoot(view) {
 		// sequential round number
+		sn.roundLock.Lock()
 		sn.Round = Round
+		sn.roundLock.Unlock()
 
 		// Create my back link to previous round
 		sn.SetBackLink(Round)
@@ -305,9 +348,8 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 // Create round lasting secret and commit point v and V
 // Initialize log structure for the round
 func (sn *Node) initCommitCrypto(Round int) {
-	sn.roundLock.RLock()
+	sn.roundLock.Lock()
 	round := sn.Rounds[Round]
-	sn.roundLock.RUnlock()
 	// generate secret and point commitment for this round
 	rand := sn.suite.Cipher([]byte(sn.Name()))
 	round.Log = SNLog{}
@@ -319,11 +361,13 @@ func (sn *Node) initCommitCrypto(Round int) {
 
 	round.X_hat = sn.suite.Point().Null()
 	sn.add(round.X_hat, sn.PubKey)
+	sn.roundLock.Unlock()
 }
 
 func (sn *Node) Commit(view int, Round int) error {
 	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
+	comch := sn.ComCh[Round]
 	sn.roundLock.RUnlock()
 	// update max seen round
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
@@ -338,7 +382,7 @@ func (sn *Node) Commit(view int, Round int) error {
 
 	// wait on commits from children
 	sn.UpdateTimeout()
-	messgs := sn.waitOn(view, sn.ComCh[Round], sn.Timeout(), "commits")
+	messgs := sn.waitOn(view, comch, sn.Timeout(), "commits")
 
 	sn.roundLock.Lock()
 	delete(sn.ComCh, Round)
@@ -613,24 +657,32 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 	}
 
 	if sn.TimeForViewChange() {
-		atomic.SwapInt64(&sn.AmNextRoot, FALSE)
-		if sn.RootFor(view+1) == sn.Name() {
-			atomic.SwapInt64(&sn.AmNextRoot, TRUE)
-		}
-
-		anr := atomic.LoadInt64(&sn.AmNextRoot)
-		if anr == TRUE {
-			log.Println(sn.Name(), "INITIATING VIEW CHANGE")
-			// create new view
-			nextViewNo := view + 1
-			nextParent := ""
-			vcm := &ViewChangeMessage{ViewNo: nextViewNo}
-			sn.ViewChange(nextViewNo, nextParent, vcm)
-		}
-
+		sn.TryViewChange(view + 1)
 	}
 
 	return err
+}
+
+func (sn *Node) TryViewChange(view int) {
+	atomic.StoreInt64(&sn.ChangingView, TRUE)
+
+	// check who the new view root it
+	atomic.SwapInt64(&sn.AmNextRoot, FALSE)
+	if sn.RootFor(view) == sn.Name() {
+		atomic.SwapInt64(&sn.AmNextRoot, TRUE)
+	}
+
+	// take action if new view root
+	anr := atomic.LoadInt64(&sn.AmNextRoot)
+	if anr == TRUE {
+		log.Println(sn.Name(), "INITIATING VIEW CHANGE")
+		// create new view
+		nextViewNo := view
+		nextParent := ""
+		vcm := &ViewChangeMessage{ViewNo: nextViewNo}
+		sn.ViewChange(nextViewNo, nextParent, vcm)
+	}
+
 }
 
 // Called *only* by root node after receiving all commits
@@ -711,6 +763,7 @@ func (sn *Node) TimeForViewChange() bool {
 	rpv := atomic.LoadInt64(&RoundsPerView)
 	// if this round is last one for this view
 	if lsr%rpv == 0 {
+		log.Println(sn.Name(), "TIME FOR VIEWCHANGE")
 		return true
 	}
 

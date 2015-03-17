@@ -25,6 +25,7 @@ const (
 	Response
 	ViewChange
 	ViewAccepted
+	ViewConfirmed
 	Default // for internal use
 	Error
 )
@@ -38,6 +39,7 @@ type SigningMessage struct {
 	Chm  *ChallengeMessage
 	Rm   *ResponseMessage
 	Vcm  *ViewChangeMessage
+	Vcfm *ViewConfirmedMessage
 	Vam  *ViewAcceptedMessage
 	Err  *ErrorMessage
 	From string
@@ -123,5 +125,12 @@ type ViewChangeMessage struct {
 // Sent up by a node to signal to its parent that the nodes in
 // its subtree have accepted the new view
 type ViewAcceptedMessage struct {
+	ViewNo int
+	Votes  int // number of nodes in my subtree who accepted view ViewNo
+}
+
+// initiated by Root to confirm >2/3 of nodes accepted ViewNo
+// TODO: maybe send equivalent of ChallengeMessage to allow verifying view confirm
+type ViewConfirmedMessage struct {
 	ViewNo int
 }

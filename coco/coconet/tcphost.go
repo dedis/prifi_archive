@@ -108,6 +108,7 @@ func (h *TCPHost) Listen() error {
 	h.listener = ln
 	go func() {
 		for {
+			var err error
 			conn, err := ln.Accept()
 			if err != nil {
 				log.Errorln("failed to accept connection: ", err)
@@ -386,6 +387,7 @@ func (h *TCPHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler)
 	// Try to send the message to all children
 	// If at least on of the attempts fails, return a non-nil error
 	var err error
+	var errLock sync.Mutex
 	children := h.views.Children(view)
 	if len(data) != len(children) {
 		panic("number of messages passed down != number of children")
@@ -410,7 +412,9 @@ func (h *TCPHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler)
 				h.peerLock.RUnlock()
 				if ready {
 					if e := conn.Put(data[i]); e != nil {
+						errLock.Lock()
 						err = e
+						errLock.Unlock()
 					}
 					return
 				}

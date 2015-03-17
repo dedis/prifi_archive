@@ -322,6 +322,7 @@ func (h *GoHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) erro
 // PutDown sends messages to its children on the given view, potentially timing out.
 func (h *GoHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler) error {
 	var err error
+	var errLock sync.Mutex
 	children := h.views.Children(view)
 	if len(data) != len(children) {
 		panic("number of messages passed down != number of children")
@@ -344,7 +345,9 @@ func (h *GoHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler) 
 				if ready {
 					e := conn.Put(data[i])
 					if e != nil {
+						errLock.Lock()
 						err = e
+						errLock.Unlock()
 					}
 					return
 				}

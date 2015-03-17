@@ -49,7 +49,10 @@ func NewTCPConn(hostname string) *TCPConn {
 }
 
 func (tc *TCPConn) Closed() bool {
-	return tc.closed
+	tc.encLock.Lock()
+	closed := tc.closed
+	tc.encLock.Unlock()
+	return closed
 }
 
 // Connect connects to the endpoint specified.

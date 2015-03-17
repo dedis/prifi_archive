@@ -94,7 +94,7 @@ func (sn *Node) SendLocalMerkleProof(view int, chm *ChallengeMessage) error {
 		// log.Println("*****")
 		// log.Println(sn.Name(), chm.Round, proofForClient)
 		if coco.DEBUG == true {
-			sn.VerifyAllProofs(chm, proofForClient)
+			sn.VerifyAllProofs(view, chm, proofForClient)
 		}
 
 		// 'reply' to client
@@ -183,13 +183,14 @@ func (sn *Node) checkChildrenProofs(Round int) {
 	}
 }
 
-func (sn *Node) VerifyAllProofs(chm *ChallengeMessage, proofForClient proof.Proof) {
+func (sn *Node) VerifyAllProofs(view int, chm *ChallengeMessage, proofForClient proof.Proof) {
 	sn.roundLock.RLock()
 	round := sn.Rounds[chm.Round]
 	sn.roundLock.RUnlock()
 	// proof from client to my root
 	proof.CheckProof(sn.Suite().Hash, round.MTRoot, round.LocalMTRoot, round.Proofs["local"])
 	// proof from my root to big root
+	log.Println(sn.Name(), "veryfing for view", view)
 	proof.CheckProof(sn.Suite().Hash, chm.MTRoot, round.MTRoot, chm.Proof)
 	// proof from client to big root
 	proof.CheckProof(sn.Suite().Hash, chm.MTRoot, round.LocalMTRoot, proofForClient)

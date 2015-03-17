@@ -107,7 +107,10 @@ func (c *GoConn) Connect() error {
 }
 
 func (c *GoConn) Closed() bool {
-	return c.closed
+	c.dir.Lock()
+	closed := c.closed
+	c.dir.Unlock()
+	return closed
 }
 
 // Close implements the Conn Close interface.

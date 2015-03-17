@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/net/context"
+
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
@@ -37,8 +39,10 @@ type Node struct {
 	coconet.Host
 
 	// Signing Node will Fail at FailureRate probability
-	FailureRate int
-	Rand        *rand.Rand
+	FailureRate         int
+	Rand                *rand.Rand
+	FailAsRootEvery     int
+	FailAsFollowerEvery int
 
 	Type   Type
 	Height int
@@ -73,13 +77,16 @@ type Node struct {
 	viewChangeCh chan string
 	ChangingView int64 // TRUE if node is currently engaged in changing the view
 	AmNextRoot   int64 // determined when new view is needed
-	ViewNo       int   // *only* used by Root( by annoucer)
+	ViewNo       int64 // *only* used by Root( by annoucer)
 
 	VamChLock sync.Mutex
 	VamCh     chan *SigningMessage // a channel for ViewAcceptedMessages
 
 	timeout  time.Duration
 	timeLock sync.RWMutex
+
+	hbLock    sync.Mutex
+	heartbeat *time.Timer
 }
 
 func (sn *Node) ViewChangeCh() chan string {
@@ -142,6 +149,7 @@ func (sn *Node) StartSigningRound() error {
 	// report view is being change, and sleep before retrying
 	changingView := atomic.LoadInt64(&sn.ChangingView)
 	if changingView == TRUE {
+		log.Println(sn.Name(), "start signing round: changingViewError")
 		return ChangingViewError
 	}
 
@@ -154,12 +162,16 @@ func (sn *Node) StartSigningRound() error {
 	var firstRoundTime time.Duration
 	var totalTime time.Duration
 
+	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
+	var cancelederr error
 	go func() {
-		err := sn.Announce(sn.ViewNo, &AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		err := sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)), &AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
 
 		if err != nil {
 			log.Println("Signature fails if at least one node says it failed")
 			log.Errorln(err)
+			cancelederr = err
+			cancel()
 		}
 	}()
 
@@ -176,11 +188,13 @@ func (sn *Node) StartSigningRound() error {
 		firstRoundTime = time.Since(first)
 		sn.logFirstPhase(firstRoundTime)
 		break
-
 	case err := <-sn.closed:
 		return err
-	case <-time.After(MAX_WILLING_TO_WAIT):
-		log.Fatal("Really bad. Round did not finish commit phase and did not report network errors." + strconv.Itoa(sn.nRounds))
+	case <-ctx.Done():
+		log.Errorln(ctx.Err())
+		if ctx.Err() == context.Canceled {
+			return cancelederr
+		}
 		return errors.New("Really bad. Round did not finish commit phase and did not report network errors.")
 	}
 
@@ -200,9 +214,12 @@ func (sn *Node) StartSigningRound() error {
 		return nil
 	case err := <-sn.closed:
 		return err
-	case <-time.After(MAX_WILLING_TO_WAIT):
-		log.Fatal("Really bad. Round did not finish respond phase and did not report network errors.")
-		return errors.New("Really bad. Round did not finish respond phase and did not report network errors.")
+	case <-ctx.Done():
+		log.Errorln(ctx.Err())
+		if ctx.Err() == context.Canceled {
+			return cancelederr
+		}
+		return errors.New("Really bad. Round did not finish response phase and did not report network errors.")
 	}
 
 }
@@ -221,7 +238,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 
-	sn.viewChangeCh = make(chan string, 1)
+	sn.viewChangeCh = make(chan string, 10)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -245,7 +262,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.closed = make(chan error, 2)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
-	sn.viewChangeCh = make(chan string, 1)
+	sn.viewChangeCh = make(chan string, 10)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -290,10 +307,17 @@ func (sn *Node) Done() chan int {
 }
 
 func (sn *Node) LastRound() int64 {
-	return sn.LastSeenRound
+	return atomic.LoadInt64(&sn.LastSeenRound)
+}
+
+func (sn *Node) SetLastSeenRound(round int64) {
+	atomic.StoreInt64(&sn.LastSeenRound, round)
 }
 
 func (sn *Node) CommitedFor(round *Round) bool {
+	sn.roundLock.RLock()
+	defer sn.roundLock.RUnlock()
+
 	if round.Log.v != nil {
 		return true
 	}
@@ -335,6 +359,10 @@ func (sn *Node) SetBackLink(Round int) {
 	if prevRound >= FIRST_ROUND {
 		// My Backlink = Hash(prevRound, sn.Rounds[prevRound].BackLink, sn.Rounds[prevRound].MTRoot)
 		h := sn.suite.Hash()
+		if sn.Rounds[prevRound] == nil {
+			log.Errorln(sn.Name(), "not setting back link")
+			return
+		}
 		h.Write(intToByteSlice(prevRound))
 		h.Write(sn.Rounds[prevRound].BackLink)
 		h.Write(sn.Rounds[prevRound].MTRoot)

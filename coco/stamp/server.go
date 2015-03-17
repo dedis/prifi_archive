@@ -207,7 +207,7 @@ func (s *Server) runAsRoot(nRounds int) string {
 		case <-ticker:
 
 			start := time.Now()
-			log.Println(s.Name(), "is STAMP SERVER STARTING SIGNING ROUND FOR:", s.LastRound(), "of", nRounds)
+			log.Println(s.Name(), "is STAMP SERVER STARTING SIGNING ROUND FOR:", s.LastRound()+1, "of", nRounds)
 
 			err := s.StartSigningRound()
 			if err == sign.ChangingViewError {
@@ -216,6 +216,8 @@ func (s *Server) runAsRoot(nRounds int) string {
 					"file": logutils.File(),
 					"type": "view_change",
 				}).Info("Tried to stary signing round on " + s.Name() + " but it reports view change in progress")
+				// skip # of failed round
+				s.SetLastSeenRound(s.LastRound() + 1)
 				break
 			}
 
@@ -236,8 +238,6 @@ func (s *Server) runAsRoot(nRounds int) string {
 				log.Errorln(s.Name(), "reports exceeded the max round: terminating", s.LastRound(), ">=", nRounds)
 				return "close"
 			}
-
-			break
 		}
 	}
 }
