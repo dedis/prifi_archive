@@ -91,7 +91,7 @@ func main() {
 		}(p)
 	}
 	// killssh processes on users
-	cliutils.SshRunStdout("tamas", "users.isi.deterlab.net", "killall ssh scp deter 2>/dev/null 1>/dev/null")
+	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh scp deter 2>/dev/null 1>/dev/null")
 
 	// parse the hosts.txt file to create a separate list (and file)
 	// of physical nodes and virtual nodes. Such that each host on line i, in phys.txt
@@ -178,7 +178,7 @@ func main() {
 			log.Fatal("error unable to rsync file into remote directory:", err)
 		}
 	}
-	err = cliutils.Rsync("tamas", "users.isi.deterlab.net", "remote", "")
+	err = cliutils.Rsync("dvisher", "users.isi.deterlab.net", "remote", "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -198,10 +198,10 @@ func main() {
 		"ssh",
 		"-t",
 		"-t",
-		"tamas@users.isi.deterlab.net",
+		"dvisher@users.isi.deterlab.net",
 		"-L",
 		"8080:"+masterLogger+":10000")
-	cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		log.Fatal("failed to setup portforwarding for logging server")
 	}
@@ -209,7 +209,7 @@ func main() {
 	// run the deter lab boss nodes process
 	// it will be responsible for forwarding the files and running the individual
 	// timestamping servers
-	log.Fatal(cliutils.SshRunStdout("tamas", "users.isi.deterlab.net",
+	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net",
 		"GOMAXPROCS=8 remote/deter -nmsgs="+strconv.Itoa(nmsgs)+
 			" -hpn="+strconv.Itoa(hpn)+
 			" -bf="+strconv.Itoa(bf)+
