@@ -173,11 +173,6 @@ func (s *Server) ConnectToLogger() {
 	log.Println("Connecting to Logger")
 	lh, err := logutils.NewLoggerHook(s.Logger, s.Hostname, s.App)
 	log.Println("Connected to Logger")
-	if err != nil {
-		log.WithFields(log.Fields{
-			"file": logutils.File(),
-		}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
-	}
 	log.AddHook(lh)
 }
 
