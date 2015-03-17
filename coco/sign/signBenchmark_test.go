@@ -15,7 +15,7 @@ import (
 // one after the other by the root (one signature per message created)
 func SimpleRoundsThroughput(N int, b *testing.B) {
 	hc, _ := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
-	hc.Run(sign.PubKey)
+	hc.Run(false, sign.PubKey)
 
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < N; i++ {

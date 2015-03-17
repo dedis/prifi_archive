@@ -141,6 +141,7 @@ retry:
 			observed := avg / 1000 // set avg to messages per milliseconds
 			observed = 1 / observed
 			rs.Rate = observed
+			rs.Times = cms.Times
 			if root_done {
 				break
 			}
