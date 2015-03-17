@@ -103,7 +103,7 @@ func main() {
 		phys = append(phys, physVirt[i])
 		virt = append(virt, physVirt[i+1])
 	}
-	nloggers := 4
+	nloggers := 3
 	// only use the number of machines that we need
 	phys = phys[:nmachs+nloggers]
 	virt = virt[:nmachs+nloggers]
@@ -124,8 +124,8 @@ func main() {
 	masterLogger := phys[0]
 	// slaveLogger1 := phys[1]
 	// slaveLogger2 := phys[2]
-	virt = virt[4:]
-	phys = phys[4:]
+	virt = virt[3:]
+	phys = phys[3:]
 	t, hostnames, depth, err := graphs.TreeFromList(virt, hpn, bf)
 	log.Println("DEPTH:", depth)
 	log.Println("TOTAL HOSTS:", len(hostnames))
