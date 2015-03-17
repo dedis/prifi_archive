@@ -37,7 +37,7 @@ import (
 
 var rootname string
 
-func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait string) string {
+func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerport, rootwait string) string {
 	total := ""
 	for _, n := range names {
 		amroot := " -amroot=false"
@@ -45,6 +45,8 @@ func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait 
 			amroot = " -amroot=true"
 		}
 		total += "(cd remote; sudo ./forkexec -rootwait=" + rootwait +
+			" -rfail=" + strconv.Itoa(rFail) +
+			" -ffail=" + strconv.Itoa(fFail) +
 			" -failures=" + strconv.Itoa(failures) +
 			" -physaddr=" + phys +
 			" -hostname=" + n +
@@ -63,6 +65,8 @@ var bf string
 var debug string
 var rate int
 var failures int
+var rFail int
+var fFail int
 var rounds int
 var kill bool
 
@@ -73,6 +77,8 @@ func init() {
 	flag.StringVar(&debug, "debug", "false", "set debug mode")
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rFail, "rfail", 0, "number of consecutive rounds each root runs before it fails")
+	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
 	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
 }
@@ -213,7 +219,7 @@ func main() {
 		if len(virts) == 0 {
 			continue
 		}
-		cmd := GenExecCmd(failures, phys, virts, loggerports[i], rootwait)
+		cmd := GenExecCmd(rFail, fFail, failures, phys, virts, loggerports[i], rootwait)
 		i = (i + 1) % len(loggerports)
 		wg.Add(1)
 		//time.Sleep(500 * time.Millisecond)

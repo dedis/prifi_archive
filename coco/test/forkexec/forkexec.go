@@ -20,6 +20,8 @@ var physaddr string
 var rootwait int
 var debug bool
 var failures int
+var rFail int
+var fFail int
 var rounds int
 var amroot bool
 
@@ -35,6 +37,8 @@ func init() {
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
 	flag.BoolVar(&debug, "debug", false, "set debugging")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rFail, "rfail", 0, "number of consecutive rounds each root runs before it fails")
+	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.BoolVar(&amroot, "amroot", false, "am I root")
 }
 
@@ -59,6 +63,8 @@ func main() {
 	// recombine the flags for exec to use
 	args := []string{
 		"-failures=" + strconv.Itoa(failures),
+		"-rfail=" + strconv.Itoa(rFail),
+		"-ffail=" + strconv.Itoa(fFail),
 		"-hostname=" + hostname,
 		"-config=" + configFile,
 		"-logger=" + logger,

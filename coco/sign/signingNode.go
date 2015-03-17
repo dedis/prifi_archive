@@ -69,6 +69,7 @@ type Node struct {
 	LogTest   []byte                       // for testing purposes
 	peerKeys  map[string]abstract.Point    // map of all peer public keys
 
+	closing     chan bool  // inner channel to stop getting message when closing
 	closed      chan error // error sent when connection closed
 	done        chan int   // round number sent when round done
 	commitsDone chan int   // round number sent when announce/commit phase done
@@ -237,6 +238,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closed = make(chan error, 10)
+	sn.closing = make(chan bool, 10)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 
@@ -261,6 +263,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
+	sn.closing = make(chan bool, 10)
 	sn.closed = make(chan error, 2)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)

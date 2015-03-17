@@ -34,8 +34,10 @@ func (sn *Node) Listen() error {
 }
 
 func (sn *Node) Close() {
+	sn.heartbeat.Stop()
 	sn.closed <- io.EOF
-	log.Printf("signing node: closing: %p", sn)
+	sn.closing <- true
+	log.Printf("signing node: closing: %s", sn.Name())
 	sn.Host.Close()
 }
 
@@ -73,97 +75,103 @@ func (sn *Node) get() error {
 	sn.heartbeat = time.NewTimer(500 * time.Second)
 
 	for {
-		nm, ok1 := <-msgchan
-		err, ok2 := <-errchan
+		select {
+		case <-sn.closing:
+			sn.heartbeat.Stop()
+			return nil
+		default:
+			nm, ok1 := <-msgchan
+			err, ok2 := <-errchan
 
-		if !ok1 || !ok2 || err == coconet.ErrClosed || err == io.EOF {
-			log.Errorf("getting from closed host")
-			sn.Close()
-			return coconet.ErrClosed
-		}
-
-		// if it is a non-fatal error try again
-		if err != nil {
-			log.Errorln("error getting message: continueing")
-			continue
-		}
-		// interpret network message as Siging Message
-		sm := nm.Data.(*SigningMessage)
-		//log.Printf("got message: %#v with error %v\n", sm, err)
-		sm.From = nm.From
-		go func(sm *SigningMessage) {
-			switch sm.Type {
-			// if it is a bad message just ignore it
-			default:
-				return
-			case Announcement:
-				if !sn.IsParent(sm.View, sm.From) {
-					log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
-					return
-				}
-				sn.ReceivedHeartbeat(sm.View)
-				if err := sn.Announce(sm.View, sm.Am); err != nil {
-					log.Errorln(sn.Name(), "announce error:", err)
-				}
-
-			case Challenge:
-				if !sn.IsParent(sm.View, sm.From) {
-					log.Fatalln(sn.Name(), "received challenge from non-parent on view", sm.View)
-					return
-				}
-
-				if err := sn.Challenge(sm.View, sm.Chm); err != nil {
-					log.Errorln(sn.Name(), "challenge error:", err)
-				}
-
-			// if it is a commitment or response it is from the child
-			case Commitment:
-				if !sn.IsChild(sm.View, sm.From) {
-					log.Fatalln(sn.Name(), "received commitment from non-child on view", sm.View)
-					return
-				}
-
-				// shove message on commit channel for its round
-				round := sm.Com.Round
-				sn.roundLock.Lock()
-				comch := sn.ComCh[round]
-				sn.roundLock.Unlock()
-				comch <- sm
-			case Response:
-				if !sn.IsChild(sm.View, sm.From) {
-					log.Fatalln(sn.Name(), "received response from non-child on view", sm.View)
-					return
-				}
-
-				// shove message on response channel for its round
-				round := sm.Rm.Round
-				sn.roundLock.Lock()
-				rmch := sn.RmCh[round]
-				sn.roundLock.Unlock()
-				rmch <- sm
-			case ViewChange:
-				if int64(sm.View) > sn.alreadyTriedView {
-					sn.alreadyTriedView = int64(sm.View)
-					sn.ReceivedHeartbeat(sm.View)
-				}
-				if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
-					if err == coconet.ErrClosed || err == io.EOF {
-						sn.closed <- io.EOF
-						sn.Close()
-					}
-					log.Errorln("view change error:", err)
-				}
-			case ViewAccepted:
-				sn.VamChLock.Lock()
-				sn.VamCh <- sm
-				sn.VamChLock.Unlock()
-			case ViewConfirmed:
-				sn.ReceivedHeartbeat(sm.View)
-				sn.ViewChanged(sm.Vcfm.ViewNo, sm)
-			case Error:
-				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
+			if !ok1 || !ok2 || err == coconet.ErrClosed || err == io.EOF {
+				log.Errorf("getting from closed host")
+				sn.Close()
+				return coconet.ErrClosed
 			}
-		}(sm)
+
+			// if it is a non-fatal error try again
+			if err != nil {
+				log.Errorln("error getting message: continueing")
+				continue
+			}
+			// interpret network message as Siging Message
+			sm := nm.Data.(*SigningMessage)
+			//log.Printf("got message: %#v with error %v\n", sm, err)
+			sm.From = nm.From
+			go func(sm *SigningMessage) {
+				switch sm.Type {
+				// if it is a bad message just ignore it
+				default:
+					return
+				case Announcement:
+					if !sn.IsParent(sm.View, sm.From) {
+						log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
+						return
+					}
+					sn.ReceivedHeartbeat(sm.View)
+					if err := sn.Announce(sm.View, sm.Am); err != nil {
+						log.Errorln(sn.Name(), "announce error:", err)
+					}
+
+				case Challenge:
+					if !sn.IsParent(sm.View, sm.From) {
+						log.Fatalln(sn.Name(), "received challenge from non-parent on view", sm.View)
+						return
+					}
+
+					if err := sn.Challenge(sm.View, sm.Chm); err != nil {
+						log.Errorln(sn.Name(), "challenge error:", err)
+					}
+
+				// if it is a commitment or response it is from the child
+				case Commitment:
+					if !sn.IsChild(sm.View, sm.From) {
+						log.Fatalln(sn.Name(), "received commitment from non-child on view", sm.View)
+						return
+					}
+
+					// shove message on commit channel for its round
+					round := sm.Com.Round
+					sn.roundLock.Lock()
+					comch := sn.ComCh[round]
+					sn.roundLock.Unlock()
+					comch <- sm
+				case Response:
+					if !sn.IsChild(sm.View, sm.From) {
+						log.Fatalln(sn.Name(), "received response from non-child on view", sm.View)
+						return
+					}
+
+					// shove message on response channel for its round
+					round := sm.Rm.Round
+					sn.roundLock.Lock()
+					rmch := sn.RmCh[round]
+					sn.roundLock.Unlock()
+					rmch <- sm
+				case ViewChange:
+					if int64(sm.View) > sn.alreadyTriedView {
+						sn.alreadyTriedView = int64(sm.View)
+						sn.ReceivedHeartbeat(sm.View)
+					}
+					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
+						if err == coconet.ErrClosed || err == io.EOF {
+							sn.closed <- io.EOF
+							sn.Close()
+						}
+						log.Errorln("view change error:", err)
+					}
+				case ViewAccepted:
+					sn.VamChLock.Lock()
+					sn.VamCh <- sm
+					sn.VamChLock.Unlock()
+				case ViewConfirmed:
+					sn.ReceivedHeartbeat(sm.View)
+					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
+				case Error:
+					log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
+				}
+			}(sm)
+		}
 	}
 
 }
@@ -263,10 +271,8 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			From: sn.Name(),
 			Type: ViewAccepted,
 			Vam:  vam})
-		if err != nil {
-			log.Fatal(sn.Name(), "Error Putting up ViewAccepted Message")
-		}
 
+		return err
 	}
 
 	return err
@@ -338,12 +344,15 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	}
 
 	if !sn.IsRoot(view) && sn.FailAsFollowerEvery != 0 && am.Round%sn.FailAsFollowerEvery == 0 {
-		log.WithFields(log.Fields{
-			"file":  logutils.File(),
-			"type":  "follower_failure",
-			"round": am.Round,
-		}).Info(sn.Name() + "Follower imposed failure")
-		return errors.New(sn.Name() + "was imposed follower failure on round" + strconv.Itoa(am.Round))
+		// when failure rate given fail with that probability
+		if (sn.FailureRate > 0 && sn.ShouldIFail("")) || (sn.FailureRate == 0) {
+			log.WithFields(log.Fields{
+				"file":  logutils.File(),
+				"type":  "follower_failure",
+				"round": am.Round,
+			}).Info(sn.Name() + "Follower imposed failure")
+			return errors.New(sn.Name() + "was imposed follower failure on round" + strconv.Itoa(am.Round))
+		}
 	}
 
 	// doing this before annoucing children to avoid major drama

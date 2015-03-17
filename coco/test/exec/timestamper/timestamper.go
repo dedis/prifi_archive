@@ -12,7 +12,7 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failureRate int) {
+func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failureRate, rFail, fFail int) {
 	if debug {
 		coco.DEBUG = true
 	}
@@ -27,7 +27,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 	//log.Println("loading configuration")
 	var hc *oldconfig.HostConfig
 	var err error
-	if failureRate > 0 {
+	if failureRate > 0 || fFail > 0 {
 		hc, err = oldconfig.LoadConfig(cfg, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname, Faulty: true})
 
 	} else {
@@ -43,6 +43,19 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 		for i := range hc.SNodes {
 			hc.SNodes[i].FailureRate = failureRate
 		}
+	}
+
+	// set root failures
+	if rFail > 0 {
+		for i := range hc.SNodes {
+			hc.SNodes[i].FailAsRootEvery = rFail
+
+		}
+	}
+	// set follower failures
+	// a follower fails on %ffail round with failureRate probability
+	for i := range hc.SNodes {
+		hc.SNodes[i].FailAsFollowerEvery = fFail
 	}
 
 	// run this specific host

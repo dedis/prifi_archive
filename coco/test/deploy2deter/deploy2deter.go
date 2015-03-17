@@ -40,6 +40,8 @@ var nmsgs int
 var debug bool
 var rate int
 var failures int
+var rFail int
+var fFail int
 var kill bool
 var rounds int
 var nmachs int
@@ -51,6 +53,8 @@ func init() {
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages: if rate > 0 then used")
 	flag.BoolVar(&debug, "debug", false, "run in debugging mode")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rFail, "rfail", 0, "number of consecutive rounds each root runs before it fails")
+	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run for")
 	flag.BoolVar(&kill, "kill", false, "kill all running processes (but don't start anything)")
 	flag.IntVar(&nmachs, "nmachs", 32, "number of machines to use")
@@ -206,5 +210,7 @@ func main() {
 			" -rounds="+strconv.Itoa(rounds)+
 			" -debug="+strconv.FormatBool(debug)+
 			" -failures="+strconv.Itoa(failures)+
+			" -rfail="+strconv.Itoa(rFail)+
+			" -ffail="+strconv.Itoa(fFail)+
 			" -kill="+strconv.FormatBool(kill)))
 }

@@ -37,6 +37,8 @@ var physaddr string
 var rootwait int
 var debug bool
 var failures int
+var rFail int
+var fFail int
 var amroot bool
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
@@ -51,6 +53,8 @@ func init() {
 	flag.IntVar(&rootwait, "rootwait", 30, "the amount of time the root should wait")
 	flag.BoolVar(&debug, "debug", false, "set debugging")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rFail, "rfail", 0, "number of consecutive rounds each root runs before it fails")
+	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.BoolVar(&amroot, "amroot", false, "am I root node")
 }
 
@@ -96,6 +100,6 @@ func main() {
 		log.Println(http.ListenAndServe(net.JoinHostPort(physaddr, strconv.Itoa(p+2)), nil))
 	}()
 
-	log.Println("!!!!!!!!!!!!!!!Running timestamp with FAILURE: ", failures)
-	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, failures)
+	log.Println("!!!!!!!!!!!!!!!Running timestamp with rFail and fFail: ", rFail, fFail)
+	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, failures, rFail, fFail)
 }

@@ -45,6 +45,8 @@ type T struct {
 	rate     int
 	rounds   int
 	failures int
+	rFail    int
+	fFail    int
 }
 
 var DefaultMachs int = 32
@@ -68,7 +70,9 @@ func RunTest(t T) (RunStats, error) {
 	rate := fmt.Sprintf("-rate=%d", t.rate)
 	rounds := fmt.Sprintf("-rounds=%d", t.rounds)
 	failures := fmt.Sprintf("-failures=%d", t.failures)
-	cmd := exec.Command("./deploy2deter", nmachs, hpn, nmsgs, bf, rate, rounds, debug, failures)
+	rFail := fmt.Sprintf("-rfail=%d", t.rFail)
+	fFail := fmt.Sprintf("-ffail=%d", t.fFail)
+	cmd := exec.Command("./deploy2deter", nmachs, hpn, nmsgs, bf, rate, rounds, debug, failures, rFail, fFail)
 	log.Println("RUNNING TEST:", cmd.Args)
 	log.Println("FAILURES PERCENT:", t.failures)
 	cmd.Stdout = os.Stdout
@@ -166,50 +170,50 @@ func RunTests(name string, ts []T) {
 // high and low specify how many milliseconds between messages
 func RateLoadTest(hpn, bf int) []T {
 	return []T{
-		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0}, // never send a message
-		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0}, // one per round
-		{DefaultMachs, hpn, bf, 500, DefaultRounds, 0},  // 10 per round
-		{DefaultMachs, hpn, bf, 50, DefaultRounds, 0},   // 100 per round
-		{DefaultMachs, hpn, bf, 30, DefaultRounds, 0},   // 1000 per round
+		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0}, // never send a message
+		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0}, // one per round
+		{DefaultMachs, hpn, bf, 500, DefaultRounds, 0, 0, 0},  // 10 per round
+		{DefaultMachs, hpn, bf, 50, DefaultRounds, 0, 0, 0},   // 100 per round
+		{DefaultMachs, hpn, bf, 30, DefaultRounds, 0, 0, 0},   // 1000 per round
 	}
 }
 
 func DepthTest(hpn, low, high, step int) []T {
 	ts := make([]T, 0)
 	for bf := low; bf <= high; bf += step {
-		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0})
+		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0})
 	}
 	return ts
 }
 
 func DepthTestFixed(hpn int) []T {
 	return []T{
-		{DefaultMachs, hpn, 1, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 2, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 4, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 8, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 16, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 32, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 64, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 128, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 256, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 512, 30, DefaultRounds, 0},
+		{DefaultMachs, hpn, 1, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 2, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 4, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 8, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 16, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 32, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 64, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 128, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 256, 30, DefaultRounds, 0, 0, 0},
+		{DefaultMachs, hpn, 512, 30, DefaultRounds, 0, 0, 0},
 	}
 }
 
 func ScaleTest(bf, low, high, mult int) []T {
 	ts := make([]T, 0)
 	for hpn := low; hpn <= high; hpn *= mult {
-		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0})
+		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0})
 	}
 	return ts
 }
 
 // hpn=1, bf=2, rate=5000, failures=20
 var FailureTests = []T{
-	{DefaultMachs, 1, 2, 5000, 5, 10},
-	{DefaultMachs, 10, 2, 5000, 5, 5},
-	{DefaultMachs, 1, 2, 5000, 5, 0},
+	{DefaultMachs, 1, 2, 5000, 5, 10, 0, 0},
+	{DefaultMachs, 10, 2, 5000, 5, 5, 0, 0},
+	{DefaultMachs, 1, 2, 5000, 5, 0, 0, 0},
 }
 
 func FullTests() []T {
@@ -224,7 +228,7 @@ func FullTests() []T {
 		for _, hpn := range hpns {
 			for _, bf := range bfs {
 				for _, rate := range rates {
-					tests = append(tests, T{nmach, hpn, bf, rate, DefaultRounds, failures})
+					tests = append(tests, T{nmach, hpn, bf, rate, DefaultRounds, failures, 0, 0})
 				}
 			}
 		}

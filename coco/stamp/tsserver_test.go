@@ -92,7 +92,7 @@ func TestTSSViewChange2(t *testing.T) {
 	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
-// Root of View fails on its 3rd round of being root
+// Each View Root fails on its 3rd round of being root
 // View Change is initiated as a result
 // RoundsPerView very large to avoid other reason for ViewChange
 func TestTSSViewChangeOnRootFailure(t *testing.T) {
@@ -109,10 +109,8 @@ func TestTSSViewChangeOnRootFailure(t *testing.T) {
 	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
-// Root of View fails on its 3rd round of being root
-// View Change is initiated as a result
-// RoundsPerView very large to avoid other reason for ViewChange
-func TestTSSViewChangeOnFollowerFailure(t *testing.T) {
+// Faulty Followers fail every 3rd round
+func TestTSSViewChangeOnFollowerFailureNoRate(t *testing.T) {
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
 	atomic.StoreInt64(&sign.RoundsPerView, 1000)
 	nRounds := 12
@@ -124,6 +122,26 @@ func TestTSSViewChangeOnFollowerFailure(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 3)
 	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
+		t.Fatal(err)
+	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
+}
+
+// Faulty Followers fail every 3rd round, with probability failureRate%
+func TestTSSViewChangeOnFollowerFailureWithRate(t *testing.T) {
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 1000)
+	nRounds := 12
+	failAsRootEvery := 0 // never fail on announce
+	failureRate := 10
+	// selected faultyNodes will fail on commit and response every 3 rounds
+	// if they are followers in the view
+	failAsFollowerEvery := 3
+
+	faultyNodes := make([]int, 0)
+	faultyNodes = append(faultyNodes, 2, 3)
+	if err := runTSSIntegration(1, nRounds, failureRate, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,10 +194,9 @@ func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsF
 	stampers := make([]*stamp.Server, len(hostConfig.SNodes))
 	for i := range stampers {
 		stampers[i] = stamp.NewServer(hostConfig.SNodes[i])
-		// defer func() {
-		// 	log.Infoln("CLOSING STAMPER**********")
-		// 	hostConfig.SNodes[i].Close()
-		// }()
+		defer func() {
+			hostConfig.SNodes[i].Close()
+		}()
 	}
 
 	clientsLists := make([][]*stamp.Client, len(hostConfig.SNodes[1:]))
