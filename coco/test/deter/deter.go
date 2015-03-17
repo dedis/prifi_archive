@@ -126,13 +126,15 @@ func main() {
 	}
 	wg.Wait()
 
+	nloggers := 4
 	masterLogger := phys[0]
 	slaveLogger1 := phys[1]
 	slaveLogger2 := phys[2]
-	loggers := []string{masterLogger, slaveLogger1, slaveLogger2}
+	slaveLogger3 := phys[3]
+	loggers := []string{masterLogger, slaveLogger1, slaveLogger2, slaveLogger3}
 
-	phys = phys[3:]
-	virt = virt[3:]
+	phys = phys[nloggers:]
+	virt = virt[nloggers:]
 
 	// Read in and parse the configuration file
 	file, err := ioutil.ReadFile("remote/cfg.json")

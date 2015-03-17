@@ -65,8 +65,9 @@ func main() {
 		log.Errorln("TERMINATING HOST")
 	}()
 
+	amroot = true
 	// connect with the logging server
-	if logger != "" && (debug || amroot) {
+	if logger != "" && (amroot || debug) {
 		// blocks until we can connect to the logger
 		log.Println("Connecting to Logger")
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
