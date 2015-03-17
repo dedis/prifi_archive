@@ -35,6 +35,10 @@ type Server struct {
 	rLock     sync.Mutex
 	maxRounds int
 	closeChan chan bool
+
+	Logger   string
+	Hostname string
+	App      string
 }
 
 func NewServer(signer coco.Signer) *Server {
@@ -165,12 +169,26 @@ func (s *Server) ListenToClients() {
 	}
 }
 
+func (s *Server) ConnectToLogger() {
+	log.Println("Connecting to Logger")
+	lh, err := logutils.NewLoggerHook(s.Logger, s.Hostname, s.App)
+	log.Println("Connected to Logger")
+	if err != nil {
+		log.WithFields(log.Fields{
+			"file": logutils.File(),
+		}).Fatalln("ERROR SETTING UP LOGGING SERVER:", err)
+	}
+	log.AddHook(lh)
+}
+
 func (s *Server) LogReRun(nextRole string, curRole string) {
 	if nextRole == "root" {
 		var messg = s.Name() + " became root"
 		if curRole == "root" {
 			messg = s.Name() + " remained root"
 		}
+
+		s.ConnectToLogger()
 
 		log.WithFields(log.Fields{
 			"file": logutils.File(),

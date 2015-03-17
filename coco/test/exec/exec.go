@@ -65,7 +65,6 @@ func main() {
 		log.Errorln("TERMINATING HOST")
 	}()
 
-	amroot = true
 	// connect with the logging server
 	if logger != "" && (amroot || debug) {
 		// blocks until we can connect to the logger
@@ -102,5 +101,5 @@ func main() {
 	}()
 
 	log.Println("!!!!!!!!!!!!!!!Running timestamp with rFail and fFail: ", rFail, fFail)
-	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, failures, rFail, fFail)
+	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, failures, rFail, fFail, logger, hostname, app)
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failureRate, rFail, fFail int) {
+func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failureRate, rFail, fFail int, logger string) {
 	if debug {
 		coco.DEBUG = true
 	}
@@ -113,6 +113,9 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 		for _, s := range stampers {
 			// only listen if this is the hostname specified
 			if s.Name() == hostname {
+				s.Logger = logger
+				s.Hostname = hostname
+				s.App = app
 				if s.IsRoot(0) {
 					log.Println("RUNNING ROOT SERVER AT:", hostname, rounds)
 					log.Printf("Waiting: %d s\n", rootwait)
