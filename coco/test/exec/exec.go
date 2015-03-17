@@ -101,5 +101,5 @@ func main() {
 	}()
 
 	log.Println("!!!!!!!!!!!!!!!Running timestamp with rFail and fFail: ", rFail, fFail)
-	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, failures, rFail, fFail, logger, hostname, app)
+	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, failures, rFail, fFail, logger)
 }
