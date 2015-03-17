@@ -113,7 +113,6 @@ func TestTSSViewChangeOnRootFailure(t *testing.T) {
 // View Change is initiated as a result
 // RoundsPerView very large to avoid other reason for ViewChange
 func TestTSSViewChangeOnFollowerFailure(t *testing.T) {
-	return
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
 	atomic.StoreInt64(&sign.RoundsPerView, 1000)
 	nRounds := 12
@@ -123,7 +122,7 @@ func TestTSSViewChangeOnFollowerFailure(t *testing.T) {
 	failAsFollowerEvery := 3
 
 	faultyNodes := make([]int, 0)
-	faultyNodes = append(faultyNodes, 2, 4)
+	faultyNodes = append(faultyNodes, 2, 3)
 	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +157,6 @@ func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsF
 	// set root failures
 	if failAsRootEvery > 0 {
 		for i := range hostConfig.SNodes {
-			// hostConfig.SNodes[i].FailAsRootEvery = (i + 1) * 2
 			hostConfig.SNodes[i].FailAsRootEvery = failAsRootEvery
 
 		}
@@ -296,6 +294,9 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 	// not mixing view changes with faults
 	aux := atomic.LoadInt64(&sign.RoundsPerView)
 	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	// not mixing view changes with faults
+	aux2 := sign.HEARTBEAT
+	sign.HEARTBEAT = 4 * sign.ROUND_TIME
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
@@ -304,6 +305,7 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 	}
 
 	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.HEARTBEAT = aux2
 }
 
 func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {

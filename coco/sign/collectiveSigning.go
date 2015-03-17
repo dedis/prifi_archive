@@ -13,6 +13,7 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
+	"github.com/dedis/prifi/coco/test/logutils"
 	// "strconv"
 	// "os"
 )
@@ -141,7 +142,10 @@ func (sn *Node) get() error {
 				sn.roundLock.Unlock()
 				rmch <- sm
 			case ViewChange:
-				sn.ReceivedHeartbeat(sm.View)
+				if int64(sm.View) > sn.alreadyTriedView {
+					sn.alreadyTriedView = int64(sm.View)
+					sn.ReceivedHeartbeat(sm.View)
+				}
 				if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 					if err == coconet.ErrClosed || err == io.EOF {
 						sn.closed <- io.EOF
@@ -167,7 +171,7 @@ func (sn *Node) get() error {
 func (sn *Node) ReceivedHeartbeat(view int) {
 	sn.hbLock.Lock()
 	sn.heartbeat.Stop()
-	sn.heartbeat = time.AfterFunc(ROUND_TIME+ROUND_TIME/2, func() {
+	sn.heartbeat = time.AfterFunc(HEARTBEAT, func() {
 		log.Println(sn.Name(), "NO HEARTBEAT - try view change")
 		sn.TryViewChange(view + 1)
 	})
@@ -288,9 +292,14 @@ func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	if sn.IsRoot(view) && sn.FailAsRootEvery != 0 {
 		if sn.RoundsAsRoot != 0 && sn.RoundsAsRoot%int64(sn.FailAsRootEvery) == 0 {
-			log.Errorln(sn.Name()+"was imposed failure on round"+strconv.Itoa(am.Round), "after round", sn.RoundsAsRoot, "rounds")
+			log.Errorln(sn.Name() + "was imposed root failure on round" + strconv.Itoa(am.Round))
+			log.WithFields(log.Fields{
+				"file":  logutils.File(),
+				"type":  "root_failure",
+				"round": am.Round,
+			}).Info(sn.Name() + "Root imposed failure")
+			sn.TryViewChange(view + 1)
 			return ChangingViewError
-
 		}
 	}
 
@@ -328,9 +337,18 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 		// sn.SetAccountableRound(Round)
 	}
 
+	if !sn.IsRoot(view) && sn.FailAsFollowerEvery != 0 && am.Round%sn.FailAsFollowerEvery == 0 {
+		log.WithFields(log.Fields{
+			"file":  logutils.File(),
+			"type":  "follower_failure",
+			"round": am.Round,
+		}).Info(sn.Name() + "Follower imposed failure")
+		return errors.New(sn.Name() + "was imposed follower failure on round" + strconv.Itoa(am.Round))
+	}
+
 	// doing this before annoucing children to avoid major drama
 	if !sn.IsRoot(view) && sn.ShouldIFail("commit") {
-		log.Warn(sn.Name(), "not commiting for round", Round)
+		log.Warn(sn.Name(), "not announcing or commiting for round", Round)
 		return nil
 	}
 
@@ -756,7 +774,7 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 		nel := len(round.ExceptionList)
 		nhl := len(sn.HostList)
 		p := strconv.FormatFloat(float64(nel)/float64(nhl), 'f', 6, 64)
-		log.Infoln(sn.Name(), "failed", nel, "out of", nhl, "percentage", p)
+		log.Infoln(sn.Name(), "reports", nel, "out of", nhl, "percentage", p, "failed in round", Round)
 		// log.Println(round.MTRoot)
 	}
 	return nil
