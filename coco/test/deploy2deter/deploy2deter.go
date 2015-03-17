@@ -182,6 +182,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	killssh := exec.Command("pkill", "-f", "ssh -t -t")
+	killssh.Stdout = os.Stdout
+	killssh.Stderr = os.Stderr
+	err = killssh.Run()
+	if err != nil {
+		log.Print(err)
+	}
 
 	// setup port forwarding for viewing log server
 	// ssh -L 8080:pcXXX:80 username@users.isi.deterlab.net

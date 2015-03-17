@@ -134,12 +134,7 @@ func RunTests(name string, ts []T) {
 		var runs []RunStats
 		for r := 0; r < nTimes; r++ {
 			run, err := RunTest(t)
-			if err == nil {
-				runs = append(runs, run)
-				if stopOnSuccess {
-					break
-				}
-			} else {
+			if err != nil {
 				log.Println("error running test:", err)
 			}
 
@@ -149,6 +144,13 @@ func RunTests(name string, ts []T) {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Run()
+			if err == nil {
+				runs = append(runs, run)
+				if stopOnSuccess {
+					break
+				}
+			}
+
 		}
 
 		if len(runs) == 0 {
@@ -227,11 +229,15 @@ func ScaleTest(bf, low, high, mult int) []T {
 	return ts
 }
 
-// hpn=1, bf=2, rate=5000, failures=20
+// nmachs=32, hpn=128, bf=16, rate=500, failures=20, root failures, failures
 var FailureTests = []T{
-	{DefaultMachs, 1, 2, 5000, 5, 10, 0, 0},
-	{DefaultMachs, 10, 2, 5000, 5, 5, 0, 0},
-	{DefaultMachs, 1, 2, 5000, 5, 0, 0, 0},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 128, 16, 30, 50, 5, 0, 0},
+	{DefaultMachs, 128, 16, 30, 50, 10, 0, 0},
+	{DefaultMachs, 128, 16, 30, 50, 0, 5, 0},
+	{DefaultMachs, 128, 16, 30, 50, 0, 10, 0},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 5},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 10},
 }
 
 func FullTests() []T {
@@ -272,17 +278,19 @@ func main() {
 	// t := FailureTests
 	// RunTests("failure_test.csv", t)
 
-	t := ScaleTest(10, 1, 100, 2)
-	RunTests("scale_test.csv", t)
+	t := FailureTests
+	RunTests("failure_test", t)
+	// t = ScaleTest(10, 1, 100, 2)
+	// RunTests("scale_test.csv", t)
 	// how does the branching factor effect speed
-	t = DepthTestFixed(100)
-	RunTests("depth_test.csv", t)
+	// t = DepthTestFixed(100)
+	// RunTests("depth_test.csv", t)
 
 	// load test the client
-	t = RateLoadTest(40, 10)
-	RunTests("load_rate_test_bf10.csv", t)
-	t = RateLoadTest(40, 50)
-	RunTests("load_rate_test_bf50.csv", t)
+	// t = RateLoadTest(40, 10)
+	// RunTests("load_rate_test_bf10.csv", t)
+	// t = RateLoadTest(40, 50)
+	// RunTests("load_rate_test_bf50.csv", t)
 
 }
 
@@ -294,7 +302,7 @@ func MkTestDir() {
 }
 
 func TestFile(name string) string {
-	return "test_data/" + name
+	return "test_data/" + name + ".csv"
 }
 
 func SetDebug(b bool) {
