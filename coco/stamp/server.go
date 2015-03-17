@@ -171,7 +171,7 @@ func (s *Server) ListenToClients() {
 
 func (s *Server) ConnectToLogger() {
 	log.Println("Connecting to Logger")
-	lh, err := logutils.NewLoggerHook(s.Logger, s.Hostname, s.App)
+	lh, _ := logutils.NewLoggerHook(s.Logger, s.Hostname, s.App)
 	log.Println("Connected to Logger")
 	log.AddHook(lh)
 }
