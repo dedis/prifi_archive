@@ -35,6 +35,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 )
 
@@ -160,6 +161,23 @@ func RunTests(name string, ts []T) {
 		if err != nil {
 			log.Fatal("error syncing data to test file:", err)
 		}
+
+		cl, err := os.OpenFile(
+			TestFile("client_latency_"+name+"_"+strconv.Itoa(i)),
+			os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
+		if err != nil {
+			log.Fatal("error opening test file:", err)
+		}
+		_, err = cl.Write(rs[i].TimesCSV())
+		if err != nil {
+			log.Fatal("error writing client latencies to file:", err)
+		}
+		err = cl.Sync()
+		if err != nil {
+			log.Fatal("error syncing data to latency file:", err)
+		}
+		cl.Close()
+
 	}
 }
 

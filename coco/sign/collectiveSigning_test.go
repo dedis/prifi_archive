@@ -187,7 +187,7 @@ func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int)
 		}
 	}
 
-	err = hostConfig.Run(signType)
+	err = hostConfig.Run(false, signType)
 	if err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func TestTreeFromBigConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hc.Run(sign.MerkleTree)
+	err = hc.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestMultipleRounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	N := 5
-	err = hostConfig.Run(sign.MerkleTree)
+	err = hostConfig.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestTCPStaticConfig(t *testing.T) {
 		time.Sleep(1 * time.Second)
 	}()
 
-	err = hc.Run(sign.MerkleTree)
+	err = hc.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 		}
 		time.Sleep(1 * time.Second)
 	}()
-	err = hc.Run(sign.MerkleTree)
+	err = hc.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal("error running:", err)
 	}
@@ -312,7 +312,7 @@ func TestViewChangeChan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = hostConfig.Run(sign.MerkleTree)
+	err = hostConfig.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestViewChangeTCP(t *testing.T) {
 		}
 		time.Sleep(1 * time.Second)
 	}()
-	err = hc.Run(sign.MerkleTree)
+	err = hc.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal("error running:", err)
 	}
@@ -378,7 +378,7 @@ func TestViewChangeTCP(t *testing.T) {
 // 	if err != nil {
 // 		t.Error()
 // 	}
-// 	err = hc.Run(sign.MerkleTree)
+// 	err = hc.Run(false, sign.MerkleTree)
 // 	if err != nil {
 // 		t.Fatal(err)
 // 	}

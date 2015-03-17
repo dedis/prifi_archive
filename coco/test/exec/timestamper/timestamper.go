@@ -47,7 +47,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 
 	// run this specific host
 	log.Println("RUNNING HOST CONFIG")
-	err = hc.Run(sign.MerkleTree, hostname)
+	err = hc.Run(app != "sign", sign.MerkleTree, hostname)
 	if err != nil {
 		log.Fatal(err)
 	}
