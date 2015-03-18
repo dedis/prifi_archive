@@ -91,6 +91,7 @@ retry:
 			t := time.Since(t0)
 
 			if err == io.EOF {
+				log.Printf("CLIENT DONE: terminating")
 				log.Fatal(AggregateStats(buck, roundsAfter, times))
 			} else if err != nil {
 				// ignore errors

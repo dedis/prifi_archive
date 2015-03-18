@@ -104,8 +104,6 @@ func RunTest(t T) (RunStats, error) {
 	case <-time.After(10 * time.Minute):
 		return rs, errors.New("timed out")
 	}
-
-	return rs, nil
 }
 
 // RunTests runs the given tests and puts the output into the
@@ -231,13 +229,11 @@ func ScaleTest(bf, low, high, mult int) []T {
 
 // nmachs=32, hpn=128, bf=16, rate=500, failures=20, root failures, failures
 var FailureTests = []T{
-	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0},
-	{DefaultMachs, 128, 16, 30, 50, 5, 0, 0},
-	{DefaultMachs, 128, 16, 30, 50, 10, 0, 0},
-	{DefaultMachs, 128, 16, 30, 50, 0, 5, 0},
-	{DefaultMachs, 128, 16, 30, 50, 0, 10, 0},
-	{DefaultMachs, 128, 16, 30, 50, 0, 0, 5},
-	{DefaultMachs, 128, 16, 30, 50, 0, 0, 10},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 64, 16, 30, 50, 0, 5, 0},
+	{DefaultMachs, 64, 16, 30, 50, 0, 10, 0},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 5},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10},
 }
 
 func FullTests() []T {
@@ -259,6 +255,17 @@ func FullTests() []T {
 	}
 
 	return tests
+}
+
+var HostsTest = []T{
+	{DefaultMachs, 1, 2, 30, 50, 0, 0, 0},
+	{DefaultMachs, 2, 3, 30, 50, 0, 0, 0},
+	{DefaultMachs, 4, 3, 30, 50, 0, 0, 0},
+	{DefaultMachs, 8, 8, 30, 50, 0, 0, 0},
+	{DefaultMachs, 16, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 32, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0},
 }
 
 func main() {

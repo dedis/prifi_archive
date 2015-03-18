@@ -170,6 +170,10 @@ func (s *Server) ListenToClients() {
 }
 
 func (s *Server) ConnectToLogger() {
+	if s.Logger == "" || s.Hostname == "" || s.App == "" {
+		log.Println("skipping connect to logger")
+		return
+	}
 	log.Println("Connecting to Logger")
 	lh, _ := logutils.NewLoggerHook(s.Logger, s.Hostname, s.App)
 	log.Println("Connected to Logger")
@@ -183,7 +187,7 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 			messg = s.Name() + " remained root"
 		}
 
-		s.ConnectToLogger()
+		go s.ConnectToLogger()
 
 		log.WithFields(log.Fields{
 			"file": logutils.File(),

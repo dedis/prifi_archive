@@ -37,7 +37,7 @@ func init() {
 func TestTSSIntegrationHealthy(t *testing.T) {
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
-	if err := runTSSIntegration(4, 4, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+	if err := runTSSIntegration(4, 10, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -196,6 +196,7 @@ func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsF
 		stampers[i] = stamp.NewServer(hostConfig.SNodes[i])
 		defer func() {
 			hostConfig.SNodes[i].Close()
+			time.Sleep(1 * time.Second)
 		}()
 	}
 

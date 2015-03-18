@@ -213,7 +213,7 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 					return messgs
 				}
 			case <-time.After(timeout):
-				log.Warnln(sn.Name(), "timeouted on", what, timeout, "got", len(messgs), "out of", nChildren)
+				log.Warnln(sn.Name(), "timeouted on", what, timeout, "got", len(messgs), "out of", nChildren, "for view", view)
 				return messgs
 			}
 		}
