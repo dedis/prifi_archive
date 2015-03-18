@@ -68,6 +68,8 @@ func (sm *SigningMessage) UnmarshalBinary(data []byte) error {
 type AnnouncementMessage struct {
 	LogTest []byte // TODO: change LogTest to Messg
 	Round   int
+
+	VoteRequest VoteRequest
 }
 
 type CommitmentMessage struct {
@@ -81,6 +83,8 @@ type CommitmentMessage struct {
 	// annoucement from root
 	ExceptionList []abstract.Point
 
+	CountedVotes []CountedVotes // CountedVotes contains a subtree's votes
+
 	Round int
 }
 
@@ -90,6 +94,8 @@ type ChallengeMessage struct {
 	// Depth  byte
 	MTRoot hashid.HashId // the very root of the big Merkle Tree
 	Proof  proof.Proof   // Merkle Path of Proofs from root to us
+
+	CountedVotes []CountedVotes //  CountedVotes contains the whole tree's votes
 
 	Round int
 }
