@@ -284,9 +284,9 @@ func main() {
 	// DefaultRounds = 5
 	// t := FailureTests
 	// RunTests("failure_test.csv", t)
-
-	t := FailureTests
-	RunTests("failure_test", t)
+	RunTests("host_test", HostsTest)
+	// t := FailureTests
+	// RunTests("failure_test", t)
 	// t = ScaleTest(10, 1, 100, 2)
 	// RunTests("scale_test.csv", t)
 	// how does the branching factor effect speed
