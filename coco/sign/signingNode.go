@@ -31,6 +31,8 @@ const (
 	// Basic Signature removes all Merkle Trees
 	// Collective public keys are still created and can be used
 	PubKey
+	// Basic Signature on aggregated votes
+	Vote
 )
 
 var _ coco.Signer = &Node{}
@@ -327,6 +329,41 @@ func (sn *Node) CommitedFor(round *Round) bool {
 		return true
 	}
 	return false
+}
+
+// Cast on vote for Vote
+func (sn *Node) AddVotes(Round int, vreq *VoteRequest) {
+	round := sn.Rounds[Round]
+	cv := round.CountedVotes
+	vresp := &VoteResponse{Name: sn.Name()}
+
+	// Decide own vote and add it to round's counted cotes
+	if vreq.Name == sn.Name() && vreq.Action == "remove" {
+		cv.Against += 1
+	} else {
+		// accept what admin requested with x% probability
+		forProbability := 100
+		if p := sn.Rand.Int() % 100; p < forProbability {
+			cv.For += 1
+			vresp.Accepted = true
+		} else {
+			cv.Against += 1
+		}
+	}
+
+	// log.Infoln(sn.Name(), "added votes. for:", cv.For, "against:", cv.Against)
+
+	// Generate signature on CountedVotes with OwnVote *counted* in
+	b, err := cv.MarshalBinary()
+	if err != nil {
+		log.Fatal("Marshal Binary on Counted Votes failed")
+	}
+	rand := sn.suite.Cipher([]byte(sn.Name() + strconv.Itoa(Round)))
+	vresp.Sig = ElGamalSign(sn.suite, rand, b, sn.PrivKey)
+
+	// Add VoteResponse to Votes
+	cv.Votes = append(cv.Votes, vresp)
+	round.CountedVotes = cv
 }
 
 func intToByteSlice(Round int) []byte {

@@ -3,6 +3,7 @@ package sign
 import (
 	"errors"
 	"io"
+	"sort"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -322,6 +323,7 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	Round := am.Round
 	sn.roundLock.Lock()
 	sn.Rounds[Round] = NewRound()
+	sn.Rounds[Round].VoteRequest = am.VoteRequest
 	sn.ComCh[Round] = make(chan *SigningMessage, sn.NChildren(view))
 	sn.RmCh[Round] = make(chan *SigningMessage, sn.NChildren(view))
 	sn.roundLock.Unlock()
@@ -373,7 +375,7 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 		return err
 	}
 
-	return sn.Commit(view, am.Round)
+	return sn.Commit(view, am)
 }
 
 // Create round lasting secret and commit point v and V
@@ -395,8 +397,9 @@ func (sn *Node) initCommitCrypto(Round int) {
 	sn.roundLock.Unlock()
 }
 
-func (sn *Node) Commit(view int, Round int) error {
+func (sn *Node) Commit(view int, am *AnnouncementMessage) error {
 	sn.roundLock.RLock()
+	Round := am.Round
 	round := sn.Rounds[Round]
 	comch := sn.ComCh[Round]
 	sn.roundLock.RUnlock()
@@ -450,11 +453,21 @@ func (sn *Node) Commit(view int, Round int) error {
 			// add good child server to combined public key, and point commit
 			sn.add(round.X_hat, sm.Com.X_hat)
 			sn.add(round.Log.V_hat, sm.Com.V_hat)
+
+			// count children votes
+			round.CountedVotes.Votes = append(round.CountedVotes.Votes, sm.Com.CountedVotes.Votes...)
+			round.CountedVotes.For += sm.Com.CountedVotes.For
+			round.CountedVotes.Against += sm.Com.CountedVotes.Against
+
 		}
 
 	}
 
 	if sn.Type == PubKey {
+		return sn.actOnCommits(view, Round)
+	} else if sn.Type == Vote {
+		sort.Sort(ByVoteResponse(round.CountedVotes.Votes))
+		sn.AddVotes(Round, am.VoteRequest)
 		return sn.actOnCommits(view, Round)
 	} else {
 		sn.AddChildrenMerkleRoots(Round)
@@ -484,6 +497,7 @@ func (sn *Node) actOnCommits(view, Round int) error {
 			X_hat:         round.X_hat,
 			MTRoot:        round.MTRoot,
 			ExceptionList: round.ExceptionList,
+			CountedVotes:  round.CountedVotes,
 			Round:         Round}
 
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
@@ -716,9 +730,24 @@ func (sn *Node) TryViewChange(view int) {
 
 }
 
+func (sn *Node) ActOnVotes(round *Round) {
+	abstained := len(sn.HostList) - round.CountedVotes.For - round.CountedVotes.Against
+
+	if round.CountedVotes.For > 2*len(sn.HostList)/3 {
+		log.Infoln("Vote Request for", round.VoteRequest.Name, "be", round.VoteRequest.Action, "APPROVED")
+	} else {
+		log.Infoln("Vote Request for", round.VoteRequest.Name, "be", round.VoteRequest.Action, "REJECTED")
+	}
+
+	log.Infoln("Votes FOR:", round.CountedVotes.For, "Votes AGAINST:", round.CountedVotes.Against, "Absteined:", abstained)
+
+	// for _, vote := range round.CountedVotes.Votes {
+	// 	log.Infoln(vote.Name, vote.Accepted)
+	// }
+}
+
 // Called *only* by root node after receiving all commits
 func (sn *Node) FinalizeCommits(view int, Round int) error {
-	//Round := sn.Round // *only* in root
 	sn.roundLock.RLock()
 	round := sn.Rounds[Round]
 	sn.roundLock.RUnlock()
@@ -726,16 +755,25 @@ func (sn *Node) FinalizeCommits(view int, Round int) error {
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
 		round.c = hashElGamal(sn.suite, sn.LogTest, round.Log.V_hat)
+	} else if sn.Type == Vote {
+		b, err := round.CountedVotes.MarshalBinary()
+		if err != nil {
+			log.Fatal("Marshal Binary failed for CountedVotes")
+		}
+		round.c = hashElGamal(sn.suite, b, round.Log.V_hat)
+		sn.ActOnVotes(round)
+
 	} else {
 		round.c = hashElGamal(sn.suite, round.MTRoot, round.Log.V_hat)
 	}
 
 	proof := make([]hashid.HashId, 0)
 	err := sn.Challenge(view, &ChallengeMessage{
-		C:      round.c,
-		MTRoot: round.MTRoot,
-		Proof:  proof,
-		Round:  Round})
+		C:            round.c,
+		MTRoot:       round.MTRoot,
+		Proof:        proof,
+		Round:        Round,
+		CountedVotes: round.CountedVotes})
 	return err
 }
 

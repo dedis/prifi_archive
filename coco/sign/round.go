@@ -41,11 +41,16 @@ type Round struct {
 
 	BackLink hashid.HashId
 	AccRound []byte
+
+	VoteRequest  *VoteRequest  // Vote Request vote on in the round
+	CountedVotes *CountedVotes // CountedVotes contains a subtree's votes
 }
 
 func NewRound() *Round {
 	round := &Round{}
 	round.ExceptionList = make([]abstract.Point, 0)
+	round.CountedVotes = &CountedVotes{}
+	round.CountedVotes.Votes = make([]*VoteResponse, 0)
 
 	return round
 }

@@ -160,6 +160,12 @@ func TestSmallConfigFaulty2(t *testing.T) {
 	}
 }
 
+func TestSmallConfigVote(t *testing.T) {
+	if err := runTreeSmallConfig(sign.Vote, 0); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int) error {
 	var hostConfig *oldconfig.HostConfig
 	var err error
