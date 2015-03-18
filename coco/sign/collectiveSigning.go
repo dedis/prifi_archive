@@ -524,8 +524,15 @@ func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 	if round == nil {
 		return nil
 	}
+
 	// register challenge
 	round.c = chm.C
+
+	// TODO: decide when/ how is best to remove the node
+	// could remove it during next round before propagating annoucement
+
+	// act on decision of aggregated votes
+	sn.actOnVotes(view, chm.CountedVotes, round.VoteRequest)
 
 	if sn.Type == PubKey {
 		if err := sn.SendChildrenChallenges(view, chm); err != nil {
@@ -730,17 +737,31 @@ func (sn *Node) TryViewChange(view int) {
 
 }
 
-func (sn *Node) ActOnVotes(round *Round) {
-	abstained := len(sn.HostList) - round.CountedVotes.For - round.CountedVotes.Against
+func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
+	// more than 2/3 of all nodes must vote For, to accept vote request
+	accepted := cv.For > 2*len(sn.HostList)/3
 
-	if round.CountedVotes.For > 2*len(sn.HostList)/3 {
-		log.Infoln("Vote Request for", round.VoteRequest.Name, "be", round.VoteRequest.Action, "APPROVED")
+	if sn.IsRoot(view) {
+		abstained := len(sn.HostList) - cv.For - cv.Against
+		if accepted {
+			log.Infoln("Vote Request for", vreq.Name, "be", vreq.Action, "ACCEPTED")
+		} else {
+			log.Infoln("Vote Request for", vreq.Name, "be", vreq.Action, "REJECTED")
+		}
+		log.Infoln("Votes FOR:", cv.For, "; Votes AGAINST:", cv.Against, "; Absteined:", abstained)
 	} else {
-		log.Infoln("Vote Request for", round.VoteRequest.Name, "be", round.VoteRequest.Action, "REJECTED")
+		if accepted {
+			if vreq.Action == "add" {
+				sn.AddPendingPeer(view, vreq.Name)
+			} else if vreq.Action == "remove" {
+				sn.RemovePeer(view, vreq.Name)
+			} else {
+				log.Errorln("Vote Request contains uknown action:", vreq.Action)
+			}
+		}
 	}
 
-	log.Infoln("Votes FOR:", round.CountedVotes.For, "Votes AGAINST:", round.CountedVotes.Against, "Absteined:", abstained)
-
+	// List out all votes
 	// for _, vote := range round.CountedVotes.Votes {
 	// 	log.Infoln(vote.Name, vote.Accepted)
 	// }
@@ -761,7 +782,6 @@ func (sn *Node) FinalizeCommits(view int, Round int) error {
 			log.Fatal("Marshal Binary failed for CountedVotes")
 		}
 		round.c = hashElGamal(sn.suite, b, round.Log.V_hat)
-		sn.ActOnVotes(round)
 
 	} else {
 		round.c = hashElGamal(sn.suite, round.MTRoot, round.Log.V_hat)

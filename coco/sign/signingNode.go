@@ -333,6 +333,11 @@ func (sn *Node) CommitedFor(round *Round) bool {
 
 // Cast on vote for Vote
 func (sn *Node) AddVotes(Round int, vreq *VoteRequest) {
+	if vreq.Action != "add" && vreq.Action != "remove" {
+		log.Errorln("Vote Request contains uknown action:", vreq.Action)
+		return
+	}
+
 	round := sn.Rounds[Round]
 	cv := round.CountedVotes
 	vresp := &VoteResponse{Name: sn.Name()}

@@ -30,6 +30,10 @@ type TCPHost struct {
 	ready map[string]bool
 	peers map[string]Conn
 
+	// peers asking to join overall tree structure of nodes
+	// via connection to current host node
+	pendingPeers map[string]Conn
+
 	pkLock sync.RWMutex
 	Pubkey abstract.Point // own public key
 
@@ -275,6 +279,34 @@ func (h *TCPHost) AddChildren(view int, cs ...string) {
 
 		h.views.AddChildren(view, c)
 	}
+}
+
+func (h *TCPHost) AddPendingPeer(view int, name string) {
+	h.peerLock.Lock()
+	if _, ok := h.pendingPeers[name]; !ok {
+		log.Errorln("Attempt to add peer not present in pending peers")
+		return
+	}
+	delete(h.pendingPeers, name)
+
+	h.peers[name] = NewTCPConn(name)
+	h.views.AddChildren(view, name)
+
+	h.peerLock.Unlock()
+}
+
+func (h *TCPHost) RemovePeer(view int, name string) {
+	h.peerLock.Lock()
+
+	// make sure we don't remove our parent
+	if h.IsParent(view, name) {
+		return
+	}
+
+	h.views.RemoveChild(view, name)
+	delete(h.peers, name)
+
+	h.peerLock.Unlock()
 }
 
 // NChildren returns the number of children for the specified view.

@@ -39,6 +39,10 @@ type GoHost struct {
 	dir      *GoDirectory
 	ready    map[string]bool
 
+	// peers asking to join overall tree structure of nodes
+	// via connection to current host node
+	pendingPeers map[string]Conn
+
 	suite abstract.Suite
 
 	pkLock sync.RWMutex
@@ -210,6 +214,34 @@ func (h *GoHost) AddChildren(view int, cs ...string) {
 		h.peerLock.RUnlock()
 		h.views.AddChildren(view, c)
 	}
+}
+
+func (h *GoHost) AddPendingPeer(view int, name string) {
+	h.peerLock.Lock()
+	if _, ok := h.pendingPeers[name]; !ok {
+		log.Errorln("Attempt to add peer not present in pending peers")
+		return
+	}
+	delete(h.pendingPeers, name)
+
+	h.peers[name] = NewTCPConn(name)
+	h.views.AddChildren(view, name)
+
+	h.peerLock.Unlock()
+}
+
+func (h *GoHost) RemovePeer(view int, name string) {
+	h.peerLock.Lock()
+
+	// make sure we don't remove our parent
+	if h.IsParent(view, name) {
+		return
+	}
+
+	h.views.RemoveChild(view, name)
+	delete(h.peers, name)
+
+	h.peerLock.Unlock()
 }
 
 // Close closes the connections.

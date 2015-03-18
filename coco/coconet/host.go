@@ -83,4 +83,8 @@ type Host interface {
 	Pool() sync.Pool
 	// SetPool sets the pool of the Host.
 	SetPool(sync.Pool)
+
+	// Functions to allow group evolution
+	AddPendingPeer(view int, name string)
+	RemovePeer(view int, name string)
 }
