@@ -109,6 +109,7 @@ func (sn *Node) get() error {
 						return
 					}
 					sn.ReceivedHeartbeat(sm.View)
+					log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 					if err := sn.Announce(sm.View, sm.Am); err != nil {
 						log.Errorln(sn.Name(), "announce error:", err)
 					}
@@ -153,6 +154,7 @@ func (sn *Node) get() error {
 						sn.alreadyTriedView = int64(sm.View)
 						sn.ReceivedHeartbeat(sm.View)
 					}
+					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
 							sn.closed <- io.EOF
@@ -165,6 +167,7 @@ func (sn *Node) get() error {
 					sn.VamCh <- sm
 					sn.VamChLock.Unlock()
 				case ViewConfirmed:
+					log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
 					sn.ReceivedHeartbeat(sm.View)
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case Error:
@@ -226,6 +229,11 @@ var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted 
 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
+
+	// update max seen round
+	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
+	log.Println("VIEW CHANGE MESSAGE: new Round == %d, oldlsr == %d", vcm.Round, lsr)
 	// check if you are root for this view change
 	iAmNextRoot := FALSE
 	if sn.RootFor(vcm.ViewNo) == sn.Name() {
@@ -304,7 +312,10 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 				"type":  "root_failure",
 				"round": am.Round,
 			}).Info(sn.Name() + "Root imposed failure")
-			sn.TryViewChange(view + 1)
+			// It doesn't make sense to try view change twice
+			// what we essentially end up doing is double setting sn.ViewChanged
+			// it is up to our followers to time us out and go to the next leader
+			// sn.TryViewChange(view + 1)
 			return ChangingViewError
 		}
 	}
@@ -695,6 +706,11 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 }
 
 func (sn *Node) TryViewChange(view int) {
+	changing := atomic.LoadInt64(&sn.ChangingView)
+	if changing == TRUE {
+		return
+	}
+
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
 
 	// check who the new view root it
@@ -706,11 +722,12 @@ func (sn *Node) TryViewChange(view int) {
 	// take action if new view root
 	anr := atomic.LoadInt64(&sn.AmNextRoot)
 	if anr == TRUE {
+		lsr := atomic.LoadInt64(&sn.LastSeenRound)
 		log.Println(sn.Name(), "INITIATING VIEW CHANGE")
 		// create new view
 		nextViewNo := view
 		nextParent := ""
-		vcm := &ViewChangeMessage{ViewNo: nextViewNo}
+		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
 		sn.ViewChange(nextViewNo, nextParent, vcm)
 	}
 
@@ -794,10 +811,9 @@ func (sn *Node) TimeForViewChange() bool {
 	rpv := atomic.LoadInt64(&RoundsPerView)
 	// if this round is last one for this view
 	if lsr%rpv == 0 {
-		log.Println(sn.Name(), "TIME FOR VIEWCHANGE")
+		log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)
 		return true
 	}
-
 	return false
 }
 
