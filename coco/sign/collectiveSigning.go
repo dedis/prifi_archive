@@ -37,13 +37,13 @@ func (sn *Node) Listen() error {
 }
 
 func (sn *Node) Close() {
+	sn.hbLock.Lock()
 	if sn.heartbeat != nil {
-		sn.hbLock.Lock()
 		sn.heartbeat.Stop()
 		sn.heartbeat = nil
 		log.Println("after close", sn.Name(), "has heartbeat=", sn.heartbeat)
-		sn.hbLock.Unlock()
 	}
+	sn.hbLock.Unlock()
 	sn.closed <- io.EOF
 	sn.closing <- true
 	log.Printf("signing node: closing: %s", sn.Name())
@@ -81,14 +81,14 @@ func (sn *Node) get() error {
 	sn.UpdateTimeout()
 	msgchan, errchan := sn.Host.Get()
 	// heartbeat for intiating viewChanges, allows intial 500s setup time
+	sn.hbLock.Lock()
 	sn.heartbeat = time.NewTimer(500 * time.Second)
+	sn.hbLock.Unlock()
 
 	for {
 		select {
 		case <-sn.closing:
-			sn.hbLock.Lock()
-			sn.heartbeat.Stop()
-			sn.hbLock.Unlock()
+			sn.StopHeartbeat()
 			return nil
 		default:
 			nm, ok1 := <-msgchan
@@ -169,7 +169,7 @@ func (sn *Node) get() error {
 						return
 					}
 					sn.lastView = int64(sm.View)
-					sn.heartbeat.Stop()
+					sn.StopHeartbeat()
 					// log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
@@ -183,7 +183,7 @@ func (sn *Node) get() error {
 						log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.lastView)
 						return
 					}
-					sn.heartbeat.Stop()
+					sn.StopHeartbeat()
 					sn.VamChLock.Lock()
 					sn.VamCh <- sm
 					sn.VamChLock.Unlock()
@@ -193,7 +193,7 @@ func (sn *Node) get() error {
 						return
 					}
 					// log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
-					sn.heartbeat.Stop()
+					sn.StopHeartbeat()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case Error:
 					log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
@@ -202,6 +202,12 @@ func (sn *Node) get() error {
 		}
 	}
 
+}
+
+func (sn *Node) StopHeartbeat() {
+	sn.hbLock.Lock()
+	sn.heartbeat.Stop()
+	sn.hbLock.Unlock()
 }
 
 func (sn *Node) ReceivedHeartbeat(view int) {
