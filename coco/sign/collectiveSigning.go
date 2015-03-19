@@ -374,6 +374,7 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 
 	changingView := atomic.LoadInt64(&sn.ChangingView)
 	if changingView == TRUE {
+		log.Println(sn.Name(), "RECEIVED annoucement on", view)
 		return ChangingViewError
 	}
 
