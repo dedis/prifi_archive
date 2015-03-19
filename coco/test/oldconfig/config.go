@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -449,7 +450,9 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	}
 	for _, sn := range hc.SNodes {
 		sn.HostList = make([]string, len(hostList))
-		copy(sn.HostList, hostList)
+		sortable := sort.StringSlice(hostList)
+		sortable.Sort()
+		copy(sn.HostList, sortable)
 	}
 
 	return hc, err
