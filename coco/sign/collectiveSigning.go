@@ -725,6 +725,7 @@ func (sn *Node) TryViewChange(view int) {
 
 	// take action if new view root
 	anr := atomic.LoadInt64(&sn.AmNextRoot)
+
 	if anr == TRUE {
 		lsr := atomic.LoadInt64(&sn.LastSeenRound)
 		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view, sn.HostList)
@@ -733,6 +734,8 @@ func (sn *Node) TryViewChange(view int) {
 		nextParent := ""
 		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
 		sn.ViewChange(nextViewNo, nextParent, vcm)
+	} else {
+		log.Println(sn.Name(), "NOT ROOT:", sn.HostList)
 	}
 
 }
