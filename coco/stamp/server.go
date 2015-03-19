@@ -241,7 +241,7 @@ func (s *Server) runAsRoot(nRounds int) string {
 
 			if err != nil {
 				log.Errorln(err)
-				return ""
+				break
 			}
 
 			elapsed := time.Since(start)
