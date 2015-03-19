@@ -265,9 +265,8 @@ func (h *GoHost) RemovePendingPeer(peer string) {
 	h.PeerLock.Unlock()
 }
 
-func (h *GoHost) RemovePeer(view int, name string) {
-	v := h.views.Views[view]
-	v.RemovePeer(name)
+func (h *GoHost) RemovePeer(view int, name string) bool {
+	return h.views.RemovePeer(view, name)
 }
 
 // Close closes the connections.

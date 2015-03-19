@@ -89,5 +89,5 @@ type Host interface {
 
 	// Functions to allow group evolution
 	AddPendingPeer(view int, name string)
-	RemovePeer(view int, name string)
+	RemovePeer(view int, name string) bool
 }

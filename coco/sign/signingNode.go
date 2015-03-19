@@ -92,6 +92,9 @@ type Node struct {
 
 	hbLock    sync.Mutex
 	heartbeat *time.Timer
+
+	ActionsLock sync.Mutex
+	Actions     []*VoteRequest
 }
 
 func (sn *Node) ViewChangeCh() chan string {
@@ -252,6 +255,8 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
+
+	sn.Actions = make([]*VoteRequest, 0)
 	return sn
 }
 
@@ -277,6 +282,8 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
+
+	sn.Actions = make([]*VoteRequest, 0)
 	return sn
 }
 
@@ -333,6 +340,9 @@ func (sn *Node) CommitedFor(round *Round) bool {
 
 // Cast on vote for Vote
 func (sn *Node) AddVotes(Round int, vreq *VoteRequest) {
+	if vreq == nil {
+		return
+	}
 	if vreq.Action != "add" && vreq.Action != "remove" {
 		log.Errorln("Vote Request contains uknown action:", vreq.Action)
 		return

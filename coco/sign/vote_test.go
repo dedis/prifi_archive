@@ -38,22 +38,9 @@ func TestTreeSmallConfigVote(t *testing.T) {
 		t.Error(err)
 	}
 
-	// Run a round with one less node
-	// hc.SNodes[0].LogTest = []byte("Hello No Voting")
-	// vr = &sign.VoteRequest{}
-
-	// err = hc.SNodes[0].Announce(DefaultView,
-	// 	&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,
-	// 		Round:       2,
-	// 		VoteRequest: vr})
-	// if err != nil {
-	// 	t.Error(err)
-	// }
-
 }
 
 func TestTCPStaticConfigVote(t *testing.T) {
-	return
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
@@ -74,7 +61,7 @@ func TestTCPStaticConfigVote(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("Hello Voting")
-	vr := &sign.VoteRequest{Name: "host2", Action: "remove"}
+	vr := &sign.VoteRequest{Name: hc.SNodes[5].Name(), Action: "remove"}
 
 	err = hc.SNodes[0].Announce(DefaultView,
 		&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,

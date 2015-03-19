@@ -118,7 +118,7 @@ func (sn *Node) get() error {
 						return
 					}
 					sn.ReceivedHeartbeat(sm.View)
-					log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
+					// log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 					if err := sn.Announce(sm.View, sm.Am); err != nil {
 						log.Errorln(sn.Name(), "announce error:", err)
 					}
@@ -163,7 +163,7 @@ func (sn *Node) get() error {
 					if int64(sm.View) > sn.alreadyTriedView {
 						sn.alreadyTriedView = int64(sm.View)
 					}
-					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
+					// log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
 							sn.closed <- io.EOF
@@ -239,12 +239,12 @@ var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted 
 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
+	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	// log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == ", vcm.Round, lsr)
 
 	// update max seen round
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
 	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
 	lsr = atomic.LoadInt64(&sn.LastSeenRound)
-	// log.Println("VIEW CHANGE MESSAGE: new Round == %d, oldlsr == %d", vcm.Round, lsr)
 	// check if you are root for this view change
 	iAmNextRoot := FALSE
 	if sn.RootFor(vcm.ViewNo) == sn.Name() {
@@ -253,11 +253,20 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 
 	// Create a new view, but multiplex information about it using the old view
 	sn.Views().Lock()
-	if _, exists := sn.Views().Views[vcm.ViewNo]; !exists {
+	_, exists := sn.Views().Views[vcm.ViewNo]
+	sn.Views().Unlock()
+	if !exists {
 		children := sn.childrenForNewView(parent)
 		sn.NewView(vcm.ViewNo, parent, children)
 	}
-	sn.Views().Unlock()
+
+	// Apply pending actions (add, remove) on view
+	sn.ActionsLock.Lock()
+	for _, action := range sn.Actions {
+		sn.ApplyAction(vcm.ViewNo, action)
+	}
+	sn.ActionsLock.Unlock()
+
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	// wait for votes from children
@@ -311,9 +320,7 @@ func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 	sn.VamCh = make(chan *SigningMessage, sn.NChildren(view))
 	sn.VamChLock.Unlock()
 
-	// log.Println("bef reg")
 	sn.viewChangeCh <- "regular"
-	// log.Println("after reg")
 
 	// log.Println("in view change, children for view", view, sn.Children(view))
 	sn.multiplexOnChildren(view, sm)
@@ -556,6 +563,7 @@ func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 	round.c = chm.C
 
 	// act on decision of aggregated votes
+	// log.Println(sn.Name(), chm.Round, round.VoteRequest)
 	if round.VoteRequest != nil {
 		sn.actOnVotes(view, chm.CountedVotes, round.VoteRequest)
 	}
@@ -754,9 +762,11 @@ func (sn *Node) TryViewChange(view int) {
 
 	// check who the new view root it
 	atomic.SwapInt64(&sn.AmNextRoot, FALSE)
-	if sn.RootFor(view) == sn.Name() {
+	var rfv string
+	if rfv = sn.RootFor(view); rfv == sn.Name() {
 		atomic.SwapInt64(&sn.AmNextRoot, TRUE)
 	}
+	// log.Println(sn.Name(), "thinks", rfv, "should be root for view", view)
 
 	// take action if new view root
 	anr := atomic.LoadInt64(&sn.AmNextRoot)
@@ -769,14 +779,26 @@ func (sn *Node) TryViewChange(view int) {
 		nextParent := ""
 		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
 		sn.ViewChange(nextViewNo, nextParent, vcm)
-	} else {
-		log.Println(sn.Name(), "NOT ROOT:", sn.HostList)
 	}
 
 }
 
+func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
+	// Apply action on new view
+	if vreq.Action == "add" {
+		sn.AddPendingPeer(view, vreq.Name)
+	} else if vreq.Action == "remove" {
+		if ok := sn.RemovePeer(view, vreq.Name); ok {
+			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
+		}
+	} else {
+		log.Errorln("Vote Request contains uknown action:", vreq.Action)
+	}
+}
+
 func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 	// more than 2/3 of all nodes must vote For, to accept vote request
+	// log.Println(sn.Name(), "act on votes:", cv.For, len(sn.HostList))
 	accepted := cv.For > 2*len(sn.HostList)/3
 	var actionTaken string = "rejected"
 	if accepted {
@@ -792,19 +814,9 @@ func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 
 	// Act on vote Decision
 	if accepted {
-		// Create a new view
-		parent := sn.RootFor(view + 1)
-		children := sn.childrenForNewView(parent)
-		sn.NewView(view+1, parent, children)
-
-		// Apply action on new view
-		if vreq.Action == "add" {
-			sn.AddPendingPeer(view+1, vreq.Name)
-		} else if vreq.Action == "remove" {
-			sn.RemovePeer(view+1, vreq.Name)
-		} else {
-			log.Errorln("Vote Request contains uknown action:", vreq.Action)
-		}
+		sn.ActionsLock.Lock()
+		sn.Actions = append(sn.Actions, vreq)
+		sn.ActionsLock.Unlock()
 
 		// propagate view change if new view leader
 		sn.TryViewChange(view + 1)

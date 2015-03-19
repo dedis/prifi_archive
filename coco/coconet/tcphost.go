@@ -330,9 +330,8 @@ func (h *TCPHost) RemovePendingPeer(peer string) {
 	h.PeerLock.Unlock()
 }
 
-func (h *TCPHost) RemovePeer(view int, name string) {
-	v := h.views.Views[view]
-	v.RemovePeer(name)
+func (h *TCPHost) RemovePeer(view int, name string) bool {
+	return h.views.RemovePeer(view, name)
 }
 
 // NChildren returns the number of children for the specified view.

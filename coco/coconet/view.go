@@ -23,7 +23,7 @@ func (v *View) AddChildren(children ...string) {
 	v.Unlock()
 }
 
-func (v *View) RemoveChild(child string) {
+func (v *View) RemoveChild(child string) bool {
 	v.Lock()
 	defer v.Unlock()
 
@@ -37,19 +37,27 @@ func (v *View) RemoveChild(child string) {
 	}
 	if pos != -1 {
 		v.Children = append(v.Children[:pos], v.Children[pos+1:]...)
+		return true
 	}
+	return false
 }
 
-func (v *View) RemovePeer(name string) {
+func (v *View) RemovePeer(name string) bool {
 	v.Lock()
-	defer v.Unlock()
-
 	// make sure we don't remove our parent
 	if v.Parent == name {
-		return
+		v.Unlock()
+		return false
 	}
+	v.Unlock()
 
-	v.RemoveChild(name)
+	removed := v.RemoveChild(name)
+
+	v.Lock()
+	defer v.Unlock()
+	if len(v.HostList) == 0 {
+		return false
+	}
 
 	var pos int
 	for pos = 0; pos < len(v.HostList); pos++ {
@@ -61,6 +69,8 @@ func (v *View) RemovePeer(name string) {
 	if pos != len(v.HostList) {
 		v.HostList = append(v.HostList[:pos], v.HostList[pos+1:]...)
 	}
+
+	return removed
 }
 
 type Views struct {
@@ -99,9 +109,15 @@ func (v *Views) AddChildren(view int, children ...string) {
 }
 
 func (v *Views) RemoveChild(view int, child string) {
-	v.RLock()
+	v.Lock()
 	v.Views[view].RemoveChild(child)
-	v.RUnlock()
+	v.Unlock()
+}
+
+func (v *Views) RemovePeer(view int, child string) bool {
+	v.Lock()
+	defer v.Unlock()
+	return v.Views[view].RemoveChild(child)
 }
 
 // func (v *Views) RemovePeer(peer string) {
