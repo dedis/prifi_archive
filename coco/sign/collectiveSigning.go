@@ -40,6 +40,8 @@ func (sn *Node) Close() {
 	if sn.heartbeat != nil {
 		sn.hbLock.Lock()
 		sn.heartbeat.Stop()
+		sn.heartbeat = nil
+		log.Println("after close", sn.Name(), "has heartbeat=", sn.heartbeat)
 		sn.hbLock.Unlock()
 	}
 	sn.closed <- io.EOF
@@ -117,6 +119,7 @@ func (sn *Node) get() error {
 						log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
 						return
 					}
+
 					sn.ReceivedHeartbeat(sm.View)
 					// log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 					if err := sn.Announce(sm.View, sm.Am); err != nil {
@@ -129,6 +132,7 @@ func (sn *Node) get() error {
 						return
 					}
 
+					sn.ReceivedHeartbeat(sm.View)
 					if err := sn.Challenge(sm.View, sm.Chm); err != nil {
 						log.Errorln(sn.Name(), "challenge error:", err)
 					}
@@ -159,10 +163,13 @@ func (sn *Node) get() error {
 					sn.roundLock.Unlock()
 					rmch <- sm
 				case ViewChange:
-					sn.heartbeat.Stop()
-					if int64(sm.View) > sn.alreadyTriedView {
-						sn.alreadyTriedView = int64(sm.View)
+					// if we have already seen this view before skip it
+					if int64(sm.View) <= sn.lastView {
+						log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.lastView)
+						return
 					}
+					sn.lastView = int64(sm.View)
+					sn.heartbeat.Stop()
 					// log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
@@ -172,12 +179,20 @@ func (sn *Node) get() error {
 						log.Errorln("view change error:", err)
 					}
 				case ViewAccepted:
+					if int64(sm.View) < sn.lastView {
+						log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.lastView)
+						return
+					}
 					sn.heartbeat.Stop()
 					sn.VamChLock.Lock()
 					sn.VamCh <- sm
 					sn.VamChLock.Unlock()
 				case ViewConfirmed:
-					log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
+					if int64(sm.View) < sn.lastView {
+						log.Errorf("VIEW CONFIRMED: already seen this view: %d < %d", sm.View, sn.lastView)
+						return
+					}
+					// log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
 					sn.heartbeat.Stop()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case Error:
@@ -190,12 +205,19 @@ func (sn *Node) get() error {
 }
 
 func (sn *Node) ReceivedHeartbeat(view int) {
+	// XXX heartbeat should be associated with a specific view
+	// if we get a heartbeat for an old view then nothing should change
+	// there is a problem here where we could, if we receive a heartbeat
+	// from an old view, try viewchanging into a view that we have already been to
 	sn.hbLock.Lock()
-	sn.heartbeat.Stop()
-	sn.heartbeat = time.AfterFunc(HEARTBEAT, func() {
-		log.Println(sn.Name(), "NO HEARTBEAT - try view change")
-		sn.TryViewChange(view + 1)
-	})
+	// hearbeat is nil if we have sust close the signing node
+	if sn.heartbeat != nil {
+		sn.heartbeat.Stop()
+		sn.heartbeat = time.AfterFunc(HEARTBEAT, func() {
+			log.Println(sn.Name(), "NO HEARTBEAT - try view change")
+			sn.TryViewChange(view + 1)
+		})
+	}
 	sn.hbLock.Unlock()
 
 }
@@ -279,7 +301,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 
 	var err error
 	if iAmNextRoot == TRUE {
-		log.Println(sn.Name(), "as root received", votes, "of", len(sn.HostList))
+		// log.Println(sn.Name(), "as root received", votes, "of", len(sn.HostList))
 		if votes > len(sn.HostList)*2/3 {
 			// quorum confirmed me as new root
 			log.Println(sn.Name(), "quorum", votes, "of", len(sn.HostList), "confirmed me as new root")
@@ -313,7 +335,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 }
 
 func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
-	log.Println(sn.Name(), "view CHANGED to", view)
+	// log.Println(sn.Name(), "view CHANGED to", view)
 	// View Changed
 	atomic.StoreInt64(&sn.ChangingView, FALSE)
 	// channel for getting ViewAcceptedMessages with right size buffer
@@ -692,7 +714,7 @@ func (sn *Node) Respond(view, Round int) error {
 			}
 
 			// Report up non-networking error, probably signature failure
-			log.Println(sn.Name(), "Error in respose for child", from, sm)
+			log.Errorln(sn.Name(), "Error in respose for child", from, sm)
 			err := errors.New(sm.Err.Err)
 			sn.PutUpError(view, err)
 			return err
@@ -774,7 +796,7 @@ func (sn *Node) TryViewChange(view int) {
 
 	if anr == TRUE {
 		lsr := atomic.LoadInt64(&sn.LastSeenRound)
-		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view, sn.HostList)
+		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
 		// create new view
 		nextViewNo := view
 		nextParent := ""

@@ -83,9 +83,13 @@ type Node struct {
 	AmNextRoot   int64 // determined when new view is needed
 	ViewNo       int64 // *only* used by Root( by annoucer)
 
-	alreadyTriedView int64 // lat view # I received viewChange message for
-	VamChLock        sync.Mutex
-	VamCh            chan *SigningMessage // a channel for ViewAcceptedMessages
+	lastView int64 // lat view # I received viewChange message for
+
+	// XXX: VamCh needs to be associated with the specific view it is used for
+	// If not, then Accepted Messages can be for different viewnumbers and still
+	// be counted towards a different view
+	VamChLock sync.Mutex
+	VamCh     chan *SigningMessage // a channel for ViewAcceptedMessages
 
 	timeout  time.Duration
 	timeLock sync.RWMutex
@@ -104,6 +108,7 @@ func (sn *Node) ViewChangeCh() chan string {
 // Returns name of node who should be the root for the next view
 // round robin is used on the array of host names to determine the next root
 func (sn *Node) RootFor(view int) string {
+	log.Println("hl:", sn.HostList)
 	return sn.HostList[view%len(sn.HostList)]
 }
 

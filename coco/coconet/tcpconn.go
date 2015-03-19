@@ -3,13 +3,17 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
+	"math/rand"
 	"net"
 	"sync"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
 )
+
+var Latency = 100
 
 // TCPConn is an implementation of the Conn interface for TCP network connections.
 type TCPConn struct {
@@ -151,6 +155,10 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 	}
 	dec := tc.dec
 	tc.encLock.Unlock()
+
+	if Latency != 0 {
+		time.Sleep(time.Duration(rand.Intn(Latency)) * time.Millisecond)
+	}
 	err := dec.Decode(bum)
 	if err != nil {
 		if IsTemporary(err) {

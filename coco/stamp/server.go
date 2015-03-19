@@ -90,7 +90,7 @@ func (s *Server) Listen() error {
 
 	go func() {
 		for {
-			log.Printf("LISTENING TO CLIENTS: %p", s)
+			// log.Printf("LISTENING TO CLIENTS: %p", s)
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
@@ -137,7 +137,7 @@ func (s *Server) Listen() error {
 // Used for goconns
 // should only be used if clients are created in batch
 func (s *Server) ListenToClients() {
-	log.Printf("LISTENING TO CLIENTS: %p", s, s.Clients)
+	// log.Printf("LISTENING TO CLIENTS: %p", s, s.Clients)
 	for _, c := range s.Clients {
 		go func(c coconet.Conn) {
 			for {
@@ -194,7 +194,7 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 			"file": logutils.File(),
 			"type": "role_change",
 		}).Infoln(messg)
-		log.Printf("role change: %p", s)
+		// log.Printf("role change: %p", s)
 
 	} else {
 		var messg = s.Name() + " remained regular"
@@ -202,11 +202,13 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 			messg = s.Name() + " became regular"
 		}
 
-		log.WithFields(log.Fields{
-			"file": logutils.File(),
-			"type": "role_change",
-		}).Infoln(messg)
-		log.Printf("role change: %p", s)
+		if curRole == "root" {
+			log.WithFields(log.Fields{
+				"file": logutils.File(),
+				"type": "role_change",
+			}).Infoln(messg)
+			log.Printf("role change: %p", s)
+		}
 
 	}
 
@@ -307,7 +309,7 @@ func (s *Server) Run(role string, nRounds int) {
 			}
 		}
 
-		log.Println(s.Name(), "nextRole: ", nextRole)
+		// log.Println(s.Name(), "nextRole: ", nextRole)
 		if nextRole == "close" {
 			s.Close()
 			return
