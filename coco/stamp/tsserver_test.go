@@ -293,13 +293,13 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 }
 
 func TestTCPTimestampFromConfigViewChange(t *testing.T) {
-	if err := runTCPTimestampFromConfig(0); err != nil {
+	if err := runTCPTimestampFromConfig(sign.MerkleTree, 1, 1, 5, 0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestTCPTimestampFromConfigHealthy(t *testing.T) {
-	if err := runTCPTimestampFromConfig(0); err != nil {
+	if err := runTCPTimestampFromConfig(sign.MerkleTree, 1, 1, 5, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -318,7 +318,7 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTCPTimestampFromConfig(20, faultyNodes...); err != nil {
+	if err := runTCPTimestampFromConfig(sign.MerkleTree, 1, 1, 5, 20, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -326,13 +326,26 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 	sign.HEARTBEAT = aux2
 }
 
-func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
+func TestTCPTimestampFromConfigVote(t *testing.T) {
+	// not mixing view changes with faults
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	// not mixing view changes with faults
+	aux2 := sign.HEARTBEAT
+	sign.HEARTBEAT = 4 * sign.ROUND_TIME
+
+	if err := runTCPTimestampFromConfig(sign.Vote, 0, 0, 5, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.HEARTBEAT = aux2
+}
+
+func runTCPTimestampFromConfig(signType, nMessages, nClients, nRounds, failureRate int, faultyNodes ...int) error {
 	var hc *oldconfig.HostConfig
 	var err error
 	oldconfig.StartConfigPort += 2010
-	nMessages := 1
-	nClients := 1
-	nRounds := 30
 
 	// load config with faulty or healthy hosts
 	if len(faultyNodes) > 0 {
@@ -341,7 +354,6 @@ func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
 		hc, err = oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	}
 	if err != nil {
-		fmt.Println("here")
 		return err
 	}
 
@@ -352,7 +364,7 @@ func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
 		}
 	}
 
-	err = hc.Run(true, sign.MerkleTree)
+	err = hc.Run(true, sign.Type(signType))
 	if err != nil {
 		return err
 	}

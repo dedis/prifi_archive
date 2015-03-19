@@ -263,6 +263,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	// Apply pending actions (add, remove) on view
 	sn.ActionsLock.Lock()
 	for _, action := range sn.Actions {
+		log.Println(sn.Name(), "applying action")
 		sn.ApplyAction(vcm.ViewNo, action)
 	}
 	sn.ActionsLock.Unlock()

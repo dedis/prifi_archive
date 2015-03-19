@@ -173,7 +173,19 @@ func (sn *Node) StartSigningRound() error {
 	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
 	var cancelederr error
 	go func() {
-		err := sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)), &AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		var err error
+		if sn.Type == Vote && sn.nRounds == 1 {
+			// XXX for testing
+			vr := &VoteRequest{Name: "127.0.1.1:11060", Action: "remove"}
+
+			err = sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)),
+				&AnnouncementMessage{LogTest: []byte("hello voting"),
+					Round:       sn.nRounds,
+					VoteRequest: vr})
+		} else {
+			err = sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)),
+				&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		}
 
 		if err != nil {
 			log.Println("Signature fails if at least one node says it failed")

@@ -53,6 +53,7 @@ func (v *View) RemovePeer(name string) bool {
 
 	removed := v.RemoveChild(name)
 
+	// TODO: HostLists not filled in. consider using it
 	v.Lock()
 	defer v.Unlock()
 	if len(v.HostList) == 0 {
