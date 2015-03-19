@@ -812,7 +812,7 @@ func (sn *Node) TimeForViewChange() bool {
 	rpv := atomic.LoadInt64(&RoundsPerView)
 	// if this round is last one for this view
 	if lsr%rpv == 0 {
-		log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)
+		// log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)
 		return true
 	}
 	return false

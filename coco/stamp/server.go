@@ -170,6 +170,7 @@ func (s *Server) ListenToClients() {
 }
 
 func (s *Server) ConnectToLogger() {
+	return
 	if s.Logger == "" || s.Hostname == "" || s.App == "" {
 		log.Println("skipping connect to logger")
 		return
