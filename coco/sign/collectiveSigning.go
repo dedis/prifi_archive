@@ -353,6 +353,7 @@ func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 
 	// log.Println("in view change, children for view", view, sn.Children(view))
 	sn.multiplexOnChildren(view, sm)
+	// log.Println(sn.Name(), " exited view CHANGE to", view)
 }
 
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
@@ -784,6 +785,10 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 func (sn *Node) TryViewChange(view int) {
 	// should ideally be compare and swap
+	// log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", atomic.LoadInt64(&sn.lastView))
+	if int64(view) <= atomic.LoadInt64(&sn.lastView) {
+		return
+	}
 	changing := atomic.LoadInt64(&sn.ChangingView)
 	if changing == TRUE {
 		return
