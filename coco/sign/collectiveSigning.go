@@ -745,14 +745,12 @@ func (sn *Node) TryViewChange(view int) {
 
 	if anr == TRUE {
 		lsr := atomic.LoadInt64(&sn.LastSeenRound)
-		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view, sn.HostList)
+		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
 		// create new view
 		nextViewNo := view
 		nextParent := ""
 		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
 		sn.ViewChange(nextViewNo, nextParent, vcm)
-	} else {
-		log.Println(sn.Name(), "NOT ROOT:", sn.HostList)
 	}
 
 }

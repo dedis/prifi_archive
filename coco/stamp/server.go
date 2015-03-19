@@ -90,7 +90,7 @@ func (s *Server) Listen() error {
 
 	go func() {
 		for {
-			log.Printf("LISTENING TO CLIENTS: %p", s)
+			// log.Printf("LISTENING TO CLIENTS: %p", s)
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
@@ -137,7 +137,7 @@ func (s *Server) Listen() error {
 // Used for goconns
 // should only be used if clients are created in batch
 func (s *Server) ListenToClients() {
-	log.Printf("LISTENING TO CLIENTS: %p", s, s.Clients)
+	// log.Printf("LISTENING TO CLIENTS: %p", s, s.Clients)
 	for _, c := range s.Clients {
 		go func(c coconet.Conn) {
 			for {
