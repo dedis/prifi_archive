@@ -81,9 +81,13 @@ type Node struct {
 	AmNextRoot   int64 // determined when new view is needed
 	ViewNo       int64 // *only* used by Root( by annoucer)
 
-	alreadyTriedView int64 // lat view # I received viewChange message for
-	VamChLock        sync.Mutex
-	VamCh            chan *SigningMessage // a channel for ViewAcceptedMessages
+	lastView int64 // lat view # I received viewChange message for
+
+	// XXX: VamCh needs to be associated with the specific view it is used for
+	// If not, then Accepted Messages can be for different viewnumbers and still
+	// be counted towards a different view
+	VamChLock sync.Mutex
+	VamCh     chan *SigningMessage // a channel for ViewAcceptedMessages
 
 	timeout  time.Duration
 	timeLock sync.RWMutex

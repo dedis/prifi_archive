@@ -108,6 +108,7 @@ func (sn *Node) get() error {
 						log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
 						return
 					}
+
 					sn.ReceivedHeartbeat(sm.View)
 					log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 					if err := sn.Announce(sm.View, sm.Am); err != nil {
@@ -120,6 +121,7 @@ func (sn *Node) get() error {
 						return
 					}
 
+					sn.ReceivedHeartbeat(sm.View)
 					if err := sn.Challenge(sm.View, sm.Chm); err != nil {
 						log.Errorln(sn.Name(), "challenge error:", err)
 					}
@@ -150,10 +152,13 @@ func (sn *Node) get() error {
 					sn.roundLock.Unlock()
 					rmch <- sm
 				case ViewChange:
-					sn.heartbeat.Stop()
-					if int64(sm.View) > sn.alreadyTriedView {
-						sn.alreadyTriedView = int64(sm.View)
+					// if we have already seen this view before skip it
+					if int64(sm.View) <= sn.lastView {
+						log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.lastView)
+						return
 					}
+					sn.lastView = int64(sm.View)
+					sn.heartbeat.Stop()
 					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
@@ -163,11 +168,19 @@ func (sn *Node) get() error {
 						log.Errorln("view change error:", err)
 					}
 				case ViewAccepted:
+					if int64(sm.View) < sn.lastView {
+						log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.lastView)
+						return
+					}
 					sn.heartbeat.Stop()
 					sn.VamChLock.Lock()
 					sn.VamCh <- sm
 					sn.VamChLock.Unlock()
 				case ViewConfirmed:
+					if int64(sm.View) < sn.lastView {
+						log.Errorf("VIEW CONFIRMED: already seen this view: %d < %d", sm.View, sn.lastView)
+						return
+					}
 					log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
 					sn.heartbeat.Stop()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
@@ -181,6 +194,10 @@ func (sn *Node) get() error {
 }
 
 func (sn *Node) ReceivedHeartbeat(view int) {
+	// XXX heartbeat should be associated with a specific view
+	// if we get a heartbeat for an old view then nothing should change
+	// there is a problem here where we could, if we receive a heartbeat
+	// from an old view, try viewchanging into a view that we have already been to
 	sn.hbLock.Lock()
 	sn.heartbeat.Stop()
 	sn.heartbeat = time.AfterFunc(HEARTBEAT, func() {

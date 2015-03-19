@@ -2,6 +2,7 @@ package coconet
 
 import (
 	"errors"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -192,6 +193,10 @@ func (c *GoConn) Get(bum BinaryUnmarshaler) error {
 	}
 
 	var data []byte
+	if Latency != 0 {
+		time.Sleep(time.Duration(rand.Intn(Latency)) * time.Millisecond)
+	}
+
 	ticker := time.Tick(1000 * time.Millisecond)
 retry:
 	select {
