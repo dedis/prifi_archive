@@ -185,7 +185,7 @@ func (sn *Node) StartSigningRound() error {
 	case rn := <-sn.commitsDone:
 		// check for correctness
 		if rn != sn.nRounds {
-			log.Fatal("1st Phase round number mix up")
+			log.Fatal("1st Phase round number mix up", rn, "!=", sn.nRounds)
 			return errors.New("1st Phase round number mix up")
 		}
 
@@ -208,7 +208,7 @@ func (sn *Node) StartSigningRound() error {
 	case rn := <-sn.done:
 		// check for correctness
 		if rn != sn.nRounds {
-			log.Fatal("2nd Phase round number mix up")
+			log.Fatal("2nd Phase round number mix up", rn, "!=", sn.nRounds)
 			return errors.New("2nd Phase round number mix up")
 		}
 
@@ -465,7 +465,7 @@ func (sn *Node) Timeout() time.Duration {
 }
 
 func (sn *Node) DefaultTimeout() time.Duration {
-	return 2000 * time.Millisecond
+	return 500 * time.Millisecond
 }
 
 func max(a int64, b int64) int64 {

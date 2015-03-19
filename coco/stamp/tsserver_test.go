@@ -37,7 +37,7 @@ func init() {
 func TestTSSIntegrationHealthy(t *testing.T) {
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
-	if err := runTSSIntegration(4, 30, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+	if err := runTSSIntegration(4, 5, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
 }

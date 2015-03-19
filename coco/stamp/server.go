@@ -215,8 +215,12 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 func (s *Server) runAsRoot(nRounds int) string {
 	// every 5 seconds start a new round
 	ticker := time.Tick(ROUND_TIME)
-	log.Infoln(s.Name(), "running as root", s.LastRound(), int64(nRounds))
+	if s.LastRound()+1 > int64(nRounds) {
+		log.Errorln(s.Name(), "runAsRoot called with too large round number")
+		return "close"
+	}
 
+	log.Infoln(s.Name(), "running as root", s.LastRound(), int64(nRounds))
 	for {
 		select {
 		case nextRole := <-s.ViewChangeCh():
@@ -244,6 +248,11 @@ func (s *Server) runAsRoot(nRounds int) string {
 				break
 			}
 
+			if s.LastRound()+1 >= int64(nRounds) {
+				log.Errorln(s.Name(), "reports exceeded the max round: terminating", s.LastRound()+1, ">=", nRounds)
+				return "close"
+			}
+
 			elapsed := time.Since(start)
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),
@@ -252,10 +261,6 @@ func (s *Server) runAsRoot(nRounds int) string {
 				"time":  elapsed,
 			}).Info("root round")
 
-			if s.LastRound() >= int64(nRounds) {
-				log.Errorln(s.Name(), "reports exceeded the max round: terminating", s.LastRound(), ">=", nRounds)
-				return "close"
-			}
 		}
 	}
 }
