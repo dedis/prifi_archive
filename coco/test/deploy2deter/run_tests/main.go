@@ -229,11 +229,11 @@ func ScaleTest(bf, low, high, mult int) []T {
 
 // nmachs=32, hpn=128, bf=16, rate=500, failures=20, root failures, failures
 var FailureTests = []T{
-	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0},
-	{DefaultMachs, 64, 16, 30, 50, 0, 5, 0},
-	{DefaultMachs, 64, 16, 30, 50, 0, 10, 0},
-	{DefaultMachs, 64, 16, 30, 50, 5, 0, 5},
-	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10},
+	{DefaultMachs, 64, 16, 30, 500, 0, 0, 0},
+	{DefaultMachs, 64, 16, 30, 500, 0, 5, 0},
+	{DefaultMachs, 64, 16, 30, 500, 0, 10, 0},
+	{DefaultMachs, 64, 16, 30, 500, 5, 0, 5},
+	{DefaultMachs, 64, 16, 30, 500, 5, 0, 10},
 }
 
 func FullTests() []T {
