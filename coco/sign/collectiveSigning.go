@@ -710,11 +710,11 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 }
 
 func (sn *Node) TryViewChange(view int) {
+	// should ideally be compare and swap
 	changing := atomic.LoadInt64(&sn.ChangingView)
 	if changing == TRUE {
 		return
 	}
-
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
 
 	// check who the new view root it
@@ -727,7 +727,7 @@ func (sn *Node) TryViewChange(view int) {
 	anr := atomic.LoadInt64(&sn.AmNextRoot)
 	if anr == TRUE {
 		lsr := atomic.LoadInt64(&sn.LastSeenRound)
-		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
+		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view, sn.HostList)
 		// create new view
 		nextViewNo := view
 		nextParent := ""
