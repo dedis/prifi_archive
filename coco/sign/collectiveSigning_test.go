@@ -91,6 +91,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	for i := 0; i < nNodes; i++ {
 		nodes[i] = sign.NewNode(h[i], suite, rand)
 		nodes[i].Type = signType
+		nodes[i].GenSetPool()
 
 		h[i].SetPubKey(nodes[i].PubKey)
 		// To test the already keyed signing node, uncomment
@@ -160,12 +161,6 @@ func TestSmallConfigFaulty2(t *testing.T) {
 	}
 }
 
-func TestSmallConfigVote(t *testing.T) {
-	if err := runTreeSmallConfig(sign.Vote, 0); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int) error {
 	var hostConfig *oldconfig.HostConfig
 	var err error
@@ -205,6 +200,10 @@ func runTreeSmallConfig(signType sign.Type, failureRate int, faultyNodes ...int)
 }
 
 func TestTreeFromBigConfig(t *testing.T) {
+	// not mixing view changes in
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 100)
+
 	hc, err := oldconfig.LoadConfig("../test/data/exwax.json")
 	if err != nil {
 		t.Fatal(err)
@@ -221,6 +220,8 @@ func TestTreeFromBigConfig(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
 // tree from configuration file data/exconf.json
@@ -228,6 +229,9 @@ func TestMultipleRounds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
 	}
+	// not mixing view changes in
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 100)
 	hostConfig, err := oldconfig.LoadConfig("../test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
@@ -242,16 +246,21 @@ func TestMultipleRounds(t *testing.T) {
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
-	for i := 0; i < N; i++ {
+	for i := 1; i <= N; i++ {
 		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
 		err = hostConfig.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: i})
 		if err != nil {
 			t.Error(err)
 		}
 	}
+
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
 func TestTCPStaticConfig(t *testing.T) {
+	// not mixing view changes in
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 100)
 	time.Sleep(5 * time.Second)
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
@@ -275,9 +284,14 @@ func TestTCPStaticConfig(t *testing.T) {
 	hc.SNodes[0].LogTest = []byte("hello world")
 	hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	log.Println("Test Done")
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
+
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {
+	// not mixing view changes in
+	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	atomic.StoreInt64(&sign.RoundsPerView, 100)
 	time.Sleep(5 * time.Second)
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
@@ -300,10 +314,11 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	N := 5
-	for i := 0; i < N; i++ {
+	for i := 1; i <= N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
 		hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}
+	atomic.StoreInt64(&sign.RoundsPerView, aux)
 }
 
 // Tests the integration of View Change with Signer (ability to reach consensus on a view change)
@@ -328,7 +343,7 @@ func TestViewChangeChan(t *testing.T) {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	N := 6
-	for i := 0; i < N; i++ {
+	for i := 1; i <= N; i++ {
 		hostConfig.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
 		err = hostConfig.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hostConfig.SNodes[0].LogTest, Round: i})
 		if err == sign.ChangingViewError {
@@ -370,7 +385,7 @@ func TestViewChangeTCP(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	N := 6
-	for i := 0; i < N; i++ {
+	for i := 1; i <= N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
 		hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}

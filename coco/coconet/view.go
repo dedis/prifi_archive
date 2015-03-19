@@ -7,6 +7,8 @@ type View struct {
 	Num      int
 	Parent   string
 	Children []string
+
+	HostList []string
 }
 
 func (v *View) AddParent(parent string) {
@@ -35,6 +37,29 @@ func (v *View) RemoveChild(child string) {
 	}
 	if pos != -1 {
 		v.Children = append(v.Children[:pos], v.Children[pos+1:]...)
+	}
+}
+
+func (v *View) RemovePeer(name string) {
+	v.Lock()
+	defer v.Unlock()
+
+	// make sure we don't remove our parent
+	if v.Parent == name {
+		return
+	}
+
+	v.RemoveChild(name)
+
+	var pos int
+	for pos = 0; pos < len(v.HostList); pos++ {
+		if v.HostList[pos] == name {
+			break
+		}
+	}
+
+	if pos != len(v.HostList) {
+		v.HostList = append(v.HostList[:pos], v.HostList[pos+1:]...)
 	}
 }
 
@@ -78,6 +103,12 @@ func (v *Views) RemoveChild(view int, child string) {
 	v.Views[view].RemoveChild(child)
 	v.RUnlock()
 }
+
+// func (v *Views) RemovePeer(peer string) {
+// 	v.RLock()
+// 	v.Views[view].RemovePeer(peer)
+// 	v.RUnlock()
+// }
 
 func (v *Views) Children(view int) []string {
 	v.RLock()

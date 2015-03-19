@@ -31,6 +31,9 @@ type Host interface {
 	// with the specified parent and children.
 	NewView(view int, parent string, children []string)
 
+	// Returns map of this host's views
+	Views() map[int]*View
+
 	// AddParent adds a parent to the view specified.
 	// Used for building a view incrementally.
 	AddParent(view int, hostname string)
@@ -80,9 +83,9 @@ type Host interface {
 	SetPubKey(abstract.Point)
 
 	// Pool is a pool of BinaryUnmarshallers to use when generating NetworkMessg's.
-	Pool() sync.Pool
+	Pool() *sync.Pool
 	// SetPool sets the pool of the Host.
-	SetPool(sync.Pool)
+	SetPool(*sync.Pool)
 
 	// Functions to allow group evolution
 	AddPendingPeer(view int, name string)

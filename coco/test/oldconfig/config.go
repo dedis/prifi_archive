@@ -242,11 +242,14 @@ func ConstructTree(
 	if generate {
 		if prikey != nil {
 			// if we have been given a private key load that
-			hc.SNodes = append(hc.SNodes, sign.NewKeyedNode(h, suite, prikey))
+			aux := sign.NewKeyedNode(h, suite, prikey)
+			aux.GenSetPool()
+			hc.SNodes = append(hc.SNodes, aux)
 			h.SetPubKey(pubkey)
 		} else {
 			// otherwise generate a random new one
 			sn := sign.NewNode(h, suite, rand)
+			sn.GenSetPool()
 			hc.SNodes = append(hc.SNodes, sn)
 			h.SetPubKey(sn.PubKey)
 		}

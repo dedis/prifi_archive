@@ -417,10 +417,10 @@ func (sn *Node) SetBackLink(Round int) {
 	}
 }
 
-func (sn *Node) setPool() {
+func (sn *Node) GenSetPool() {
 	var p sync.Pool
 	p.New = NewSigningMessage
-	sn.SetPool(p)
+	sn.SetPool(&p)
 }
 
 // accommodate nils

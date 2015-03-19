@@ -29,13 +29,17 @@ var ErrUnknownMessageType error = errors.New("Received message of unknown type")
 
 // Start listening for messages coming from parent(up)
 func (sn *Node) Listen() error {
-	sn.setPool()
+	if sn.Pool() == nil {
+		sn.GenSetPool()
+	}
 	err := sn.get()
 	return err
 }
 
 func (sn *Node) Close() {
+	sn.hbLock.Lock()
 	sn.heartbeat.Stop()
+	sn.hbLock.Unlock()
 	sn.closed <- io.EOF
 	sn.closing <- true
 	log.Printf("signing node: closing: %s", sn.Name())
@@ -78,7 +82,9 @@ func (sn *Node) get() error {
 	for {
 		select {
 		case <-sn.closing:
+			sn.hbLock.Lock()
 			sn.heartbeat.Stop()
+			sn.hbLock.Unlock()
 			return nil
 		default:
 			nm, ok1 := <-msgchan
@@ -234,8 +240,10 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	}
 
 	// Create a new view, but multiplex information about it using the old view
-	children := sn.childrenForNewView(parent)
-	sn.NewView(vcm.ViewNo, parent, children)
+	if _, exists := sn.Views()[vcm.ViewNo]; !exists {
+		children := sn.childrenForNewView(parent)
+		sn.NewView(vcm.ViewNo, parent, children)
+	}
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, sn.Timeout(), "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
@@ -254,7 +262,6 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			sm := &SigningMessage{Type: ViewConfirmed, Vcfm: vcfm, From: sn.Name(), View: vcm.ViewNo}
 			sn.multiplexOnChildren(vcm.ViewNo, sm)
 
-			// TODO: note: regulars will be done with view change after root
 			atomic.StoreInt64(&sn.ChangingView, FALSE)
 			atomic.StoreInt64(&sn.ViewNo, int64(vcm.ViewNo))
 			sn.viewChangeCh <- "root"
@@ -501,6 +508,7 @@ func (sn *Node) actOnCommits(view, Round int) error {
 			Round:         Round}
 
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+		// log.Println(sn.Name(), "puts up commit")
 		ctx := context.TODO()
 		err = sn.PutUp(ctx, view, &SigningMessage{
 			View: view,
@@ -528,13 +536,12 @@ func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 	// register challenge
 	round.c = chm.C
 
-	// TODO: decide when/ how is best to remove the node
-	// could remove it during next round before propagating annoucement
-
 	// act on decision of aggregated votes
-	sn.actOnVotes(view, chm.CountedVotes, round.VoteRequest)
+	if round.VoteRequest != nil {
+		sn.actOnVotes(view, chm.CountedVotes, round.VoteRequest)
+	}
 
-	if sn.Type == PubKey {
+	if sn.Type == PubKey || sn.Type == Vote {
 		if err := sn.SendChildrenChallenges(view, chm); err != nil {
 			return err
 		}
@@ -740,25 +747,36 @@ func (sn *Node) TryViewChange(view int) {
 func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 	// more than 2/3 of all nodes must vote For, to accept vote request
 	accepted := cv.For > 2*len(sn.HostList)/3
+	var actionTaken string = "rejected"
+	if accepted {
+		actionTaken = "accepted"
+	}
 
+	// Report on vote decision
 	if sn.IsRoot(view) {
 		abstained := len(sn.HostList) - cv.For - cv.Against
-		if accepted {
-			log.Infoln("Vote Request for", vreq.Name, "be", vreq.Action, "ACCEPTED")
-		} else {
-			log.Infoln("Vote Request for", vreq.Name, "be", vreq.Action, "REJECTED")
-		}
+		log.Infoln("Vote Request for", vreq.Name, "be", vreq.Action, actionTaken)
 		log.Infoln("Votes FOR:", cv.For, "; Votes AGAINST:", cv.Against, "; Absteined:", abstained)
-	} else {
-		if accepted {
-			if vreq.Action == "add" {
-				sn.AddPendingPeer(view, vreq.Name)
-			} else if vreq.Action == "remove" {
-				sn.RemovePeer(view, vreq.Name)
-			} else {
-				log.Errorln("Vote Request contains uknown action:", vreq.Action)
-			}
+	}
+
+	// Act on vote Decision
+	if accepted {
+		// Create a new view
+		parent := sn.RootFor(view + 1)
+		children := sn.childrenForNewView(parent)
+		sn.NewView(view+1, parent, children)
+
+		// Apply action on new view
+		if vreq.Action == "add" {
+			sn.AddPendingPeer(view+1, vreq.Name)
+		} else if vreq.Action == "remove" {
+			sn.RemovePeer(view+1, vreq.Name)
+		} else {
+			log.Errorln("Vote Request contains uknown action:", vreq.Action)
 		}
+
+		// propagate view change if new view leader
+		sn.TryViewChange(view + 1)
 	}
 
 	// List out all votes

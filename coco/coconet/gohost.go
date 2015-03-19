@@ -32,23 +32,21 @@ var _ Host = &GoHost{}
 type GoHost struct {
 	name string // the hostname
 
-	views *Views
-
-	peerLock sync.RWMutex
-	peers    map[string]Conn
+	views    *Views
 	dir      *GoDirectory
-	ready    map[string]bool
-
-	// peers asking to join overall tree structure of nodes
+	PeerLock sync.RWMutex
+	peers    map[string]Conn
+	Ready    map[string]bool
+	// Peers asking to join overall tree structure of nodes
 	// via connection to current host node
-	pendingPeers map[string]Conn
+	PendingPeers map[string]Conn
 
 	suite abstract.Suite
 
 	pkLock sync.RWMutex
 	Pubkey abstract.Point // own public key
 
-	pool sync.Pool
+	pool *sync.Pool
 
 	msglock sync.Mutex
 	msgchan chan NetworkMessg
@@ -67,13 +65,17 @@ func (h *GoHost) GetDirectory() *GoDirectory {
 func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
 		views:   NewViews(),
-		peers:   make(map[string]Conn),
 		dir:     dir,
 		msgchan: make(chan NetworkMessg, 10),
 		errchan: make(chan error, 10)}
-	h.peerLock = sync.RWMutex{}
-	h.ready = make(map[string]bool)
+	h.peers = make(map[string]Conn)
+	h.PeerLock = sync.RWMutex{}
+	h.Ready = make(map[string]bool)
 	return h
+}
+
+func (h *GoHost) Views() map[int]*View {
+	return h.views.Views
 }
 
 // SetSuite sets the crypto suite which this Host is using.
@@ -105,13 +107,13 @@ func (h *GoHost) Connect(view int) error {
 	}
 
 	// if the connection has been established skip it
-	h.peerLock.RLock()
-	if h.ready[parent] {
-		h.peerLock.RUnlock()
-		log.Warnln("peer is already ready")
+	h.PeerLock.Lock()
+	if h.Ready[parent] {
+		log.Warnln("peer is alReady Ready")
+		h.PeerLock.Unlock()
 		return nil
 	}
-	h.peerLock.RUnlock()
+	h.PeerLock.Unlock()
 
 	// get the connection to the parent
 	conn := h.peers[parent]
@@ -138,10 +140,23 @@ func (h *GoHost) Connect(view int) error {
 	}
 	conn.SetPubKey(pubkey)
 
-	h.peerLock.Lock()
-	h.ready[conn.Name()] = true
+	h.PeerLock.Lock()
+	h.Ready[conn.Name()] = true
 	h.peers[parent] = conn
-	h.peerLock.Unlock()
+	h.PeerLock.Unlock()
+
+	go func() {
+		for {
+			data := h.pool.Get().(BinaryUnmarshaler)
+			err := conn.Get(data)
+
+			h.msglock.Lock()
+			h.msgchan <- NetworkMessg{Data: data, From: conn.Name()}
+			h.errchan <- err
+			h.msglock.Unlock()
+		}
+	}()
+
 	return nil
 }
 
@@ -152,13 +167,14 @@ func (h *GoHost) Listen() error {
 	// listen for connection attempts from each of the children
 	for _, c := range children {
 		go func(c string) {
-			if h.ready[c] {
-				log.Fatal("listening: connection already established")
+
+			if h.Ready[c] {
+				log.Fatal("listening: connection alReady established")
 			}
 
-			h.peerLock.Lock()
+			h.PeerLock.Lock()
 			conn := h.peers[c]
-			h.peerLock.Unlock()
+			h.PeerLock.Unlock()
 
 			var mname StringMarshaler
 			err := conn.Get(&mname)
@@ -180,10 +196,22 @@ func (h *GoHost) Listen() error {
 				log.Fatal("failed to send public key:", err)
 			}
 
-			h.peerLock.Lock()
-			h.ready[c] = true
+			h.PeerLock.Lock()
+			h.Ready[c] = true
 			h.peers[c] = conn
-			h.peerLock.Unlock()
+			h.PeerLock.Unlock()
+
+			go func() {
+				for {
+					data := h.pool.Get().(BinaryUnmarshaler)
+					err := conn.Get(data)
+
+					h.msglock.Lock()
+					h.msgchan <- NetworkMessg{Data: data, From: conn.Name()}
+					h.errchan <- err
+					h.msglock.Unlock()
+				}
+			}()
 		}(c)
 	}
 	return nil
@@ -196,63 +224,63 @@ func (h *GoHost) NewView(view int, parent string, children []string) {
 
 // AddParent adds a parent node to the specified view.
 func (h *GoHost) AddParent(view int, c string) {
-	h.peerLock.RLock()
+	h.PeerLock.Lock()
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
-	h.peerLock.RUnlock()
+	h.PeerLock.Unlock()
+
 	h.views.AddParent(view, c)
 }
 
 // AddChildren adds children to the specified view.
 func (h *GoHost) AddChildren(view int, cs ...string) {
 	for _, c := range cs {
-		h.peerLock.RLock()
+		h.PeerLock.Lock()
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 		}
-		h.peerLock.RUnlock()
+		h.PeerLock.Unlock()
 		h.views.AddChildren(view, c)
 	}
 }
 
 func (h *GoHost) AddPendingPeer(view int, name string) {
-	h.peerLock.Lock()
-	if _, ok := h.pendingPeers[name]; !ok {
-		log.Errorln("Attempt to add peer not present in pending peers")
+	h.PeerLock.Lock()
+	if _, ok := h.PendingPeers[name]; !ok {
+		log.Errorln("Attempt to add peer not present in pending Peers")
+		h.PeerLock.Unlock()
 		return
 	}
-	delete(h.pendingPeers, name)
 
 	h.peers[name] = NewTCPConn(name)
-	h.views.AddChildren(view, name)
+	h.PeerLock.Unlock()
 
-	h.peerLock.Unlock()
+	h.views.AddChildren(view, name)
+}
+
+func (h *GoHost) RemovePendingPeer(peer string) {
+	h.PeerLock.Lock()
+	delete(h.PendingPeers, peer)
+	h.PeerLock.Unlock()
 }
 
 func (h *GoHost) RemovePeer(view int, name string) {
-	h.peerLock.Lock()
-
-	// make sure we don't remove our parent
-	if h.IsParent(view, name) {
-		return
-	}
-
-	h.views.RemoveChild(view, name)
-	delete(h.peers, name)
-
-	h.peerLock.Unlock()
+	v := h.Views()[view]
+	v.RemovePeer(name)
 }
 
 // Close closes the connections.
 func (h *GoHost) Close() {
 	log.Printf("closing gohost: %p", h)
 	h.dir.Close()
-	h.peerLock.RLock()
+
+	h.PeerLock.Lock()
 	for _, c := range h.peers {
 		c.Close()
 	}
-	h.peerLock.RUnlock()
+	h.PeerLock.Unlock()
+
 	atomic.SwapInt64(&h.closed, 1)
 }
 
@@ -282,44 +310,46 @@ func (h *GoHost) IsParent(view int, peer string) bool {
 
 // IsChild returns true if the peer is a Child for the specified view.
 func (h *GoHost) IsChild(view int, peer string) bool {
+	h.PeerLock.Lock()
 	_, ok := h.peers[peer]
+	h.PeerLock.Unlock()
 	return !h.IsParent(view, peer) && ok
 }
 
-// Peers returns the list of peers as a mapping from hostname to Conn
+// Peers returns the list of Peers as a mapping from hostname to Conn
 func (h *GoHost) Peers() map[string]Conn {
 	return h.peers
 }
 
 // Children returns the children in the specified view.
 func (h *GoHost) Children(view int) map[string]Conn {
-	h.peerLock.RLock()
+	h.PeerLock.Lock()
+
 	childrenMap := make(map[string]Conn, 0)
 	children := h.views.Children(view)
 	for _, c := range children {
-		if !h.ready[c] {
+		if !h.Ready[c] {
 			continue
 		}
 		childrenMap[c] = h.peers[c]
 	}
 
-	h.peerLock.RUnlock()
+	h.PeerLock.Unlock()
 	return childrenMap
 }
 
-// AddPeers adds the list of peers to the host.
+// AddPeers adds the list of Peers to the host.
 func (h *GoHost) AddPeers(cs ...string) {
-	h.peerLock.Lock()
+	h.PeerLock.Lock()
 	for _, c := range cs {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
-	h.peerLock.Unlock()
+	h.PeerLock.Unlock()
 }
 
 // PutUp sends a message to the parent on the given view, potentially timing out.
 func (h *GoHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) error {
 	// defer fmt.Println(h.Name(), "done put up", h.parent)
-
 	pname := h.views.Parent(view)
 	done := make(chan error)
 	var canceled int64
@@ -328,12 +358,12 @@ func (h *GoHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) erro
 			if atomic.LoadInt64(&canceled) == 1 {
 				return
 			}
-			h.peerLock.RLock()
-			ready := h.ready[pname]
+			h.PeerLock.Lock()
+			Ready := h.Ready[pname]
 			parent := h.peers[pname]
-			h.peerLock.RUnlock()
+			h.PeerLock.Unlock()
 
-			if ready {
+			if Ready {
 				// if closed put will return ErrClosed
 				done <- parent.Put(data)
 				return
@@ -369,12 +399,12 @@ func (h *GoHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler) 
 				if atomic.LoadInt64(&canceled) == 1 {
 					return
 				}
-				h.peerLock.RLock()
-				ready := h.ready[c]
+				h.PeerLock.Lock()
+				Ready := h.Ready[c]
 				conn := h.peers[c]
-				h.peerLock.RUnlock()
+				h.PeerLock.Unlock()
 
-				if ready {
+				if Ready {
 					e := conn.Put(data[i])
 					if e != nil {
 						errLock.Lock()
@@ -403,65 +433,20 @@ func (h *GoHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler) 
 	return err
 }
 
-// whenReadyGet attempts gets data from the connection once it is ready.
-func (h *GoHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
-	// defer fmt.Println(h.Name(), "returned ready channel for", c.Name(), c)
-	var c Conn
-	for {
-		h.peerLock.Lock()
-		isReady := h.ready[name]
-		c = h.peers[name]
-		h.peerLock.Unlock()
-
-		if isReady {
-			break
-		}
-		if h.Closed() {
-			return ErrClosed
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if c == nil {
-		return ErrClosed
-	}
-	return c.Get(data)
-}
-
 // Get returns two channels. One of messages that are received, and another of errors
 // associated with each message.
 func (h *GoHost) Get() (chan NetworkMessg, chan error) {
-	h.peerLock.RLock()
-	for name := range h.peers {
-		go func(name string) {
-			for {
-				data := h.pool.Get().(BinaryUnmarshaler)
-				err := h.whenReadyGet(name, data)
-
-				h.msglock.Lock()
-				h.msgchan <- NetworkMessg{Data: data, From: name}
-				h.errchan <- err
-				h.msglock.Unlock()
-
-				if err == ErrClosed {
-					return
-				}
-
-			}
-		}(name)
-	}
-	h.peerLock.RUnlock()
 	return h.msgchan, h.errchan
-
 }
 
 // Pool returns the underlying pool of objects for creating new BinaryUnmarshalers,
 // when Getting from network connections.
-func (h *GoHost) Pool() sync.Pool {
+func (h *GoHost) Pool() *sync.Pool {
 	return h.pool
 }
 
 // SetPool sets the pool of underlying objects for creating new BinaryUnmarshalers,
 // when Getting from network connections.
-func (h *GoHost) SetPool(p sync.Pool) {
+func (h *GoHost) SetPool(p *sync.Pool) {
 	h.pool = p
 }

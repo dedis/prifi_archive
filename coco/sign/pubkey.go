@@ -1,6 +1,8 @@
 package sign
 
 import (
+	"fmt"
+
 	"github.com/dedis/prifi/coco/coconet"
 )
 
@@ -10,10 +12,11 @@ import (
 
 // Send children challenges
 func (sn *Node) SendChildrenChallenges(view int, chm *ChallengeMessage) error {
-	for _, child := range sn.Children(view) {
+	for i, child := range sn.Children(view) {
 		var messg coconet.BinaryMarshaler
 		messg = &SigningMessage{View: view, Type: Challenge, Chm: chm}
 
+		fmt.Println(sn.Name(), "send to", i, child, "on view", view)
 		if err := child.Put(messg); err != nil {
 			return err
 		}

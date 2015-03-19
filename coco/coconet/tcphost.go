@@ -25,19 +25,17 @@ type TCPHost struct {
 
 	views *Views
 
-	peerLock sync.RWMutex
-	// ready indicates when a connection is ready to be used.
-	ready map[string]bool
-	peers map[string]Conn
-
-	// peers asking to join overall tree structure of nodes
+	PeerLock sync.RWMutex
+	peers    map[string]Conn
+	Ready    map[string]bool
+	// Peers asking to join overall tree structure of nodes
 	// via connection to current host node
-	pendingPeers map[string]Conn
+	PendingPeers map[string]Conn
 
 	pkLock sync.RWMutex
 	Pubkey abstract.Point // own public key
 
-	pool sync.Pool
+	pool *sync.Pool
 
 	// channels to send on Get() and update
 	msglock sync.Mutex
@@ -53,13 +51,16 @@ type TCPHost struct {
 func NewTCPHost(hostname string) *TCPHost {
 	h := &TCPHost{name: hostname,
 		views:   NewViews(),
-		peers:   make(map[string]Conn),
-		ready:   make(map[string]bool),
 		msglock: sync.Mutex{},
 		msgchan: make(chan NetworkMessg, 1),
 		errchan: make(chan error, 1)}
-
+	h.peers = make(map[string]Conn)
+	h.Ready = make(map[string]bool)
 	return h
+}
+
+func (h *TCPHost) Views() map[int]*View {
+	return h.views.Views
 }
 
 // SetSuite sets the suite of the TCPHost to use.
@@ -98,7 +99,7 @@ func (s *StringMarshaler) UnmarshalBinary(b []byte) error {
 
 // Listen listens for incoming TCP connections.
 // It is a non-blocking call that runs in the background.
-// It accepts incoming connections and establishes peers.
+// It accepts incoming connections and establishes Peers.
 // When a peer attempts to connect it must send over its name (as a StringMarshaler),
 // as well as its public key.
 // Only after that point can be communicated with.
@@ -155,14 +156,26 @@ func (h *TCPHost) Listen() error {
 				continue
 			}
 
-			// the connection is now ready to use
-			h.peerLock.Lock()
-			h.ready[name] = true
+			// the connection is now Ready to use
+			h.PeerLock.Lock()
+			h.Ready[name] = true
 			h.peers[name] = tp
 			if coco.DEBUG {
 				log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
 			}
-			h.peerLock.Unlock()
+			h.PeerLock.Unlock()
+
+			go func() {
+				for {
+					data := h.pool.Get().(BinaryUnmarshaler)
+					err := tp.Get(data)
+
+					h.msglock.Lock()
+					h.msgchan <- NetworkMessg{Data: data, From: tp.Name()}
+					h.errchan <- err
+					h.msglock.Unlock()
+				}
+			}()
 		}
 	}()
 	return nil
@@ -173,18 +186,19 @@ func (h *TCPHost) Listen() error {
 // It then sends its name and public key to initialize the connection.
 func (h *TCPHost) Connect(view int) error {
 	// Get the parent of the given view.
-	parent := h.views.Parent(view)
+	v := h.Views()[view]
+	parent := v.Parent
 	if parent == "" {
 		return nil
 	}
 
-	// If we have already set up this connection don't do anything
-	h.peerLock.RLock()
-	if h.ready[parent] {
-		h.peerLock.RUnlock()
+	// If we have alReady set up this connection don't do anything
+	h.PeerLock.Lock()
+	if h.Ready[parent] {
+		h.PeerLock.RUnlock()
 		return nil
 	}
-	h.peerLock.RUnlock()
+	h.PeerLock.Unlock()
 
 	// connect to the parent
 	conn, err := net.Dial("tcp4", parent)
@@ -222,13 +236,26 @@ func (h *TCPHost) Connect(view int) error {
 	}
 	tp.SetPubKey(pubkey)
 
-	h.peerLock.Lock()
-	h.ready[tp.Name()] = true
+	h.PeerLock.Lock()
+	h.Ready[tp.Name()] = true
 	h.peers[parent] = tp
-	h.peerLock.Unlock()
+	h.PeerLock.Unlock()
 	if coco.DEBUG {
 		log.Infoln("CONNECTED TO PARENT:", parent)
 	}
+
+	go func() {
+		for {
+			data := h.pool.Get().(BinaryUnmarshaler)
+			err := tp.Get(data)
+
+			h.msglock.Lock()
+			h.msgchan <- NetworkMessg{Data: data, From: tp.Name()}
+			h.errchan <- err
+			h.msglock.Unlock()
+		}
+	}()
+
 	return nil
 }
 
@@ -243,14 +270,16 @@ func (h *TCPHost) Close() {
 	// stop accepting new connections
 	atomic.StoreInt64(&h.closed, 1)
 	h.listener.Close()
+
 	// close peer connections
-	h.peerLock.Lock()
+	h.PeerLock.Lock()
 	for _, p := range h.peers {
 		if p != nil {
 			p.Close()
 		}
 	}
-	h.peerLock.Unlock()
+	h.PeerLock.Unlock()
+
 }
 
 func (h *TCPHost) Closed() bool {
@@ -259,54 +288,51 @@ func (h *TCPHost) Closed() bool {
 
 // AddParent adds a parent node to the TCPHost, for the given view.
 func (h *TCPHost) AddParent(view int, c string) {
-	h.peerLock.RLock()
+	h.PeerLock.Lock()
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c] = NewTCPConn(c)
 	}
-	h.peerLock.RUnlock()
+	h.PeerLock.Unlock()
 	h.views.AddParent(view, c)
 }
 
 // AddChildren adds children to the specified view.
 func (h *TCPHost) AddChildren(view int, cs ...string) {
 	for _, c := range cs {
-		// if the peer doesn't exist add it to peers
-		h.peerLock.RLock()
+		// if the peer doesn't exist add it to Peers
+		h.PeerLock.Lock()
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c] = NewTCPConn(c)
 		}
-		h.peerLock.RUnlock()
+		h.PeerLock.Unlock()
 
 		h.views.AddChildren(view, c)
 	}
 }
 
 func (h *TCPHost) AddPendingPeer(view int, name string) {
-	h.peerLock.Lock()
-	if _, ok := h.pendingPeers[name]; !ok {
-		log.Errorln("Attempt to add peer not present in pending peers")
+	h.PeerLock.Lock()
+	if _, ok := h.PendingPeers[name]; !ok {
+		log.Errorln("Attempt to add peer not present in pending Peers")
+		h.PeerLock.Unlock()
 		return
 	}
-	delete(h.pendingPeers, name)
 
 	h.peers[name] = NewTCPConn(name)
-	h.views.AddChildren(view, name)
+	h.PeerLock.Unlock()
 
-	h.peerLock.Unlock()
+	h.views.AddChildren(view, name)
+}
+
+func (h *TCPHost) RemovePendingPeer(peer string) {
+	h.PeerLock.Lock()
+	delete(h.PendingPeers, peer)
+	h.PeerLock.Unlock()
 }
 
 func (h *TCPHost) RemovePeer(view int, name string) {
-	h.peerLock.Lock()
-
-	// make sure we don't remove our parent
-	if h.IsParent(view, name) {
-		return
-	}
-
-	h.views.RemoveChild(view, name)
-	delete(h.peers, name)
-
-	h.peerLock.Unlock()
+	v := h.Views()[view]
+	v.RemovePeer(name)
 }
 
 // NChildren returns the number of children for the specified view.
@@ -331,43 +357,43 @@ func (h *TCPHost) IsParent(view int, peer string) bool {
 
 // IsChild returns true f the given peer is the child for the specified view.
 func (h *TCPHost) IsChild(view int, peer string) bool {
-	h.peerLock.Lock()
+	h.PeerLock.Lock()
 	_, ok := h.peers[peer]
-	h.peerLock.Unlock()
+	h.PeerLock.Unlock()
 	return h.views.Parent(view) != peer && ok
 }
 
-// Peers returns the list of peers as a mapping from hostname to Conn.
+// Peers returns the list of Peers as a mapping from hostname to Conn.
 func (h *TCPHost) Peers() map[string]Conn {
 	return h.peers
 }
 
 // Children returns a map of childname to Conn for the given view.
 func (h *TCPHost) Children(view int) map[string]Conn {
-	h.peerLock.RLock()
+	h.PeerLock.Lock()
 
 	childrenMap := make(map[string]Conn, 0)
 	children := h.views.Children(view)
 	for _, c := range children {
-		if !h.ready[c] {
+		if !h.Ready[c] {
 			continue
 		}
 		childrenMap[c] = h.peers[c]
 	}
 
-	h.peerLock.RUnlock()
+	h.PeerLock.Unlock()
 
 	return childrenMap
 }
 
-// AddPeers adds the list of peers.
+// AddPeers adds the list of Peers.
 func (h *TCPHost) AddPeers(cs ...string) {
-	// XXX does it make sense to add peers that are not children or parents
-	h.peerLock.Lock()
+	// XXX does it make sense to add Peers that are not children or parents
+	h.PeerLock.Lock()
 	for _, c := range cs {
 		h.peers[c] = NewTCPConn(c)
 	}
-	h.peerLock.Unlock()
+	h.PeerLock.Unlock()
 }
 
 // ErrClosed indicates that the connection has been closed.
@@ -385,10 +411,10 @@ func (h *TCPHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) err
 				return
 			}
 
-			h.peerLock.RLock()
-			isReady := h.ready[pname]
+			h.PeerLock.Lock()
+			isReady := h.Ready[pname]
 			parent := h.peers[pname]
-			h.peerLock.RUnlock()
+			h.PeerLock.Unlock()
 			if !isReady {
 				time.Sleep(250 * time.Millisecond)
 				continue
@@ -437,12 +463,12 @@ func (h *TCPHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler)
 					return
 				}
 
-				// if it is not ready try again later
-				h.peerLock.RLock()
-				ready := h.ready[c]
+				// if it is not Ready try again later
+				h.PeerLock.Lock()
+				Ready := h.Ready[c]
 				conn := h.peers[c]
-				h.peerLock.RUnlock()
-				if ready {
+				h.PeerLock.Unlock()
+				if Ready {
 					if e := conn.Put(data[i]); e != nil {
 						errLock.Lock()
 						err = e
@@ -471,72 +497,21 @@ func (h *TCPHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler)
 	return err
 }
 
-// whenReadyGet waits on the given peer and gets from them when it is ready.
-func (h *TCPHost) whenReadyGet(name string, data BinaryUnmarshaler) error {
-	var c Conn
-	for {
-		h.peerLock.Lock()
-		isReady := h.ready[name]
-		c = h.peers[name]
-		h.peerLock.Unlock()
-
-		if isReady {
-			break
-		}
-		// if the host has been closed stop trying
-		if h.Closed() {
-			log.Println("whenReadyGet: host has been closed")
-			return ErrClosed
-		}
-		// XXX see if we should change Sleep with condition variable...
-		// TODO: exponential backoff?
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	if c.Closed() {
-		log.Println("whenReadyGet: connection has been closed")
-		return ErrClosed
-	}
-
-	return c.Get(data)
-}
-
-// Get gets from all of the peers and sends the responses to a channel of
+// Get gets from all of the Peers and sends the responses to a channel of
 // NetworkMessg and errors that it returns.
 //
 // TODO: each of these goroutines could be spawned when we initally connect to
 // them instead.
 func (h *TCPHost) Get() (chan NetworkMessg, chan error) {
-	h.peerLock.RLock()
-	for name := range h.peers {
-		// stream messages from all the peers
-		go func(name string) {
-			for {
-				data := h.pool.Get().(BinaryUnmarshaler)
-				err := h.whenReadyGet(name, data)
-				// check to see if the connection is Closed
-				h.msglock.Lock()
-				h.msgchan <- NetworkMessg{Data: data, From: name}
-				h.errchan <- err
-				h.msglock.Unlock()
-
-				// if the connection has been closed stop getting from this peer
-				if err == ErrClosed {
-					return
-				}
-			}
-		}(name)
-	}
-	h.peerLock.RUnlock()
 	return h.msgchan, h.errchan
 }
 
 // Pool is the underlying pool of BinaryUnmarshallers to use when getting.
-func (h *TCPHost) Pool() sync.Pool {
+func (h *TCPHost) Pool() *sync.Pool {
 	return h.pool
 }
 
 // SetPool sets the pool of BinaryUnmarshallers when getting from channels
-func (h *TCPHost) SetPool(p sync.Pool) {
+func (h *TCPHost) SetPool(p *sync.Pool) {
 	h.pool = p
 }
