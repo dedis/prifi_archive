@@ -194,7 +194,7 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 			"file": logutils.File(),
 			"type": "role_change",
 		}).Infoln(messg)
-		log.Printf("role change: %p", s)
+		// log.Printf("role change: %p", s)
 
 	} else {
 		var messg = s.Name() + " remained regular"
@@ -202,11 +202,13 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 			messg = s.Name() + " became regular"
 		}
 
-		log.WithFields(log.Fields{
-			"file": logutils.File(),
-			"type": "role_change",
-		}).Infoln(messg)
-		log.Printf("role change: %p", s)
+		if curRole == "root" {
+			log.WithFields(log.Fields{
+				"file": logutils.File(),
+				"type": "role_change",
+			}).Infoln(messg)
+			log.Printf("role change: %p", s)
+		}
 
 	}
 

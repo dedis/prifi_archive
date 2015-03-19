@@ -110,7 +110,7 @@ func (sn *Node) get() error {
 					}
 
 					sn.ReceivedHeartbeat(sm.View)
-					log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
+					// log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 					if err := sn.Announce(sm.View, sm.Am); err != nil {
 						log.Errorln(sn.Name(), "announce error:", err)
 					}
@@ -308,7 +308,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 }
 
 func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
-	log.Println(sn.Name(), "view CHANGED to", view)
+	// log.Println(sn.Name(), "view CHANGED to", view)
 	// View Changed
 	atomic.StoreInt64(&sn.ChangingView, FALSE)
 	// channel for getting ViewAcceptedMessages with right size buffer
