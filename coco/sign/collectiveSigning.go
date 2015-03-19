@@ -234,6 +234,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	// update max seen round
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
 	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
+	lsr = atomic.LoadInt64(&sn.LastSeenRound)
 	log.Println("VIEW CHANGE MESSAGE: new Round == %d, oldlsr == %d", vcm.Round, lsr)
 	// check if you are root for this view change
 	iAmNextRoot := FALSE
@@ -246,6 +247,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	sn.NewView(vcm.ViewNo, parent, children)
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
+	// wait for votes from children
 	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, 3*ROUND_TIME, "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
 	votes := 1
 	for _, messg := range messgs {
@@ -267,6 +269,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			atomic.StoreInt64(&sn.ViewNo, int64(vcm.ViewNo))
 			sn.viewChangeCh <- "root"
 		} else {
+			log.Println(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
 			return ViewRejectedError
 		}
 	} else {
@@ -274,7 +277,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 		// create and putup messg to confirm subtree view changed
 		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo, Votes: votes}
 
-		// log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
+		log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
 		err = sn.PutUp(context.TODO(), vcm.ViewNo, &SigningMessage{
 			View: view,
 			From: sn.Name(),
@@ -724,7 +727,7 @@ func (sn *Node) TryViewChange(view int) {
 	anr := atomic.LoadInt64(&sn.AmNextRoot)
 	if anr == TRUE {
 		lsr := atomic.LoadInt64(&sn.LastSeenRound)
-		log.Println(sn.Name(), "INITIATING VIEW CHANGE")
+		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
 		// create new view
 		nextViewNo := view
 		nextParent := ""
