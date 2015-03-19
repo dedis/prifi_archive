@@ -252,10 +252,12 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	}
 
 	// Create a new view, but multiplex information about it using the old view
-	if _, exists := sn.Views()[vcm.ViewNo]; !exists {
+	sn.Views().Lock()
+	if _, exists := sn.Views().Views[vcm.ViewNo]; !exists {
 		children := sn.childrenForNewView(parent)
 		sn.NewView(vcm.ViewNo, parent, children)
 	}
+	sn.Views().Unlock()
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	// wait for votes from children

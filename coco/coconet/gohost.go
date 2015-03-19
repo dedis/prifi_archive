@@ -74,8 +74,8 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	return h
 }
 
-func (h *GoHost) Views() map[int]*View {
-	return h.views.Views
+func (h *GoHost) Views() *Views {
+	return h.views
 }
 
 // SetSuite sets the crypto suite which this Host is using.
@@ -266,7 +266,7 @@ func (h *GoHost) RemovePendingPeer(peer string) {
 }
 
 func (h *GoHost) RemovePeer(view int, name string) {
-	v := h.Views()[view]
+	v := h.views.Views[view]
 	v.RemovePeer(name)
 }
 

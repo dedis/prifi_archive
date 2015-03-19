@@ -59,8 +59,8 @@ func NewTCPHost(hostname string) *TCPHost {
 	return h
 }
 
-func (h *TCPHost) Views() map[int]*View {
-	return h.views.Views
+func (h *TCPHost) Views() *Views {
+	return h.views
 }
 
 // SetSuite sets the suite of the TCPHost to use.
@@ -186,7 +186,7 @@ func (h *TCPHost) Listen() error {
 // It then sends its name and public key to initialize the connection.
 func (h *TCPHost) Connect(view int) error {
 	// Get the parent of the given view.
-	v := h.Views()[view]
+	v := h.views.Views[view]
 	parent := v.Parent
 	if parent == "" {
 		return nil
@@ -331,7 +331,7 @@ func (h *TCPHost) RemovePendingPeer(peer string) {
 }
 
 func (h *TCPHost) RemovePeer(view int, name string) {
-	v := h.Views()[view]
+	v := h.views.Views[view]
 	v.RemovePeer(name)
 }
 

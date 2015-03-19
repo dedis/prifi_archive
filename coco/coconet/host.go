@@ -32,7 +32,7 @@ type Host interface {
 	NewView(view int, parent string, children []string)
 
 	// Returns map of this host's views
-	Views() map[int]*View
+	Views() *Views
 
 	// AddParent adds a parent to the view specified.
 	// Used for building a view incrementally.

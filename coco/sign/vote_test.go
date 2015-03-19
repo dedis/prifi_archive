@@ -16,7 +16,6 @@ import (
 //    / \   \
 //   2   3   5
 func TestTreeSmallConfigVote(t *testing.T) {
-	return
 	hc, err := oldconfig.LoadConfig("../test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
