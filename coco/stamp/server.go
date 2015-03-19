@@ -304,7 +304,7 @@ func (s *Server) Run(role string, nRounds int) {
 			}
 		}
 
-		log.Println(s.Name(), "nextRole: ", nextRole)
+		// log.Println(s.Name(), "nextRole: ", nextRole)
 		if nextRole == "close" {
 			s.Close()
 			return
