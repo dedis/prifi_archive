@@ -159,7 +159,7 @@ func (sn *Node) get() error {
 					}
 					sn.lastView = int64(sm.View)
 					sn.heartbeat.Stop()
-					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
+					// log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
 							sn.closed <- io.EOF
@@ -181,7 +181,7 @@ func (sn *Node) get() error {
 						log.Errorf("VIEW CONFIRMED: already seen this view: %d < %d", sm.View, sn.lastView)
 						return
 					}
-					log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
+					// log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
 					sn.heartbeat.Stop()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case Error:
@@ -252,7 +252,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
 	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
 	lsr = atomic.LoadInt64(&sn.LastSeenRound)
-	log.Println("VIEW CHANGE MESSAGE: new Round == %d, oldlsr == %d", vcm.Round, lsr)
+	// log.Println("VIEW CHANGE MESSAGE: new Round == %d, oldlsr == %d", vcm.Round, lsr)
 	// check if you are root for this view change
 	iAmNextRoot := FALSE
 	if sn.RootFor(vcm.ViewNo) == sn.Name() {
@@ -273,7 +273,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 
 	var err error
 	if iAmNextRoot == TRUE {
-		log.Println(sn.Name(), "as root received", votes, "of", len(sn.HostList))
+		// log.Println(sn.Name(), "as root received", votes, "of", len(sn.HostList))
 		if votes > len(sn.HostList)*2/3 {
 			// quorum confirmed me as new root
 			log.Println(sn.Name(), "quorum", votes, "of", len(sn.HostList), "confirmed me as new root")
@@ -294,7 +294,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 		// create and putup messg to confirm subtree view changed
 		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo, Votes: votes}
 
-		log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
+		// log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
 		err = sn.PutUp(context.TODO(), vcm.ViewNo, &SigningMessage{
 			View: view,
 			From: sn.Name(),
@@ -316,11 +316,11 @@ func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 	sn.VamCh = make(chan *SigningMessage, sn.NChildren(view))
 	sn.VamChLock.Unlock()
 
-	log.Println("bef reg")
+	// log.Println("bef reg")
 	sn.viewChangeCh <- "regular"
-	log.Println("after reg")
+	// log.Println("after reg")
 
-	log.Println("in view change, children for view", view, sn.Children(view))
+	// log.Println("in view change, children for view", view, sn.Children(view))
 	sn.multiplexOnChildren(view, sm)
 }
 
@@ -665,7 +665,7 @@ func (sn *Node) Respond(view, Round int) error {
 			}
 
 			// Report up non-networking error, probably signature failure
-			log.Println(sn.Name(), "Error in respose for child", from, sm)
+			log.Errorln(sn.Name(), "Error in respose for child", from, sm)
 			err := errors.New(sm.Err.Err)
 			sn.PutUpError(view, err)
 			return err
