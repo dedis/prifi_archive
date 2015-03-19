@@ -150,9 +150,9 @@ func (sn *Node) get() error {
 					sn.roundLock.Unlock()
 					rmch <- sm
 				case ViewChange:
+					sn.ReceivedHeartbeat(sm.View)
 					if int64(sm.View) > sn.alreadyTriedView {
 						sn.alreadyTriedView = int64(sm.View)
-						sn.ReceivedHeartbeat(sm.View)
 					}
 					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
@@ -163,12 +163,13 @@ func (sn *Node) get() error {
 						log.Errorln("view change error:", err)
 					}
 				case ViewAccepted:
+					sn.ReceivedHeartbeat(sm.View)
 					sn.VamChLock.Lock()
 					sn.VamCh <- sm
 					sn.VamChLock.Unlock()
 				case ViewConfirmed:
 					log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
-					sn.ReceivedHeartbeat(sm.View)
+					sn.ReceivedHeartbeat(sm.Vcfm.ViewNo)
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case Error:
 					log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
