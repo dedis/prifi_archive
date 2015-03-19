@@ -239,8 +239,8 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closed = make(chan error, 10)
-	sn.closing = make(chan bool, 10)
+	sn.closed = make(chan error, 20)
+	sn.closing = make(chan bool, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 
@@ -265,8 +265,8 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closing = make(chan bool, 10)
-	sn.closed = make(chan error, 2)
+	sn.closing = make(chan bool, 20)
+	sn.closed = make(chan error, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 	sn.viewChangeCh = make(chan string, 10)
@@ -465,7 +465,7 @@ func (sn *Node) Timeout() time.Duration {
 }
 
 func (sn *Node) DefaultTimeout() time.Duration {
-	return 500 * time.Millisecond
+	return 2000 * time.Millisecond
 }
 
 func max(a int64, b int64) int64 {

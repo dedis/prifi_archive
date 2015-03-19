@@ -104,8 +104,6 @@ func RunTest(t T) (RunStats, error) {
 	case <-time.After(10 * time.Minute):
 		return rs, errors.New("timed out")
 	}
-
-	return rs, nil
 }
 
 // RunTests runs the given tests and puts the output into the
@@ -231,13 +229,11 @@ func ScaleTest(bf, low, high, mult int) []T {
 
 // nmachs=32, hpn=128, bf=16, rate=500, failures=20, root failures, failures
 var FailureTests = []T{
-	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0},
-	{DefaultMachs, 128, 16, 30, 50, 5, 0, 0},
-	{DefaultMachs, 128, 16, 30, 50, 10, 0, 0},
-	{DefaultMachs, 128, 16, 30, 50, 0, 5, 0},
-	{DefaultMachs, 128, 16, 30, 50, 0, 10, 0},
-	{DefaultMachs, 128, 16, 30, 50, 0, 0, 5},
-	{DefaultMachs, 128, 16, 30, 50, 0, 0, 10},
+	{DefaultMachs, 64, 16, 30, 500, 0, 0, 0},
+	{DefaultMachs, 64, 16, 30, 500, 0, 5, 0},
+	{DefaultMachs, 64, 16, 30, 500, 0, 10, 0},
+	{DefaultMachs, 64, 16, 30, 500, 5, 0, 5},
+	{DefaultMachs, 64, 16, 30, 500, 5, 0, 10},
 }
 
 func FullTests() []T {
@@ -261,6 +257,17 @@ func FullTests() []T {
 	return tests
 }
 
+var HostsTest = []T{
+	{DefaultMachs, 1, 2, 30, 50, 0, 0, 0},
+	{DefaultMachs, 2, 3, 30, 50, 0, 0, 0},
+	{DefaultMachs, 4, 3, 30, 50, 0, 0, 0},
+	{DefaultMachs, 8, 8, 30, 50, 0, 0, 0},
+	{DefaultMachs, 16, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 32, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0},
+}
+
 func main() {
 	SetDebug(false)
 	// view = true
@@ -272,14 +279,20 @@ func main() {
 	if err != nil {
 		log.Fatalln("error building deploy2deter:", err)
 	}
+	log.Println("KILLING REMAINING PROCESSES")
+	cmd := exec.Command("./deploy2deter", "-kill=true")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
 	// test the testing framework
 
 	// DefaultRounds = 5
 	// t := FailureTests
 	// RunTests("failure_test.csv", t)
-
-	t := FailureTests
-	RunTests("failure_test", t)
+	RunTests("host_test", HostsTest)
+	// t := FailureTests
+	// RunTests("failure_test", t)
 	// t = ScaleTest(10, 1, 100, 2)
 	// RunTests("scale_test.csv", t)
 	// how does the branching factor effect speed

@@ -69,7 +69,7 @@ func streamMessgs(c *stamp.Client, servers []string, rate int) {
 
 retry:
 	err := c.TimeStamp(msg, servers[0])
-	if err == io.EOF {
+	if err == io.EOF || err == coconet.ErrClosed {
 		log.Fatal(AggregateStats(buck, roundsAfter, times))
 	} else if err == stamp.ErrClientToTSTimeout {
 		log.Errorln(err)
@@ -90,7 +90,8 @@ retry:
 			err := c.TimeStamp(msg, s)
 			t := time.Since(t0)
 
-			if err == io.EOF {
+			if err == io.EOF || err == coconet.ErrClosed {
+				log.Printf("CLIENT DONE: terminating")
 				log.Fatal(AggregateStats(buck, roundsAfter, times))
 			} else if err != nil {
 				// ignore errors

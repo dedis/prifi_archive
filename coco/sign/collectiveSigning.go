@@ -116,6 +116,7 @@ func (sn *Node) get() error {
 						return
 					}
 					sn.ReceivedHeartbeat(sm.View)
+					log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 					if err := sn.Announce(sm.View, sm.Am); err != nil {
 						log.Errorln(sn.Name(), "announce error:", err)
 					}
@@ -156,10 +157,11 @@ func (sn *Node) get() error {
 					sn.roundLock.Unlock()
 					rmch <- sm
 				case ViewChange:
+					sn.heartbeat.Stop()
 					if int64(sm.View) > sn.alreadyTriedView {
 						sn.alreadyTriedView = int64(sm.View)
-						sn.ReceivedHeartbeat(sm.View)
 					}
+					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
 							sn.closed <- io.EOF
@@ -168,11 +170,13 @@ func (sn *Node) get() error {
 						log.Errorln("view change error:", err)
 					}
 				case ViewAccepted:
+					sn.heartbeat.Stop()
 					sn.VamChLock.Lock()
 					sn.VamCh <- sm
 					sn.VamChLock.Unlock()
 				case ViewConfirmed:
-					sn.ReceivedHeartbeat(sm.View)
+					log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
+					sn.heartbeat.Stop()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case Error:
 					log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
@@ -220,7 +224,7 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 					return messgs
 				}
 			case <-time.After(timeout):
-				log.Warnln(sn.Name(), "timeouted on", what, timeout, "got", len(messgs), "out of", nChildren)
+				log.Warnln(sn.Name(), "timeouted on", what, timeout, "got", len(messgs), "out of", nChildren, "for view", view)
 				return messgs
 			}
 		}
@@ -233,6 +237,12 @@ var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted 
 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
+
+	// update max seen round
+	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
+	lsr = atomic.LoadInt64(&sn.LastSeenRound)
+	log.Println("VIEW CHANGE MESSAGE: new Round == %d, oldlsr == %d", vcm.Round, lsr)
 	// check if you are root for this view change
 	iAmNextRoot := FALSE
 	if sn.RootFor(vcm.ViewNo) == sn.Name() {
@@ -246,7 +256,8 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	}
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
-	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, sn.Timeout(), "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
+	// wait for votes from children
+	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, 3*ROUND_TIME, "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
 	votes := 1
 	for _, messg := range messgs {
 		votes += messg.Vam.Votes
@@ -266,6 +277,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			atomic.StoreInt64(&sn.ViewNo, int64(vcm.ViewNo))
 			sn.viewChangeCh <- "root"
 		} else {
+			log.Println(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
 			return ViewRejectedError
 		}
 	} else {
@@ -273,7 +285,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 		// create and putup messg to confirm subtree view changed
 		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo, Votes: votes}
 
-		// log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
+		log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
 		err = sn.PutUp(context.TODO(), vcm.ViewNo, &SigningMessage{
 			View: view,
 			From: sn.Name(),
@@ -312,7 +324,10 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 				"type":  "root_failure",
 				"round": am.Round,
 			}).Info(sn.Name() + "Root imposed failure")
-			sn.TryViewChange(view + 1)
+			// It doesn't make sense to try view change twice
+			// what we essentially end up doing is double setting sn.ViewChanged
+			// it is up to our followers to time us out and go to the next leader
+			// sn.TryViewChange(view + 1)
 			return ChangingViewError
 		}
 	}
@@ -723,6 +738,11 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 }
 
 func (sn *Node) TryViewChange(view int) {
+	// should ideally be compare and swap
+	changing := atomic.LoadInt64(&sn.ChangingView)
+	if changing == TRUE {
+		return
+	}
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
 
 	// check who the new view root it
@@ -733,13 +753,17 @@ func (sn *Node) TryViewChange(view int) {
 
 	// take action if new view root
 	anr := atomic.LoadInt64(&sn.AmNextRoot)
+
 	if anr == TRUE {
-		log.Println(sn.Name(), "INITIATING VIEW CHANGE")
+		lsr := atomic.LoadInt64(&sn.LastSeenRound)
+		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view, sn.HostList)
 		// create new view
 		nextViewNo := view
 		nextParent := ""
-		vcm := &ViewChangeMessage{ViewNo: nextViewNo}
+		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
 		sn.ViewChange(nextViewNo, nextParent, vcm)
+	} else {
+		log.Println(sn.Name(), "NOT ROOT:", sn.HostList)
 	}
 
 }
@@ -870,10 +894,9 @@ func (sn *Node) TimeForViewChange() bool {
 	rpv := atomic.LoadInt64(&RoundsPerView)
 	// if this round is last one for this view
 	if lsr%rpv == 0 {
-		log.Println(sn.Name(), "TIME FOR VIEWCHANGE")
+		// log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)
 		return true
 	}
-
 	return false
 }
 

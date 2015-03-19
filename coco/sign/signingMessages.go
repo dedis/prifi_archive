@@ -125,6 +125,7 @@ type ErrorMessage struct {
 // so they can accept it as their new parent as well...
 type ViewChangeMessage struct {
 	ViewNo int
+	Round  int
 }
 
 // Not a typical message of a view Change protocol

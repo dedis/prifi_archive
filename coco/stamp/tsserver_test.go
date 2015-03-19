@@ -37,7 +37,7 @@ func init() {
 func TestTSSIntegrationHealthy(t *testing.T) {
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
-	if err := runTSSIntegration(4, 4, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+	if err := runTSSIntegration(4, 30, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -196,6 +196,7 @@ func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsF
 		stampers[i] = stamp.NewServer(hostConfig.SNodes[i])
 		defer func() {
 			hostConfig.SNodes[i].Close()
+			time.Sleep(1 * time.Second)
 		}()
 	}
 
@@ -331,7 +332,7 @@ func runTCPTimestampFromConfig(failureRate int, faultyNodes ...int) error {
 	oldconfig.StartConfigPort += 2010
 	nMessages := 1
 	nClients := 1
-	nRounds := 4
+	nRounds := 30
 
 	// load config with faulty or healthy hosts
 	if len(faultyNodes) > 0 {
