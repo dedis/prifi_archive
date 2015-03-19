@@ -246,7 +246,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	sn.NewView(vcm.ViewNo, parent, children)
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
-	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, ROUND_TIME, "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
+	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, 3*ROUND_TIME, "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
 	votes := 1
 	for _, messg := range messgs {
 		votes += messg.Vam.Votes

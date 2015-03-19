@@ -279,6 +279,12 @@ func main() {
 	if err != nil {
 		log.Fatalln("error building deploy2deter:", err)
 	}
+	log.Println("KILLING REMAINING PROCESSES")
+	cmd := exec.Command("./deploy2deter", "-kill=true")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
 	// test the testing framework
 
 	// DefaultRounds = 5
