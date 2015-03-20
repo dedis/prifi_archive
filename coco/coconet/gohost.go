@@ -218,8 +218,8 @@ func (h *GoHost) Listen() error {
 }
 
 // NewView creates a new view with the given view number, parent, and children.
-func (h *GoHost) NewView(view int, parent string, children []string) {
-	h.views.NewView(view, parent, children)
+func (h *GoHost) NewView(view int, parent string, children []string, hoslist []string) {
+	h.views.NewView(view, parent, children, hoslist)
 }
 
 // AddParent adds a parent node to the specified view.
@@ -290,6 +290,14 @@ func (h *GoHost) Closed() bool {
 // NChildren returns the number of children specified by the given view.
 func (h *GoHost) NChildren(view int) int {
 	return h.views.NChildren(view)
+}
+
+func (h *GoHost) HostListOn(view int) []string {
+	return h.views.HostList(view)
+}
+
+func (h *GoHost) SetHostList(view int, hostlist []string) {
+	h.views.SetHostList(view, hostlist)
 }
 
 // Name returns the hostname of the Host.

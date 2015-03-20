@@ -285,7 +285,8 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	sn.Views().Unlock()
 	if !exists {
 		children := sn.childrenForNewView(parent)
-		sn.NewView(vcm.ViewNo, parent, children)
+		log.Println("CREATING NEW VIEW with ", len(sn.HostListOn(view-1)), "hosts", "on view", view)
+		sn.NewView(vcm.ViewNo, parent, children, sn.HostListOn(view-1))
 	}
 
 	// Apply pending actions (add, remove) on view
@@ -308,9 +309,9 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	var err error
 	if iAmNextRoot == TRUE {
 		// log.Println(sn.Name(), "as root received", votes, "of", len(sn.HostList))
-		if votes > len(sn.HostList)*2/3 {
+		if votes > len(sn.HostListOn(view))*2/3 {
 			// quorum confirmed me as new root
-			log.Println(sn.Name(), "quorum", votes, "of", len(sn.HostList), "confirmed me as new root")
+			log.Println(sn.Name(), "quorum", votes, "of", len(sn.HostListOn(view)), "confirmed me as new root")
 			vcfm := &ViewConfirmedMessage{ViewNo: vcm.ViewNo}
 			sm := &SigningMessage{Type: ViewConfirmed, Vcfm: vcfm, From: sn.Name(), View: vcm.ViewNo}
 			sn.multiplexOnChildren(vcm.ViewNo, sm)
@@ -823,6 +824,7 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 	if vreq.Action == "add" {
 		sn.AddPendingPeer(view, vreq.Name)
 	} else if vreq.Action == "remove" {
+		log.Println(sn.Name(), "looking to remove peer")
 		if ok := sn.RemovePeer(view, vreq.Name); ok {
 			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
 		}
@@ -834,7 +836,7 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 	// more than 2/3 of all nodes must vote For, to accept vote request
 	// log.Println(sn.Name(), "act on votes:", cv.For, len(sn.HostList))
-	accepted := cv.For > 2*len(sn.HostList)/3
+	accepted := cv.For > 2*len(sn.HostListOn(view))/3
 	var actionTaken string = "rejected"
 	if accepted {
 		actionTaken = "accepted"
@@ -842,7 +844,7 @@ func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 
 	// Report on vote decision
 	if sn.IsRoot(view) {
-		abstained := len(sn.HostList) - cv.For - cv.Against
+		abstained := len(sn.HostListOn(view)) - cv.For - cv.Against
 		log.Infoln("Vote Request for", vreq.Name, "be", vreq.Action, actionTaken)
 		log.Infoln("Votes FOR:", cv.For, "; Votes AGAINST:", cv.Against, "; Absteined:", abstained)
 	}
@@ -933,9 +935,9 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 	}
 
 	if isroot {
-		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
+		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round, "view", view)
 		nel := len(round.ExceptionList)
-		nhl := len(sn.HostList)
+		nhl := len(sn.HostListOn(view))
 		p := strconv.FormatFloat(float64(nel)/float64(nhl), 'f', 6, 64)
 		log.Infoln(sn.Name(), "reports", nel, "out of", nhl, "percentage", p, "failed in round", Round)
 		// log.Println(round.MTRoot)

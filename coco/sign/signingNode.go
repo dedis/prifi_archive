@@ -108,8 +108,18 @@ func (sn *Node) ViewChangeCh() chan string {
 // Returns name of node who should be the root for the next view
 // round robin is used on the array of host names to determine the next root
 func (sn *Node) RootFor(view int) string {
-	log.Println("hl:", sn.HostList)
-	return sn.HostList[view%len(sn.HostList)]
+	// log.Println("hl:", sn.HostListOn(view))
+	log.Println(sn.Name(), "ROOT FOR", view)
+
+	var hl []string
+	if view == 0 {
+		hl = sn.HostListOn(view)
+	} else {
+		// we might not have the host list for current view
+		// safer to use the previous view's hostlist, always
+		hl = sn.HostListOn(view - 1)
+	}
+	return hl[view%len(hl)]
 }
 
 func (sn *Node) SetFailureRate(v int) {

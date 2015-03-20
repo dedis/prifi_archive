@@ -260,8 +260,8 @@ func (h *TCPHost) Connect(view int) error {
 }
 
 // NewView creates a new view with the given view number, parent and children.
-func (h *TCPHost) NewView(view int, parent string, children []string) {
-	h.views.NewView(view, parent, children)
+func (h *TCPHost) NewView(view int, parent string, children []string, hostlist []string) {
+	h.views.NewView(view, parent, children, hostlist)
 }
 
 // Close closes all the connections currently open.
@@ -337,6 +337,14 @@ func (h *TCPHost) RemovePeer(view int, name string) bool {
 // NChildren returns the number of children for the specified view.
 func (h *TCPHost) NChildren(view int) int {
 	return h.views.NChildren(view)
+}
+
+func (h *TCPHost) HostListOn(view int) []string {
+	return h.views.HostList(view)
+}
+
+func (h *TCPHost) SetHostList(view int, hostlist []string) {
+	h.views.SetHostList(view, hostlist)
 }
 
 // Name returns the hostname of the TCPHost.

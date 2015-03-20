@@ -29,7 +29,7 @@ type Host interface {
 	// NewView creates a NewView to operate on.
 	// It creates a view with the given view number, which corresponds to the tree
 	// with the specified parent and children.
-	NewView(view int, parent string, children []string)
+	NewView(view int, parent string, children []string, hostlist []string)
 
 	// Returns map of this host's views
 	Views() *Views
@@ -45,6 +45,10 @@ type Host interface {
 	NChildren(view int) int
 	// Children returns the children for a given view.
 	Children(view int) map[string]Conn
+	// Returns list of hosts available on a specific view
+	HostListOn(view int) []string
+	// Set the hoslist on a specific view
+	SetHostList(view int, hostlist []string)
 
 	// IsRoot returns true if this host is the root for the given view.
 	IsRoot(view int) bool

@@ -446,6 +446,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		hc.Dir = nil
 	}
 
+	log.Println("IN LOAD JSON")
 	// add a hostlist to each of the signing nodes
 	var hostList []string
 	for h := range hosts {
@@ -456,6 +457,9 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		sortable := sort.StringSlice(hostList)
 		sortable.Sort()
 		copy(sn.HostList, sortable)
+		// set host list on view 0
+		log.Println("in config hostlist", sn.HostList)
+		sn.SetHostList(0, sn.HostList)
 	}
 
 	return hc, err
