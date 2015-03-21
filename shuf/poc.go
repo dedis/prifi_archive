@@ -8,28 +8,30 @@ import (
 type IdShuffle struct{}
 
 func (i IdShuffle) ShuffleStep(msgs [][]byte, node int,
-	inf *Info) ([][]byte, *int) {
-	return msgs, nil
+	inf *Info) []RouteInstr {
+	return []RouteInstr{RouteInstr{nil, msgs}}
 }
 
-func (id IdShuffle) InitialNode(msg []byte, inf *Info) int {
+func (id IdShuffle) InitialNode(msg []byte, client int, inf *Info) int {
 	return 0
 }
 
 // Random, but insecure shuffle
-type DumbShuffle struct{}
+type DumbShuffle struct {
+	Seed int64
+}
 
-func (d DumbShuffle) InitialNode(msg []byte, inf *Info) int {
+func (d DumbShuffle) InitialNode(msg []byte, client int, inf *Info) int {
 	return 0
 }
 
 func (d DumbShuffle) ShuffleStep(msgs [][]byte, node int,
-	inf *Info) ([][]byte, *int) {
+	inf *Info) []RouteInstr {
 	newMsgs := make([][]byte, len(msgs))
-	rand.Seed(inf.Seed)
+	rand.Seed(d.Seed)
 	p := rand.Perm(len(msgs))
 	for i := range p {
 		newMsgs[i] = msgs[p[i]]
 	}
-	return newMsgs, nil
+	return []RouteInstr{RouteInstr{nil, newMsgs}}
 }

@@ -10,11 +10,10 @@ import (
 func main() {
 
 	defaultOpts := shuf.Info{
-		Seed:        2,
 		NumNodes:    1,
-		NumGroups:   1,
+		NumClients:  2,
+		MsgSize:     5,
 		NumRounds:   1,
-		MsgSize:     1,
 		ResendTime:  time.Second,
 		CollectTime: time.Second}
 
@@ -23,7 +22,8 @@ func main() {
 	messages[1] = []byte("world")
 	fmt.Printf("Starting with %v\n", messages)
 
-	var s shuf.DumbShuffle
+	s := shuf.IdShuffle{}
+	// s := shuf.DumbShuffle{2}
 
 	gochan.ChanShuffle(s, &defaultOpts, messages)
 	time.Sleep(time.Second * 2)
