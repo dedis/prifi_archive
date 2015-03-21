@@ -227,7 +227,9 @@ func (sn *Node) get() error {
 
 func (sn *Node) StopHeartbeat() {
 	sn.hbLock.Lock()
-	sn.heartbeat.Stop()
+	if sn.heartbeat != nil {
+		sn.heartbeat.Stop()
+	}
 	sn.hbLock.Unlock()
 }
 

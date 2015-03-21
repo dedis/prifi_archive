@@ -289,7 +289,7 @@ func (s *Server) Run(role string, nRounds int) {
 	// 	s.Close()
 	// }()
 
-	closed := make(chan bool)
+	closed := make(chan bool, 1)
 
 	go func() { err := s.Signer.Listen(); closed <- true; s.Close(); log.Error(err) }()
 	if role == "testConnect" {
