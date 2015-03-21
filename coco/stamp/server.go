@@ -288,8 +288,31 @@ func (s *Server) Run(role string, nRounds int) {
 	// 	log.Infoln(s.Name(), "CLOSE AFTER RUN")
 	// 	s.Close()
 	// }()
-	go func() { err := s.Signer.Listen(); s.Close(); log.Error(err) }()
 
+	closed := make(chan bool)
+
+	go func() { err := s.Signer.Listen(); closed <- true; s.Close(); log.Error(err) }()
+	if role == "testConnect" {
+		go func() {
+			time.Sleep(45 * time.Second)
+			hostlist := s.Hostlist()
+			ticker := time.Tick(30 * time.Second)
+			i := 1
+			for _ = range ticker {
+				select {
+				case <-closed:
+					return
+				default:
+				}
+				if i%2 == 0 {
+					s.Signer.RemoveSelf()
+				} else {
+					s.Signer.AddSelf(hostlist[(i/2)%len(hostlist)])
+				}
+			}
+		}()
+		role = "regular"
+	}
 	s.rLock.Lock()
 	s.maxRounds = nRounds
 	s.rLock.Unlock()

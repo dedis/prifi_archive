@@ -53,6 +53,7 @@ func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerp
 			" -logger=" + loggerport +
 			" -debug=" + debug +
 			" -rounds=" + strconv.Itoa(rounds) +
+			" -test_connect=" + strconv.FormatBool(testConnect) +
 			amroot +
 			" </dev/null 2>/dev/null 1>/dev/null &); "
 	}
@@ -69,6 +70,7 @@ var rFail int
 var fFail int
 var rounds int
 var kill bool
+var testConnect bool
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
@@ -81,6 +83,7 @@ func init() {
 	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
 	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
+	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
 }
 
 func main() {

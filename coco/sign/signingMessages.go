@@ -26,6 +26,8 @@ const (
 	ViewChange
 	ViewAccepted
 	ViewConfirmed
+	GroupChange
+	GroupChanged
 	Default // for internal use
 	Error
 )
@@ -41,6 +43,8 @@ type SigningMessage struct {
 	Vcm  *ViewChangeMessage
 	Vcfm *ViewConfirmedMessage
 	Vam  *ViewAcceptedMessage
+	Gcm  *GroupChangeMessage
+	Gcr  *GroupChangeResponse
 	Err  *ErrorMessage
 	From string
 	View int
@@ -140,4 +144,12 @@ type ViewAcceptedMessage struct {
 // TODO: maybe send equivalent of ChallengeMessage to allow verifying view confirm
 type ViewConfirmedMessage struct {
 	ViewNo int
+}
+
+type GroupChangeMessage struct {
+	Vr VoteRequest
+}
+
+type GroupChangeResponse struct {
+	Vr VoteRequest
 }

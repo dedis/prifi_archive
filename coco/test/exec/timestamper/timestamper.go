@@ -12,7 +12,7 @@ import (
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failureRate, rFail, fFail int, logger string) {
+func Run(hostname, cfg, app string, rounds int, rootwait int, debug, testConnect bool, failureRate, rFail, fFail int, logger string) {
 	if debug {
 		coco.DEBUG = true
 	}
@@ -126,9 +126,12 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug bool, failur
 					s.Run("root", rounds)
 					// log.Println("\n\nROOT DONE\n\n")
 
-				} else {
+				} else if !testConnect {
 					s.Run("regular", rounds)
 					// log.Println("\n\nREGULAR DONE\n\n")
+				} else {
+					// testing connection
+					s.Run("test_connect", rounds)
 				}
 			}
 		}

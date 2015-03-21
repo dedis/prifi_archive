@@ -17,8 +17,6 @@ import (
 // Ensure that TCPHost satisfies the Host interface.
 var _ Host = &TCPHost{}
 
-// TCPHost implements the Host interface.
-// It uses TCPConns as its underlying connection type.
 type TCPHost struct {
 	name     string
 	listener net.Listener
@@ -28,9 +26,10 @@ type TCPHost struct {
 	PeerLock sync.RWMutex
 	peers    map[string]Conn
 	Ready    map[string]bool
+
 	// Peers asking to join overall tree structure of nodes
 	// via connection to current host node
-	PendingPeers map[string]Conn
+	PendingPeers map[string]bool
 
 	pkLock sync.RWMutex
 	Pubkey abstract.Point // own public key
@@ -50,10 +49,11 @@ type TCPHost struct {
 // NewTCPHost creates a new TCPHost with a given hostname.
 func NewTCPHost(hostname string) *TCPHost {
 	h := &TCPHost{name: hostname,
-		views:   NewViews(),
-		msglock: sync.Mutex{},
-		msgchan: make(chan NetworkMessg, 1),
-		errchan: make(chan error, 1)}
+		views:        NewViews(),
+		msglock:      sync.Mutex{},
+		msgchan:      make(chan NetworkMessg, 1),
+		PendingPeers: make(map[string]bool),
+		errchan:      make(chan error, 1)}
 	h.peers = make(map[string]Conn)
 	h.Ready = make(map[string]bool)
 	return h
@@ -181,17 +181,7 @@ func (h *TCPHost) Listen() error {
 	return nil
 }
 
-// Connect connects to the parent in the given view.
-// It connects to the parent by establishing a TCPConn.
-// It then sends its name and public key to initialize the connection.
-func (h *TCPHost) Connect(view int) error {
-	// Get the parent of the given view.
-	v := h.views.Views[view]
-	parent := v.Parent
-	if parent == "" {
-		return nil
-	}
-
+func (h *TCPHost) ConnectTo(parent string) error {
 	// If we have alReady set up this connection don't do anything
 	h.PeerLock.Lock()
 	if h.Ready[parent] {
@@ -239,6 +229,7 @@ func (h *TCPHost) Connect(view int) error {
 	h.PeerLock.Lock()
 	h.Ready[tp.Name()] = true
 	h.peers[parent] = tp
+	h.PendingPeers[parent] = true
 	h.PeerLock.Unlock()
 	if coco.DEBUG {
 		log.Infoln("CONNECTED TO PARENT:", parent)
@@ -257,6 +248,19 @@ func (h *TCPHost) Connect(view int) error {
 	}()
 
 	return nil
+}
+
+// Connect connects to the parent in the given view.
+// It connects to the parent by establishing a TCPConn.
+// It then sends its name and public key to initialize the connection.
+func (h *TCPHost) Connect(view int) error {
+	// Get the parent of the given view.
+	v := h.views.Views[view]
+	parent := v.Parent
+	if parent == "" {
+		return nil
+	}
+	return h.ConnectTo(parent)
 }
 
 // NewView creates a new view with the given view number, parent and children.
@@ -292,6 +296,8 @@ func (h *TCPHost) AddParent(view int, c string) {
 	if _, ok := h.peers[c]; !ok {
 		h.peers[c] = NewTCPConn(c)
 	}
+	// remove from pending peers list
+	delete(h.PendingPeers, c)
 	h.PeerLock.Unlock()
 	h.views.AddParent(view, c)
 }
@@ -304,24 +310,27 @@ func (h *TCPHost) AddChildren(view int, cs ...string) {
 		if _, ok := h.peers[c]; !ok {
 			h.peers[c] = NewTCPConn(c)
 		}
+		delete(h.PendingPeers, c)
 		h.PeerLock.Unlock()
 
 		h.views.AddChildren(view, c)
 	}
 }
 
-func (h *TCPHost) AddPendingPeer(view int, name string) {
+func (h *TCPHost) AddPendingPeer(view int, name string) error {
 	h.PeerLock.Lock()
 	if _, ok := h.PendingPeers[name]; !ok {
 		log.Errorln("Attempt to add peer not present in pending Peers")
 		h.PeerLock.Unlock()
-		return
+		return errors.New("Attempt to add peer not present in pending Peers")
 	}
 
-	h.peers[name] = NewTCPConn(name)
 	h.PeerLock.Unlock()
+	// ignores peer if already added
+	h.ConnectTo(name)
 
 	h.views.AddChildren(view, name)
+	return nil
 }
 
 func (h *TCPHost) RemovePendingPeer(peer string) {
@@ -405,6 +414,46 @@ func (h *TCPHost) AddPeers(cs ...string) {
 
 // ErrClosed indicates that the connection has been closed.
 var ErrClosed = errors.New("connection closed")
+
+func (h *TCPHost) PutTo(ctx context.Context, host string, data BinaryMarshaler) error {
+	pname := host
+	done := make(chan error)
+	canceled := int64(0)
+	go func() {
+		// try until this is canceled, closed, or successful
+		for {
+			if atomic.LoadInt64(&canceled) == 1 {
+				return
+			}
+
+			h.PeerLock.Lock()
+			isReady := h.Ready[pname]
+			parent := h.peers[pname]
+			h.PeerLock.Unlock()
+			if !isReady {
+				time.Sleep(250 * time.Millisecond)
+				continue
+			}
+
+			if parent.Closed() {
+				done <- ErrClosed
+				return
+			}
+			// if the connection has been closed put will fail
+			done <- parent.Put(data)
+			return
+		}
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		atomic.StoreInt64(&canceled, 1)
+		return ctx.Err()
+	}
+
+}
 
 // PutUp sends a message to the parent in the specified view.
 func (h *TCPHost) PutUp(ctx context.Context, view int, data BinaryMarshaler) error {

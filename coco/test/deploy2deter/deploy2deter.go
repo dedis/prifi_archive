@@ -45,6 +45,7 @@ var fFail int
 var kill bool
 var rounds int
 var nmachs int
+var testConnect bool
 
 func init() {
 	flag.IntVar(&bf, "bf", 2, "branching factor: default binary")
@@ -58,6 +59,7 @@ func init() {
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run for")
 	flag.BoolVar(&kill, "kill", false, "kill all running processes (but don't start anything)")
 	flag.IntVar(&nmachs, "nmachs", 32, "number of machines to use")
+	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
 }
 
 func main() {
@@ -219,5 +221,6 @@ func main() {
 			" -failures="+strconv.Itoa(failures)+
 			" -rfail="+strconv.Itoa(rFail)+
 			" -ffail="+strconv.Itoa(fFail)+
+			" -test_connect="+strconv.FormatBool(testConnect)+
 			" -kill="+strconv.FormatBool(kill)))
 }

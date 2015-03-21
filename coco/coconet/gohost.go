@@ -1,6 +1,7 @@
 package coconet
 
 import (
+	"errors"
 	"os"
 	"os/signal"
 	"sync"
@@ -98,14 +99,7 @@ func (h *GoHost) SetPubKey(pk abstract.Point) {
 	h.pkLock.Unlock()
 }
 
-// Connect connects to the parent of the host.
-// For GoHosts this is a noop.
-func (h *GoHost) Connect(view int) error {
-	parent := h.views.Parent(view)
-	if parent == "" {
-		return nil
-	}
-
+func (h *GoHost) ConnectTo(parent string) error {
 	// if the connection has been established skip it
 	h.PeerLock.Lock()
 	if h.Ready[parent] {
@@ -158,6 +152,16 @@ func (h *GoHost) Connect(view int) error {
 	}()
 
 	return nil
+}
+
+// Connect connects to the parent of the host.
+// For GoHosts this is a noop.
+func (h *GoHost) Connect(view int) error {
+	parent := h.views.Parent(view)
+	if parent == "" {
+		return nil
+	}
+	return h.ConnectTo(parent)
 }
 
 // Listen listens for incoming goconn connections.
@@ -245,18 +249,19 @@ func (h *GoHost) AddChildren(view int, cs ...string) {
 	}
 }
 
-func (h *GoHost) AddPendingPeer(view int, name string) {
+func (h *GoHost) AddPendingPeer(view int, name string) error {
 	h.PeerLock.Lock()
 	if _, ok := h.PendingPeers[name]; !ok {
 		log.Errorln("Attempt to add peer not present in pending Peers")
 		h.PeerLock.Unlock()
-		return
+		return errors.New("attempted to add peer not present in pending peers")
 	}
 
-	h.peers[name] = NewTCPConn(name)
 	h.PeerLock.Unlock()
+	h.ConnectTo(name)
 
 	h.views.AddChildren(view, name)
+	return nil
 }
 
 func (h *GoHost) RemovePendingPeer(peer string) {
@@ -352,6 +357,38 @@ func (h *GoHost) AddPeers(cs ...string) {
 		h.peers[c], _ = NewGoConn(h.dir, h.name, c)
 	}
 	h.PeerLock.Unlock()
+}
+
+func (h *GoHost) PutTo(ctx context.Context, host string, data BinaryMarshaler) error {
+	done := make(chan error)
+	var canceled int64
+	go func() {
+		for {
+			if atomic.LoadInt64(&canceled) == 1 {
+				return
+			}
+			h.PeerLock.Lock()
+			Ready := h.Ready[host]
+			parent := h.peers[host]
+			h.PeerLock.Unlock()
+
+			if Ready {
+				// if closed put will return ErrClosed
+				done <- parent.Put(data)
+				return
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		atomic.StoreInt64(&canceled, 1)
+		return ctx.Err()
+	}
+
 }
 
 // PutUp sends a message to the parent on the given view, potentially timing out.

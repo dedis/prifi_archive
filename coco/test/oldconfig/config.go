@@ -471,7 +471,6 @@ func (hc *HostConfig) Run(stamper bool, signType sign.Type, hostnameSlice ...str
 	if hostnameSlice == nil {
 		hostnames = hc.Hosts
 	} else {
-
 		for _, h := range hostnameSlice {
 			sn, ok := hc.Hosts[h]
 			if !ok {

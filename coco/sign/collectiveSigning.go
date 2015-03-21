@@ -195,6 +195,27 @@ func (sn *Node) get() error {
 					// log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
 					sn.StopHeartbeat()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
+				case GroupChange:
+					// if the view is uninitialized set it to our most recently seen view
+					if sm.View == -1 {
+						sm.View = int(sn.lastView)
+					}
+					if sn.RootFor(sm.View) != sn.Name() {
+						sn.PutUp(context.TODO(), sm.View, sm)
+						return
+					}
+					// I am the root for this
+					sn.StartVotingRound(&sm.Gcm.Vr)
+				case GroupChanged:
+					// only the leaf that initiated the GroupChange should get a response
+					vr := sm.Gcm.Vr
+					if vr.Action == "remove" {
+						sn.heartbeat.Stop()
+						return
+					}
+					view := sm.View
+					sn.AddParent(view, sm.From)
+					log.Println("GROUP CHANGE RESPONSE:", vr)
 				case Error:
 					log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 				}
@@ -261,6 +282,32 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 	}
 
 	return messgs
+}
+
+func (sn *Node) AddSelf(parent string) error {
+	err := sn.ConnectTo(parent)
+	if err != nil {
+		return err
+	}
+	return sn.PutTo(
+		context.TODO(),
+		parent,
+		&SigningMessage{
+			Type: GroupChange,
+			View: -1,
+			Gcm: &GroupChangeMessage{
+				Vr: VoteRequest{Name: sn.Name(), Action: "remove"}}})
+}
+
+func (sn *Node) RemoveSelf() error {
+	return sn.PutUp(
+		context.TODO(),
+		int(sn.lastView),
+		&SigningMessage{
+			Type: GroupChange,
+			View: -1,
+			Gcm: &GroupChangeMessage{
+				Vr: VoteRequest{Name: sn.Name(), Action: "remove"}}})
 }
 
 var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted view")
@@ -819,15 +866,30 @@ func (sn *Node) TryViewChange(view int) {
 
 }
 
+func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
+	sn.PutTo(
+		context.TODO(),
+		vreq.Name,
+		&SigningMessage{Type: GroupChanged, View: view, Gcr: &GroupChangeResponse{Vr: *vreq}})
+}
+
 func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 	// Apply action on new view
 	if vreq.Action == "add" {
-		sn.AddPendingPeer(view, vreq.Name)
+		err := sn.AddPendingPeer(view, vreq.Name)
+		// unable to add pending peer
+		if err != nil {
+			log.Errorln(err)
+			return
+		}
+		// notify peer that they have been added for view
+		sn.NotifyPeerOfVote(view, vreq)
 	} else if vreq.Action == "remove" {
 		log.Println(sn.Name(), "looking to remove peer")
 		if ok := sn.RemovePeer(view, vreq.Name); ok {
 			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
 		}
+		sn.NotifyPeerOfVote(view, vreq)
 	} else {
 		log.Errorln("Vote Request contains uknown action:", vreq.Action)
 	}

@@ -64,6 +64,8 @@ type Host interface {
 	// The context is used to timeout the request.
 	PutDown(ctx context.Context, view int, data []BinaryMarshaler) error
 
+	PutTo(ctx context.Context, host string, data BinaryMarshaler) error
+
 	// Get returns a channel on which all received messages will be put.
 	// It always returns a reference to the same channel.
 	// Multiple listeners will receive disjoint sets of messages.
@@ -73,6 +75,7 @@ type Host interface {
 
 	// Connect connects to the parent in the given view.
 	Connect(view int) error
+	ConnectTo(host string) error
 	// Listen listens for incoming connections.
 	Listen() error
 
@@ -92,6 +95,6 @@ type Host interface {
 	SetPool(*sync.Pool)
 
 	// Functions to allow group evolution
-	AddPendingPeer(view int, name string)
+	AddPendingPeer(view int, name string) error
 	RemovePeer(view int, name string) bool
 }

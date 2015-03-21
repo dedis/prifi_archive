@@ -105,6 +105,10 @@ func (sn *Node) ViewChangeCh() chan string {
 	return sn.viewChangeCh
 }
 
+func (sn *Node) Hostlist() []string {
+	return sn.HostList
+}
+
 // Returns name of node who should be the root for the next view
 // round robin is used on the array of host names to determine the next root
 func (sn *Node) RootFor(view int) string {
@@ -165,19 +169,7 @@ var MAX_WILLING_TO_WAIT time.Duration = 50 * time.Second
 
 var ChangingViewError error = errors.New("In the process of changing view")
 
-func (sn *Node) StartSigningRound() error {
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	sn.nRounds = int(lsr)
-
-	// report view is being change, and sleep before retrying
-	changingView := atomic.LoadInt64(&sn.ChangingView)
-	if changingView == TRUE {
-		log.Println(sn.Name(), "start signing round: changingViewError")
-		return ChangingViewError
-	}
-
-	// send an announcement message to all other TSServers
-	sn.nRounds++
+func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	log.Infoln("root", sn.Name(), "starting signing round for round: ", sn.nRounds, "on view", sn.ViewNo)
 
 	first := time.Now()
@@ -188,20 +180,7 @@ func (sn *Node) StartSigningRound() error {
 	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
 	var cancelederr error
 	go func() {
-		var err error
-		if sn.Type == Vote && sn.nRounds == 1 {
-			// XXX for testing
-			vr := &VoteRequest{Name: "127.0.1.1:11060", Action: "remove"}
-
-			err = sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)),
-				&AnnouncementMessage{LogTest: []byte("hello voting"),
-					Round:       sn.nRounds,
-					VoteRequest: vr})
-		} else {
-			err = sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)),
-				&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
-		}
-
+		err := sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)), am)
 		if err != nil {
 			log.Println("Signature fails if at least one node says it failed")
 			log.Errorln(err)
@@ -257,6 +236,45 @@ func (sn *Node) StartSigningRound() error {
 		return errors.New("Really bad. Round did not finish response phase and did not report network errors.")
 	}
 
+}
+
+func (sn *Node) StartVotingRound(vr *VoteRequest) error {
+	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	sn.nRounds = int(lsr)
+
+	// report view is being change, and sleep before retrying
+	changingView := atomic.LoadInt64(&sn.ChangingView)
+	if changingView == TRUE {
+		log.Println(sn.Name(), "start signing round: changingViewError")
+		return ChangingViewError
+	}
+
+	sn.nRounds++
+	return sn.StartAnnouncement(
+		&AnnouncementMessage{LogTest: []byte("vote round"), Round: sn.nRounds, VoteRequest: vr})
+}
+
+func (sn *Node) StartSigningRound() error {
+	lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	sn.nRounds = int(lsr)
+
+	// report view is being change, and sleep before retrying
+	changingView := atomic.LoadInt64(&sn.ChangingView)
+	if changingView == TRUE {
+		log.Println(sn.Name(), "start signing round: changingViewError")
+		return ChangingViewError
+	}
+
+	// send an announcement message to all other TSServers
+	log.Println("StartSigningRound:", sn.nRounds, lsr)
+	if sn.Type == Vote && sn.nRounds == 1 {
+		log.Println("StartVotingRound")
+		return sn.StartVotingRound(&VoteRequest{Name: "127.0.1.1:11060", Action: "remove"})
+	}
+
+	sn.nRounds++
+	return sn.StartAnnouncement(
+		&AnnouncementMessage{LogTest: []byte("sign round"), Round: sn.nRounds})
 }
 
 func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {

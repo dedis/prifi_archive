@@ -25,6 +25,8 @@ type Signer interface {
 	LastRound() int64       // last round number seen by Signer
 	SetLastSeenRound(int64) // impose change in round numbering
 
+	Hostlist() []string
+
 	// // proof can be nil for simple non Merkle Tree signatures
 	// // could add option field for Sign
 	// Sign([]byte) (hashid.HashId, proof.Proof, error)
@@ -43,4 +45,7 @@ type Signer interface {
 
 	Close()
 	Listen() error
+
+	AddSelf(host string) error
+	RemoveSelf() error
 }
