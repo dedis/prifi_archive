@@ -57,7 +57,7 @@ func main() {
 		}
 		log.AddHook(lh)
 	}
-	log.Println("IN FORKEXEC")
+	//log.Println("IN FORKEXEC")
 	////log.SetOutput(ioutil.Discard)
 	////log.Println("Log Test")
 	////fmt.Println("exiting logger block")
@@ -81,8 +81,8 @@ func main() {
 		"-test_connect=" + strconv.FormatBool(testConnect),
 	}
 	cmd := exec.Command("./exec", args...)
-	//cmd.Stdout = log.StandardLogger().Writer()
-	//cmd.Stderr = log.StandardLogger().Writer()
+	cmd.Stdout = log.StandardLogger().Writer()
+	cmd.Stderr = log.StandardLogger().Writer()
 	// log.Println("running command:", cmd)
 	err := cmd.Run()
 	if err != nil {
