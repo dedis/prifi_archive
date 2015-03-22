@@ -345,11 +345,14 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 
 	// Apply pending actions (add, remove) on view
 	sn.ActionsLock.Lock()
+	log.Println("Applying Actions:", sn.Actions)
 	for _, action := range sn.Actions {
-		log.Println(sn.Name(), "applying action")
+		log.Println(sn.Name(), "applying action:", action)
 		sn.ApplyAction(vcm.ViewNo, action)
-		log.Println(sn.Name(), "applied action")
+		log.Println(sn.Name(), "applied action:", action)
 	}
+	// clear out old votes
+	sn.Actions = make([]*VoteRequest, 0)
 	sn.ActionsLock.Unlock()
 
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
