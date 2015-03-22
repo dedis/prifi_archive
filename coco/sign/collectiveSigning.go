@@ -581,12 +581,15 @@ func (sn *Node) Commit(view int, am *AnnouncementMessage) error {
 	}
 
 	if sn.Type == PubKey {
+		log.Println("sign.Node.Commit using PubKey")
 		return sn.actOnCommits(view, Round)
-	} else if sn.Type == Vote {
+	} else if sn.Type == Vote || am.VoteRequest != nil {
+		log.Println("sign.Node.Commit using Vote")
 		sort.Sort(ByVoteResponse(round.CountedVotes.Votes))
 		sn.AddVotes(Round, am.VoteRequest)
 		return sn.actOnCommits(view, Round)
 	} else {
+		log.Println("sign.Node.Commit using Merkle")
 		sn.AddChildrenMerkleRoots(Round)
 		sn.AddLocalMerkleRoot(view, Round)
 		sn.HashLog(Round)
@@ -652,7 +655,7 @@ func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 		sn.actOnVotes(view, chm.CountedVotes, round.VoteRequest)
 	}
 
-	if sn.Type == PubKey || sn.Type == Vote {
+	if sn.Type == PubKey || sn.Type == Vote || chm.CountedVotes != nil {
 		if err := sn.SendChildrenChallenges(view, chm); err != nil {
 			return err
 		}
