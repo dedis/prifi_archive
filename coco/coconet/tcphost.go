@@ -254,6 +254,10 @@ func (h *TCPHost) Pending() map[string]bool {
 	return h.PendingPeers
 }
 
+func (h *TCPHost) AddPeerToPending(p string) {
+	h.PendingPeers[p] = true
+}
+
 // Connect connects to the parent in the given view.
 // It connects to the parent by establishing a TCPConn.
 // It then sends its name and public key to initialize the connection.
@@ -264,6 +268,7 @@ func (h *TCPHost) Connect(view int) error {
 	if parent == "" {
 		return nil
 	}
+	delete(h.PendingPeers, parent)
 	return h.ConnectTo(parent)
 }
 

@@ -95,6 +95,7 @@ type Host interface {
 	SetPool(*sync.Pool)
 
 	// Functions to allow group evolution
+	AddPeerToPending(h string)
 	AddPendingPeer(view int, name string) error
 	RemovePeer(view int, name string) bool
 	Pending() map[string]bool

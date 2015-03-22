@@ -200,6 +200,11 @@ func (sn *Node) get() error {
 					// if the view is uninitialized set it to our most recently seen view
 					if sm.View == -1 {
 						sm.View = int(sn.lastView)
+						// if the peer sent an add request
+						// ad it to the pending peers list
+						if sm.Gcm.Vr.Action == "add" {
+							sn.AddPeerToPending(sm.From)
+						}
 					}
 					if sn.RootFor(sm.View) != sn.Name() {
 						log.Println("NOT ROOT: Sending up:", sm.View)

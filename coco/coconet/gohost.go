@@ -249,6 +249,10 @@ func (h *GoHost) AddChildren(view int, cs ...string) {
 	}
 }
 
+func (h *GoHost) AddPeerToPending(p string) {
+	h.PendingPeers[p] = true
+}
+
 func (h *GoHost) AddPendingPeer(view int, name string) error {
 	h.PeerLock.Lock()
 	if _, ok := h.PendingPeers[name]; !ok {
