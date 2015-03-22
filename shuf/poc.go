@@ -8,7 +8,7 @@ import (
 type IdShuffle struct{}
 
 func (i IdShuffle) ShuffleStep(msgs [][]byte, node int,
-	inf *Info) []RouteInstr {
+	round int, inf *Info) []RouteInstr {
 	return []RouteInstr{RouteInstr{nil, msgs}}
 }
 
@@ -26,7 +26,7 @@ func (d DumbShuffle) InitialNode(msg []byte, client int, inf *Info) int {
 }
 
 func (d DumbShuffle) ShuffleStep(msgs [][]byte, node int,
-	inf *Info) []RouteInstr {
+	round int, inf *Info) []RouteInstr {
 	newMsgs := make([][]byte, len(msgs))
 	rand.Seed(d.Seed)
 	p := rand.Perm(len(msgs))

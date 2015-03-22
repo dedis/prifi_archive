@@ -36,9 +36,9 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs [][]byte) {
 
 		// Shuffling step
 		go func(i int) {
-			for {
+			for round := 0; ; round++ {
 				input := <-shuffleChans[i]
-				instrs := s.ShuffleStep(input, i, inf)
+				instrs := s.ShuffleStep(input, i, round, inf)
 				for _, ins := range instrs {
 					if ins.To == nil {
 						result[i] <- ins.Msgs

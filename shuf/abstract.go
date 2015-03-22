@@ -11,7 +11,7 @@ type RouteInstr struct {
 
 // Shuffle methods
 type Shuffle interface {
-	ShuffleStep(msg [][]byte, node int, inf *Info) []RouteInstr
+	ShuffleStep(msg [][]byte, node int, round int, inf *Info) []RouteInstr
 	InitialNode(msg []byte, client int, inf *Info) int
 }
 
