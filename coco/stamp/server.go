@@ -310,7 +310,7 @@ func (s *Server) Run(role string, nRounds int) {
 					log.Println("removing self")
 					s.Signer.RemoveSelf()
 				} else {
-					log.Println("adding self")
+					log.Println("adding self: ", hostlist[(i/2)%len(hostlist)])
 					s.Signer.AddSelf(hostlist[(i/2)%len(hostlist)])
 				}
 				i++

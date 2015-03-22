@@ -196,7 +196,7 @@ func (sn *Node) get() error {
 					sn.StopHeartbeat()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case GroupChange:
-					log.Println("Received Group Change Message")
+					log.Println("Received Group Change Message:", sm.Gcm.Vr)
 					// if the view is uninitialized set it to our most recently seen view
 					if sm.View == -1 {
 						sm.View = int(sn.lastView)
@@ -303,7 +303,7 @@ func (sn *Node) AddSelf(parent string) error {
 			Type: GroupChange,
 			View: -1,
 			Gcm: &GroupChangeMessage{
-				Vr: VoteRequest{Name: sn.Name(), Action: "remove"}}})
+				Vr: VoteRequest{Name: sn.Name(), Action: "add"}}})
 }
 
 func (sn *Node) RemoveSelf() error {
