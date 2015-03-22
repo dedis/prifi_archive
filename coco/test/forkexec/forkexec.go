@@ -55,6 +55,7 @@ func main() {
 		}
 		log.AddHook(lh)
 	}
+	log.Println("IN FORKEXEC")
 	////log.SetOutput(ioutil.Discard)
 	////log.Println("Log Test")
 	////fmt.Println("exiting logger block")
