@@ -875,6 +875,10 @@ func (sn *Node) TryViewChange(view int) {
 }
 
 func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
+	// if I am peers with this
+	if _, ok := sn.Peers()[vreq.Name]; !ok {
+		return
+	}
 	sn.PutTo(
 		context.TODO(),
 		vreq.Name,

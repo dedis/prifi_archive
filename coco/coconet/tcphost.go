@@ -427,9 +427,13 @@ func (h *TCPHost) PutTo(ctx context.Context, host string, data BinaryMarshaler) 
 			}
 
 			h.PeerLock.Lock()
-			isReady := h.Ready[pname]
-			parent := h.peers[pname]
+			isReady, ok := h.Ready[pname]
+			parent, ok := h.peers[pname]
 			h.PeerLock.Unlock()
+			if !ok {
+				done <- errors.New("not connected to peer")
+				return
+			}
 			if !isReady {
 				time.Sleep(250 * time.Millisecond)
 				continue
