@@ -257,6 +257,7 @@ func (h *TCPHost) Pending() map[string]bool {
 
 func (h *TCPHost) AddPeerToPending(p string) {
 	h.PendingPeers[p] = true
+	log.Println("added peer to pending:", p)
 }
 
 // Connect connects to the parent in the given view.

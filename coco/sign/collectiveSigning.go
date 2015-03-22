@@ -196,9 +196,10 @@ func (sn *Node) get() error {
 					sn.StopHeartbeat()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case GroupChange:
-					log.Println("Received Group Change Message:", sm.Gcm.Vr)
+					log.Println("Received Group Change Message:", sm.Gcm.Vr, sm)
 					// if the view is uninitialized set it to our most recently seen view
 					if sm.View == -1 {
+						log.Println("setting view number of votine request")
 						sm.View = int(sn.lastView)
 						// if the peer sent an add request
 						// ad it to the pending peers list

@@ -295,9 +295,9 @@ func (s *Server) Run(role string, nRounds int) {
 	if role == "test_connect" {
 		role = "regular"
 		go func() {
-			time.Sleep(90 * time.Second)
+			time.Sleep(30 * time.Second)
 			hostlist := s.Hostlist()
-			ticker := time.Tick(90 * time.Second)
+			ticker := time.Tick(100 * time.Second)
 			i := 0
 			for _ = range ticker {
 				select {
