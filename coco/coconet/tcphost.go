@@ -323,15 +323,11 @@ func (h *TCPHost) AddChildren(view int, cs ...string) {
 
 func (h *TCPHost) AddPendingPeer(view int, name string) error {
 	h.PeerLock.Lock()
-	if _, ok := h.PendingPeers[name]; !ok {
-		log.Errorln("Attempt to add peer not present in pending Peers")
-		h.PeerLock.Unlock()
-		return errors.New("Attempt to add peer not present in pending Peers")
+	if _, ok := h.PendingPeers[name]; ok {
+		h.ConnectTo(name)
 	}
-
 	h.PeerLock.Unlock()
 	// ignores peer if already added
-	h.ConnectTo(name)
 
 	h.views.AddChildren(view, name)
 	return nil
