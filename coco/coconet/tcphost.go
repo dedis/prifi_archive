@@ -158,6 +158,7 @@ func (h *TCPHost) Listen() error {
 
 			// the connection is now Ready to use
 			h.PeerLock.Lock()
+			h.PendingPeers[name] = true
 			h.Ready[name] = true
 			h.peers[name] = tp
 			if coco.DEBUG {
