@@ -223,6 +223,7 @@ func main() {
 		if len(virts) == 0 {
 			continue
 		}
+		log.Println("starting timestamper")
 		cmd := GenExecCmd(rFail, fFail, failures, phys, virts, loggerports[i], rootwait)
 		i = (i + 1) % len(loggerports)
 		wg.Add(1)
