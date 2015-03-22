@@ -293,6 +293,7 @@ func (s *Server) Run(role string, nRounds int) {
 
 	go func() { err := s.Signer.Listen(); closed <- true; s.Close(); log.Error(err) }()
 	if role == "testConnect" {
+		role = "regular"
 		go func() {
 			time.Sleep(90 * time.Second)
 			hostlist := s.Hostlist()
@@ -314,7 +315,6 @@ func (s *Server) Run(role string, nRounds int) {
 				}
 			}
 		}()
-		role = "regular"
 	}
 	s.rLock.Lock()
 	s.maxRounds = nRounds
@@ -325,15 +325,20 @@ func (s *Server) Run(role string, nRounds int) {
 		switch role {
 
 		case "root":
+			log.Println("running as root")
 			nextRole = s.runAsRoot(nRounds)
 		case "regular":
 			log.Println("running as regular")
 			nextRole = s.runAsRegular()
 		case "test":
+			log.Println("running as test")
 			ticker := time.Tick(2000 * time.Millisecond)
 			for _ = range ticker {
 				s.AggregateCommits(0)
 			}
+		default:
+			log.Println("UNABLE TO RUN AS ANYTHING")
+			return
 		}
 
 		// log.Println(s.Name(), "nextRole: ", nextRole)
