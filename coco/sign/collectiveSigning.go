@@ -886,7 +886,7 @@ func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
 		log.Println("not notifying peer of vote: not connected: ", ok, good)
 		return
 	}
-	log.Println("notifying peer of vote:", vreq.Name, vreq)
+	log.Println("successfully notifying peer of vote:", vreq.Name, vreq)
 	sn.PutTo(
 		context.TODO(),
 		vreq.Name,
@@ -904,7 +904,6 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 			return
 		}
 		// notify peer that they have been added for view
-		log.Println("notifying peer of vote")
 		sn.NotifyPeerOfVote(view, vreq)
 	} else if vreq.Action == "remove" {
 		log.Println(sn.Name(), "looking to remove peer")
