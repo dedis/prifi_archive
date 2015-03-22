@@ -55,7 +55,8 @@ func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerp
 			" -rounds=" + strconv.Itoa(rounds) +
 			" -test_connect=" + strconv.FormatBool(testConnect) +
 			amroot +
-			" </dev/null 2>/dev/null 1>/dev/null &); "
+			" ); "
+		//" </dev/null 2>/dev/null 1>/dev/null &); "
 	}
 	return total
 }
@@ -230,7 +231,8 @@ func main() {
 		//time.Sleep(500 * time.Millisecond)
 		go func(phys, cmd string) {
 			//log.Println("running on ", phys, cmd)
-			err := cliutils.SshRunBackground("", phys, cmd)
+			defer wg.Done()
+			err := cliutils.SshRunStdout("", phys, cmd)
 			if err != nil {
 				log.Fatal("ERROR STARTING TIMESTAMPER:", err)
 			}
