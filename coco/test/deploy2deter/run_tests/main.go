@@ -231,16 +231,17 @@ func ScaleTest(bf, low, high, mult int) []T {
 
 // nmachs=32, hpn=128, bf=16, rate=500, failures=20, root failures, failures
 var FailureTests = []T{
-	{DefaultMachs, 64, 16, 30, 500, 0, 0, 0, false},
-	{DefaultMachs, 64, 16, 30, 500, 0, 5, 0, false},
-	{DefaultMachs, 64, 16, 30, 500, 0, 10, 0, false},
-	{DefaultMachs, 64, 16, 30, 500, 5, 0, 5, false},
-	{DefaultMachs, 64, 16, 30, 500, 5, 0, 10, false},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false},
+	{DefaultMachs, 64, 16, 30, 50, 0, 5, 0, false},
+	{DefaultMachs, 64, 16, 30, 50, 0, 10, 0, false},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 5, false},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, false},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, true},
 }
 
 var VotingTest = []T{
-	{DefaultMachs, 64, 16, 30, 500, 0, 0, 0, false},
-	{DefaultMachs, 64, 16, 30, 500, 0, 0, 0, true},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, true},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false},
 }
 
 func FullTests() []T {
@@ -265,13 +266,13 @@ func FullTests() []T {
 }
 
 var HostsTest = []T{
-	{DefaultMachs, 1, 2, 30, 50, 0, 0, 0, false},
-	{DefaultMachs, 2, 3, 30, 50, 0, 0, 0, false},
-	{DefaultMachs, 4, 3, 30, 50, 0, 0, 0, false},
-	{DefaultMachs, 8, 8, 30, 50, 0, 0, 0, false},
-	{DefaultMachs, 16, 16, 30, 50, 0, 0, 0, false},
-	{DefaultMachs, 32, 16, 30, 50, 0, 0, 0, false},
-	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false},
+	{DefaultMachs, 1, 2, 30, 20, 0, 0, 0, false},
+	{DefaultMachs, 2, 3, 30, 20, 0, 0, 0, false},
+	{DefaultMachs, 4, 3, 30, 20, 0, 0, 0, false},
+	{DefaultMachs, 8, 8, 30, 20, 0, 0, 0, false},
+	{DefaultMachs, 16, 16, 30, 20, 0, 0, 0, false},
+	{DefaultMachs, 32, 16, 30, 20, 0, 0, 0, false},
+	{DefaultMachs, 64, 16, 30, 20, 0, 0, 0, false},
 	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false},
 }
 
@@ -297,7 +298,9 @@ func main() {
 	// DefaultRounds = 5
 	// t := FailureTests
 	// RunTests("failure_test.csv", t)
-	RunTests("host_test", HostsTest)
+	RunTests("vote_test", VotingTest)
+	RunTests("failure_test", FailureTests)
+	// RunTests("host_test", HostsTest)
 	// t := FailureTests
 	// RunTests("failure_test", t)
 	// t = ScaleTest(10, 1, 100, 2)
