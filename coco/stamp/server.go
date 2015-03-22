@@ -297,7 +297,7 @@ func (s *Server) Run(role string, nRounds int) {
 		go func() {
 			time.Sleep(90 * time.Second)
 			hostlist := s.Hostlist()
-			ticker := time.Tick(30 * time.Second)
+			ticker := time.Tick(90 * time.Second)
 			i := 0
 			for _ = range ticker {
 				select {
