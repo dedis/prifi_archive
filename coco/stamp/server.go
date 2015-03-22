@@ -292,7 +292,7 @@ func (s *Server) Run(role string, nRounds int) {
 	closed := make(chan bool, 1)
 
 	go func() { err := s.Signer.Listen(); closed <- true; s.Close(); log.Error(err) }()
-	if role == "testConnect" {
+	if role == "test_connect" {
 		role = "regular"
 		go func() {
 			time.Sleep(90 * time.Second)
