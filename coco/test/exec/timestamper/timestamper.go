@@ -66,7 +66,7 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug, testConnect
 	}
 
 	defer func(sn *sign.Node) {
-		log.Errorln("program has terminated")
+		log.Panicln("program has terminated:", hostname)
 		sn.Close()
 	}(hc.SNodes[0])
 
@@ -127,10 +127,12 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug, testConnect
 					// log.Println("\n\nROOT DONE\n\n")
 
 				} else if !testConnect {
+					log.Println("RUNNING REGULAR AT:", hostname)
 					s.Run("regular", rounds)
 					// log.Println("\n\nREGULAR DONE\n\n")
 				} else {
 					// testing connection
+					log.Println("RUNNING TEST_CONNNECT AT:", hostname)
 					s.Run("test_connect", rounds)
 				}
 			}

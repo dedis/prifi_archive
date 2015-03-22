@@ -294,19 +294,22 @@ func (s *Server) Run(role string, nRounds int) {
 	go func() { err := s.Signer.Listen(); closed <- true; s.Close(); log.Error(err) }()
 	if role == "testConnect" {
 		go func() {
-			time.Sleep(45 * time.Second)
+			time.Sleep(90 * time.Second)
 			hostlist := s.Hostlist()
 			ticker := time.Tick(30 * time.Second)
 			i := 1
 			for _ = range ticker {
 				select {
 				case <-closed:
+					log.Println("server.Run: received closed")
 					return
 				default:
 				}
 				if i%2 == 0 {
+					log.Println("removing self")
 					s.Signer.RemoveSelf()
 				} else {
+					log.Println("adding self")
 					s.Signer.AddSelf(hostlist[(i/2)%len(hostlist)])
 				}
 			}
