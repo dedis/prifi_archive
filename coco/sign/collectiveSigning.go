@@ -196,6 +196,7 @@ func (sn *Node) get() error {
 					sn.StopHeartbeat()
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case GroupChange:
+					log.Println("Received Group Change Message")
 					// if the view is uninitialized set it to our most recently seen view
 					if sm.View == -1 {
 						sm.View = int(sn.lastView)
@@ -205,6 +206,7 @@ func (sn *Node) get() error {
 						return
 					}
 					// I am the root for this
+					log.Println("Starting Voting Round")
 					sn.StartVotingRound(&sm.Gcm.Vr)
 				case GroupChanged:
 					// only the leaf that initiated the GroupChange should get a response
