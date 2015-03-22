@@ -97,4 +97,5 @@ type Host interface {
 	// Functions to allow group evolution
 	AddPendingPeer(view int, name string) error
 	RemovePeer(view int, name string) bool
+	Pending() map[string]bool
 }

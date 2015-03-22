@@ -250,6 +250,10 @@ func (h *TCPHost) ConnectTo(parent string) error {
 	return nil
 }
 
+func (h *TCPHost) Pending() map[string]bool {
+	return h.PendingPeers
+}
+
 // Connect connects to the parent in the given view.
 // It connects to the parent by establishing a TCPConn.
 // It then sends its name and public key to initialize the connection.

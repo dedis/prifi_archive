@@ -1,7 +1,7 @@
 package coconet
 
 import (
-	"log"
+	log "github.com/Sirupsen/logrus"
 	"sync"
 )
 

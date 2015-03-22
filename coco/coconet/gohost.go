@@ -40,7 +40,7 @@ type GoHost struct {
 	Ready    map[string]bool
 	// Peers asking to join overall tree structure of nodes
 	// via connection to current host node
-	PendingPeers map[string]Conn
+	PendingPeers map[string]bool
 
 	suite abstract.Suite
 
@@ -487,6 +487,10 @@ func (h *GoHost) Get() (chan NetworkMessg, chan error) {
 // when Getting from network connections.
 func (h *GoHost) Pool() *sync.Pool {
 	return h.pool
+}
+
+func (h *GoHost) Pending() map[string]bool {
+	return h.PendingPeers
 }
 
 // SetPool sets the pool of underlying objects for creating new BinaryUnmarshalers,

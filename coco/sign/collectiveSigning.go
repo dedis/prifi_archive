@@ -211,8 +211,10 @@ func (sn *Node) get() error {
 					sn.StartVotingRound(&sm.Gcm.Vr)
 				case GroupChanged:
 					// only the leaf that initiated the GroupChange should get a response
+					log.Println("Received Group Changed Message: GroupChanged")
 					vr := sm.Gcm.Vr
 					if vr.Action == "remove" {
+						log.Println("Stopping Heartbeat")
 						sn.heartbeat.Stop()
 						return
 					}
@@ -346,6 +348,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	for _, action := range sn.Actions {
 		log.Println(sn.Name(), "applying action")
 		sn.ApplyAction(vcm.ViewNo, action)
+		log.Println(sn.Name(), "applied action")
 	}
 	sn.ActionsLock.Unlock()
 
@@ -876,9 +879,10 @@ func (sn *Node) TryViewChange(view int) {
 
 func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
 	// if I am peers with this
-	if _, ok := sn.Peers()[vreq.Name]; !ok {
+	if good, ok := sn.Pending()[vreq.Name]; !ok || !good {
 		return
 	}
+	log.Println("notifying peer of vote:", vreq.Name, vreq)
 	sn.PutTo(
 		context.TODO(),
 		vreq.Name,
