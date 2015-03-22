@@ -185,6 +185,7 @@ func (h *TCPHost) ConnectTo(parent string) error {
 	// If we have alReady set up this connection don't do anything
 	h.PeerLock.Lock()
 	if h.Ready[parent] {
+		log.Println("ConnectTo: node already ready")
 		h.PeerLock.RUnlock()
 		return nil
 	}
@@ -229,7 +230,7 @@ func (h *TCPHost) ConnectTo(parent string) error {
 	h.PeerLock.Lock()
 	h.Ready[tp.Name()] = true
 	h.peers[parent] = tp
-	h.PendingPeers[parent] = true
+	// h.PendingPeers[parent] = true
 	h.PeerLock.Unlock()
 	if coco.DEBUG {
 		log.Infoln("CONNECTED TO PARENT:", parent)

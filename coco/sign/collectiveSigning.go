@@ -297,10 +297,13 @@ func (sn *Node) waitOn(view int, ch chan *SigningMessage, timeout time.Duration,
 }
 
 func (sn *Node) AddSelf(parent string) error {
+	log.Println("AddSelf: connecting to:", parent)
 	err := sn.ConnectTo(parent)
 	if err != nil {
 		return err
 	}
+
+	log.Println("AddSelf: putting group change message to:", parent)
 	return sn.PutTo(
 		context.TODO(),
 		parent,
