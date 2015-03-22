@@ -520,7 +520,7 @@ func (sn *Node) Timeout() time.Duration {
 }
 
 func (sn *Node) DefaultTimeout() time.Duration {
-	return 1000 * time.Millisecond
+	return 5000 * time.Millisecond
 }
 
 func max(a int64, b int64) int64 {
