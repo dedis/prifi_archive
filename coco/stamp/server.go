@@ -298,7 +298,7 @@ func (s *Server) Run(role string, nRounds int) {
 			time.Sleep(90 * time.Second)
 			hostlist := s.Hostlist()
 			ticker := time.Tick(30 * time.Second)
-			i := 1
+			i := 0
 			for _ = range ticker {
 				select {
 				case <-closed:
@@ -313,6 +313,7 @@ func (s *Server) Run(role string, nRounds int) {
 					log.Println("adding self")
 					s.Signer.AddSelf(hostlist[(i/2)%len(hostlist)])
 				}
+				i++
 			}
 		}()
 	}
