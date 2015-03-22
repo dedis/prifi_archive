@@ -883,6 +883,7 @@ func (sn *Node) TryViewChange(view int) {
 func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
 	// if I am peers with this
 	if good, ok := sn.Pending()[vreq.Name]; !ok || !good {
+		log.Println("not notifying peer of vote: not connected: ", ok, good)
 		return
 	}
 	log.Println("notifying peer of vote:", vreq.Name, vreq)
@@ -895,6 +896,7 @@ func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
 func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 	// Apply action on new view
 	if vreq.Action == "add" {
+		log.Println("adding pending peer")
 		err := sn.AddPendingPeer(view, vreq.Name)
 		// unable to add pending peer
 		if err != nil {
@@ -902,6 +904,7 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 			return
 		}
 		// notify peer that they have been added for view
+		log.Println("notifying peer of vote")
 		sn.NotifyPeerOfVote(view, vreq)
 	} else if vreq.Action == "remove" {
 		log.Println(sn.Name(), "looking to remove peer")
