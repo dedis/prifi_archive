@@ -47,7 +47,7 @@ func init() {
 func main() {
 	flag.Parse()
 	// connect with the logging server
-	if logger != "" && (amroot || debug) {
+	if false && logger != "" && (amroot || debug) {
 		// blocks until we can connect to the logger
 		lh, err := logutils.NewLoggerHook(logger, hostname, app)
 		if err != nil {
@@ -81,8 +81,8 @@ func main() {
 		"-test_connect=" + strconv.FormatBool(testConnect),
 	}
 	cmd := exec.Command("./exec", args...)
-	cmd.Stdout = log.StandardLogger().Writer()
-	cmd.Stderr = log.StandardLogger().Writer()
+	//cmd.Stdout = log.StandardLogger().Writer()
+	//cmd.Stderr = log.StandardLogger().Writer()
 	// log.Println("running command:", cmd)
 	err := cmd.Run()
 	if err != nil {
