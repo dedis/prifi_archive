@@ -202,6 +202,7 @@ func (sn *Node) get() error {
 						sm.View = int(sn.lastView)
 					}
 					if sn.RootFor(sm.View) != sn.Name() {
+						log.Println("NOT ROOT: Sending up:", sm.View)
 						sn.PutUp(context.TODO(), sm.View, sm)
 						return
 					}
