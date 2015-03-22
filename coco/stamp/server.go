@@ -327,6 +327,7 @@ func (s *Server) Run(role string, nRounds int) {
 		case "root":
 			nextRole = s.runAsRoot(nRounds)
 		case "regular":
+			log.Println("running as regular")
 			nextRole = s.runAsRegular()
 		case "test":
 			ticker := time.Tick(2000 * time.Millisecond)
