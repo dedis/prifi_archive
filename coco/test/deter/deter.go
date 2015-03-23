@@ -41,6 +41,7 @@ func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerp
 	total := ""
 	for _, n := range names {
 		connect := false
+		log.Printf("name == %s, random_leaf == %s, testConnect = %t", n, random_leaf, testConnect)
 		if n == random_leaf && testConnect {
 			connect = true
 		}
@@ -160,7 +161,7 @@ func main() {
 	depth := graphs.Depth(cf.Tree)
 	var random_leaf string
 	cf.Tree.TraverseTree(func(t *graphs.Tree) {
-		if random_leaf == "" {
+		if random_leaf != "" {
 			return
 		}
 		if len(t.Children) == 0 {
