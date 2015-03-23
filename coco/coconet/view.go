@@ -65,6 +65,44 @@ func (v *View) RemoveChild(child string) bool {
 	return false
 }
 
+func (v *View) AddPeerToHostlist(name string) {
+	m := make(map[string]bool)
+	for _, h := range v.HostList {
+		if h != name {
+			m[h] = true
+		}
+	}
+	m[name] = true
+	hostlist := make([]string, 0, len(m))
+
+	for h := range m {
+		hostlist = append(hostlist, h)
+	}
+
+	sortable := sort.StringSlice(hostlist)
+	sortable.Sort()
+	v.HostList = []string(sortable)
+
+}
+
+func (v *View) RemovePeerFromHostlist(name string) {
+	m := make(map[string]bool)
+	for _, h := range v.HostList {
+		if h != name {
+			m[h] = true
+		}
+	}
+	hostlist := make([]string, 0, len(m))
+
+	for h := range m {
+		hostlist = append(hostlist, h)
+	}
+
+	sortable := sort.StringSlice(hostlist)
+	sortable.Sort()
+	v.HostList = []string(sortable)
+}
+
 func (v *View) RemovePeer(name string) bool {
 	log.Println("LOOKING FOR ", name, "in HOSTLIST", v.HostList)
 	v.Lock()
@@ -83,18 +121,7 @@ func (v *View) RemovePeer(name string) bool {
 		return false
 	}
 
-	var pos int
-	for pos = 0; pos < len(v.HostList); pos++ {
-		if v.HostList[pos] == name {
-			break
-		}
-	}
-
-	if pos != len(v.HostList) {
-		log.Println("REMOVED from HOSTLIST")
-		v.HostList = append(v.HostList[:pos], v.HostList[pos+1:]...)
-	}
-
+	v.RemovePeerFromHostlist(name)
 	return removed
 }
 
@@ -123,42 +150,11 @@ func (v *Views) NewView(view int, parent string, children []string, hostlist []s
 }
 
 func (vs *Views) AddPeerToHostlist(view int, name string) {
-	v := vs.Views[view]
-	m := make(map[string]bool)
-	for _, h := range v.HostList {
-		if h != name {
-			m[h] = true
-		}
-	}
-	m[name] = true
-	hostlist := make([]string, 0, len(m))
-
-	for h := range m {
-		hostlist = append(hostlist, h)
-	}
-
-	sortable := sort.StringSlice(hostlist)
-	sortable.Sort()
-	v.HostList = []string(sortable)
+	vs.Views[view].AddPeerToHostlist(name)
 }
 
 func (vs *Views) RemovePeerFromHostlist(view int, name string) {
-	v := vs.Views[view]
-	m := make(map[string]bool)
-	for _, h := range v.HostList {
-		if h != name {
-			m[h] = true
-		}
-	}
-	hostlist := make([]string, 0, len(m))
-
-	for h := range m {
-		hostlist = append(hostlist, h)
-	}
-
-	sortable := sort.StringSlice(hostlist)
-	sortable.Sort()
-	v.HostList = []string(sortable)
+	vs.Views[view].RemovePeerFromHostlist(name)
 }
 
 func (v *Views) AddParent(view int, parent string) {

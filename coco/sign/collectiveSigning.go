@@ -949,10 +949,10 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 		// sn.NotifyPeerOfVote(view, vreq)
 	} else if vreq.Action == "remove" {
 		log.Println(sn.Name(), "looking to remove peer")
-		sn.AddPeerToHostlist(view, vreq.Name)
-		// if ok := sn.RemovePeer(view, vreq.Name); ok {
-		// 	log.Println(sn.Name(), "REMOVED peer", vreq.Name)
-		// }
+		sn.RemovePeerFromHostlist(view, vreq.Name)
+		if ok := sn.RemovePeer(view, vreq.Name); ok {
+			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
+		}
 		// sn.NotifyPeerOfVote(view, vreq)
 	} else {
 		log.Errorln("Vote Request contains uknown action:", vreq.Action)
