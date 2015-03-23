@@ -411,6 +411,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			sn.multiplexOnChildren(vcm.ViewNo, sm)
 
 			atomic.StoreInt64(&sn.ChangingView, FALSE)
+			atomic.StoreInt64(&sn.lastView, int64(vcm.ViewNo))
 			sn.viewChangeCh <- "root"
 		} else {
 			log.Errorln(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
