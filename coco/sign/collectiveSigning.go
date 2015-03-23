@@ -82,7 +82,7 @@ func (sn *Node) get() error {
 	msgchan, errchan := sn.Host.Get()
 	// heartbeat for intiating viewChanges, allows intial 500s setup time
 	sn.hbLock.Lock()
-	sn.heartbeat = time.NewTimer(500 * time.Second)
+	// sn.heartbeat = time.NewTimer(500 * time.Second)
 	sn.hbLock.Unlock()
 
 	for {
@@ -221,9 +221,10 @@ func (sn *Node) get() error {
 					// only the leaf that initiated the GroupChange should get a response
 					log.Println("Received Group Changed Message: GroupChanged")
 					vr := sm.Gcm.Vr
+
+					sn.heartbeat.Stop()
 					if vr.Action == "remove" {
 						log.Println("Stopping Heartbeat")
-						sn.heartbeat.Stop()
 						return
 					}
 					view := sm.View
@@ -256,7 +257,7 @@ func (sn *Node) ReceivedHeartbeat(view int) {
 	if sn.heartbeat != nil {
 		sn.heartbeat.Stop()
 		sn.heartbeat = time.AfterFunc(HEARTBEAT, func() {
-			log.Println(sn.Name(), "NO HEARTBEAT - try view change")
+			log.Println(sn.Name(), "NO HEARTBEAT - try view change:", view)
 			sn.TryViewChange(view + 1)
 		})
 	}
