@@ -197,6 +197,7 @@ func (sn *Node) get() error {
 					sn.ViewChanged(sm.Vcfm.ViewNo, sm)
 				case GroupChange:
 					log.Println("Received Group Change Message:", sm.Gcm.Vr, sm)
+					sn.StopHeartbeat()
 					// if the view is uninitialized set it to our most recently seen view
 					if sm.View == -1 {
 						log.Println("setting view number of votine request")
@@ -216,6 +217,7 @@ func (sn *Node) get() error {
 					log.Println("Starting Voting Round")
 					sn.StartVotingRound(&sm.Gcm.Vr)
 				case GroupChanged:
+					sn.StopHeartbeat()
 					// only the leaf that initiated the GroupChange should get a response
 					log.Println("Received Group Changed Message: GroupChanged")
 					vr := sm.Gcm.Vr
@@ -913,8 +915,9 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 			log.Errorln(err)
 			return
 		}
+		// peer is notified on actOnVotes
 		// notify peer that they have been added for view
-		sn.NotifyPeerOfVote(view, vreq)
+		// sn.NotifyPeerOfVote(view, vreq)
 	} else if vreq.Action == "remove" {
 		log.Println(sn.Name(), "looking to remove peer")
 		if ok := sn.RemovePeer(view, vreq.Name); ok {
@@ -950,6 +953,7 @@ func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 
 		// propagate view change if new view leader
 		log.Println("actOnVotes: vote has been accepted: trying viewchange")
+		sn.NotifyPeerOfVote(view, vreq)
 		sn.TryViewChange(view + 1)
 	}
 
