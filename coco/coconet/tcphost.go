@@ -270,7 +270,9 @@ func (h *TCPHost) Connect(view int) error {
 	if parent == "" {
 		return nil
 	}
+	h.PeerLock.Lock()
 	delete(h.PendingPeers, parent)
+	h.PeerLock.Unlock()
 	return h.ConnectTo(parent)
 }
 

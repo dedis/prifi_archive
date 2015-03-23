@@ -364,6 +364,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	_, exists := sn.Views().Views[vcm.ViewNo]
 	sn.Views().Unlock()
 	if !exists {
+		log.Println("PEERS:", sn.Peers())
 		children := sn.childrenForNewView(parent)
 		log.Println("CREATING NEW VIEW with ", len(sn.HostListOn(view-1)), "hosts", "on view", view)
 		sn.NewView(vcm.ViewNo, parent, children, sn.HostListOn(view-1))
