@@ -61,6 +61,8 @@ type Node struct {
 	LastSeenRound int64 // largest round number I have seen
 	RoundsAsRoot  int64 // latest continuous streak of rounds with sn root
 
+	AnnounceLock sync.Mutex
+
 	CommitFunc coco.CommitFunc
 	DoneFunc   coco.DoneFunc
 
@@ -170,6 +172,8 @@ var MAX_WILLING_TO_WAIT time.Duration = 50 * time.Second
 var ChangingViewError error = errors.New("In the process of changing view")
 
 func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
+	sn.AnnounceLock.Lock()
+	defer sn.AnnounceLock.Unlock()
 	log.Infoln("root", sn.Name(), "starting signing round for round: ", sn.nRounds, "on view", sn.ViewNo)
 
 	first := time.Now()
