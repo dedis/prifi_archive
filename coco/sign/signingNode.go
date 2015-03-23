@@ -191,12 +191,12 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 
 	// 1st Phase succeeded or connection error
 	select {
-	case rn := <-sn.commitsDone:
+	case _ = <-sn.commitsDone:
 		// check for correctness
-		if rn != sn.nRounds {
-			log.Fatal("1st Phase round number mix up", rn, "!=", sn.nRounds)
-			return errors.New("1st Phase round number mix up")
-		}
+		// if rn != sn.nRounds {
+		//	log.Fatal("1st Phase round number mix up", rn, "!=", sn.nRounds)
+		//	return errors.New("1st Phase round number mix up")
+		//}
 
 		// log time it took for first round to complete
 		firstRoundTime = time.Since(first)
@@ -214,12 +214,12 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 
 	// 2nd Phase succeeded or connection error
 	select {
-	case rn := <-sn.done:
+	case _ = <-sn.done:
 		// check for correctness
-		if rn != sn.nRounds {
-			log.Fatal("2nd Phase round number mix up", rn, "!=", sn.nRounds)
-			return errors.New("2nd Phase round number mix up")
-		}
+		//if rn != sn.nRounds {
+		//	log.Fatal("2nd Phase round number mix up", rn, "!=", sn.nRounds)
+		//	return errors.New("2nd Phase round number mix up")
+		//}
 
 		// log time it took for second round to complete
 		totalTime = time.Since(total)
