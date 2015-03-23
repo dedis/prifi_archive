@@ -170,7 +170,7 @@ func (sn *Node) get() error {
 					}
 					sn.lastView = int64(sm.View)
 					sn.StopHeartbeat()
-					// log.Printf("Host (%s) VIEWCHANGE", sn.Name())
+					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
 							sn.closed <- io.EOF
@@ -183,6 +183,7 @@ func (sn *Node) get() error {
 						log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.lastView)
 						return
 					}
+					log.Printf("Host (%s) VIEWACCEPTED", sn.Name())
 					sn.StopHeartbeat()
 					sn.VamChLock.Lock()
 					sn.VamCh <- sm
@@ -198,7 +199,11 @@ func (sn *Node) get() error {
 				case GroupChange:
 					log.Println("Received Group Change Message:", sm.Gcm.Vr, sm)
 					sn.StopHeartbeat()
-					// if the view is uninitialized set it to our most recently seen view
+
+					// if the view is uninitialized (-1) the node trying to connect must be our peer.
+					// update the signing messages view to our lastView.
+					// and move the peer to our pending peers list.
+					// XXX: assumes the peer isn't our actual peer
 					if sm.View == -1 {
 						log.Println("setting view number of votine request")
 						sm.View = int(sn.lastView)
@@ -230,13 +235,14 @@ func (sn *Node) get() error {
 					log.Errorln("AddParent:", sm.From)
 
 					sn.Views().Lock()
-					_, exists := sn.Views().Views[view]
+					_, exists := sn.Views().Views[view+1]
 					sn.Views().Unlock()
+					// also need to add self
 					if !exists {
-						sn.NewView(view, sm.From, nil, sm.Gcr.Hostlist)
+						sn.NewView(view+1, sm.From, nil, append(sm.Gcr.Hostlist, sn.Name()))
 					}
 					// create the view
-					sn.AddParent(view, sm.From)
+					sn.AddParent(view+1, sm.From)
 					log.Println("GROUP CHANGE RESPONSE:", vr)
 				case Error:
 					log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
@@ -342,7 +348,7 @@ var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	// log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == ", vcm.Round, lsr)
+	log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == ", vcm.Round, lsr)
 
 	// update max seen round
 	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
@@ -375,14 +381,17 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	sn.Actions = make([]*VoteRequest, 0)
 	sn.ActionsLock.Unlock()
 
+	log.Println(sn.Name(), ":multiplexing onto children:", sn.Children(view))
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	// wait for votes from children
+	log.Println(sn.Name(), "waiting on view accept messages from children")
 	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, 3*ROUND_TIME, "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
 	votes := 1
 	for _, messg := range messgs {
 		votes += messg.Vam.Votes
 	}
+	log.Println(sn.Name(), "received view accept messages from children:", votes)
 
 	var err error
 	if iAmNextRoot == TRUE {
@@ -398,7 +407,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			atomic.StoreInt64(&sn.ViewNo, int64(vcm.ViewNo))
 			sn.viewChangeCh <- "root"
 		} else {
-			// log.Println(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
+			log.Errorln(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
 			return ViewRejectedError
 		}
 	} else {
@@ -406,7 +415,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 		// create and putup messg to confirm subtree view changed
 		vam := &ViewAcceptedMessage{ViewNo: vcm.ViewNo, Votes: votes}
 
-		// log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
+		log.Println(sn.Name(), "putting up on view", view, "accept for view", vcm.ViewNo)
 		err = sn.PutUp(context.TODO(), vcm.ViewNo, &SigningMessage{
 			View: view,
 			From: sn.Name(),
@@ -420,7 +429,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 }
 
 func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
-	// log.Println(sn.Name(), "view CHANGED to", view)
+	log.Println(sn.Name(), "view CHANGED to", view)
 	// View Changed
 	atomic.StoreInt64(&sn.ChangingView, FALSE)
 	// channel for getting ViewAcceptedMessages with right size buffer
@@ -430,9 +439,9 @@ func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 
 	sn.viewChangeCh <- "regular"
 
-	// log.Println("in view change, children for view", view, sn.Children(view))
+	log.Println("in view change, children for view", view, sn.Children(view))
 	sn.multiplexOnChildren(view, sm)
-	// log.Println(sn.Name(), " exited view CHANGE to", view)
+	log.Println(sn.Name(), " exited view CHANGE to", view)
 }
 
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
@@ -943,7 +952,7 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 
 func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 	// more than 2/3 of all nodes must vote For, to accept vote request
-	// log.Println(sn.Name(), "act on votes:", cv.For, len(sn.HostList))
+	log.Println(sn.Name(), "act on votes:", cv.For, len(sn.HostList))
 	accepted := cv.For > 2*len(sn.HostListOn(view))/3
 	var actionTaken string = "rejected"
 	if accepted {

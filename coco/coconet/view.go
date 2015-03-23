@@ -125,7 +125,6 @@ func (v *Views) Parent(view int) string {
 func (v *Views) HostList(view int) []string {
 	v.RLock()
 	defer v.RUnlock()
-	log.Println(view)
 	if v.Views[view] == nil {
 		return nil
 	}
