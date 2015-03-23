@@ -114,8 +114,8 @@ func (sn *Node) Hostlist() []string {
 // Returns name of node who should be the root for the next view
 // round robin is used on the array of host names to determine the next root
 func (sn *Node) RootFor(view int) string {
-	// log.Println("hl:", sn.HostListOn(view))
-	//log.Println(sn.Name(), "ROOT FOR", view)
+	log.Println("checking RootFor: hl:", sn.HostListOn(view))
+	// log.Println(sn.Name(), "ROOT FOR", view)
 
 	var hl []string
 	if view == 0 {

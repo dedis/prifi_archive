@@ -235,14 +235,15 @@ func (sn *Node) get() error {
 					log.Errorln("AddParent:", sm.From)
 
 					sn.Views().Lock()
-					_, exists := sn.Views().Views[view+1]
+					_, exists := sn.Views().Views[view]
 					sn.Views().Unlock()
 					// also need to add self
 					if !exists {
-						sn.NewView(view+1, sm.From, nil, append(sm.Gcr.Hostlist, sn.Name()))
+						sn.NewView(view, sm.From, nil, sm.Gcr.Hostlist)
 					}
+					sn.ApplyAction(view, &vr)
 					// create the view
-					sn.AddParent(view+1, sm.From)
+					sn.AddParent(view, sm.From)
 					log.Println("GROUP CHANGE RESPONSE:", vr)
 				case Error:
 					log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
