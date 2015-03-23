@@ -172,7 +172,7 @@ var ChangingViewError error = errors.New("In the process of changing view")
 func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	sn.AnnounceLock.Lock()
 	defer sn.AnnounceLock.Unlock()
-	log.Infoln("root", sn.Name(), "starting signing round for round: ", sn.nRounds, "on view", sn.ViewNo)
+	log.Infoln("root", sn.Name(), "starting signing round for round: ", sn.nRounds, "on view", sn.lastView)
 
 	first := time.Now()
 	total := time.Now()
@@ -182,7 +182,7 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
 	var cancelederr error
 	go func() {
-		err := sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)), am)
+		err := sn.Announce(int(atomic.LoadInt64(&sn.lastView)), am)
 		if err != nil {
 			log.Errorln(err)
 			cancelederr = err
@@ -193,12 +193,6 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	// 1st Phase succeeded or connection error
 	select {
 	case _ = <-sn.commitsDone:
-		// check for correctness
-		// if rn != sn.nRounds {
-		//	log.Fatal("1st Phase round number mix up", rn, "!=", sn.nRounds)
-		//	return errors.New("1st Phase round number mix up")
-		//}
-
 		// log time it took for first round to complete
 		firstRoundTime = time.Since(first)
 		sn.logFirstPhase(firstRoundTime)
@@ -216,12 +210,6 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	// 2nd Phase succeeded or connection error
 	select {
 	case _ = <-sn.done:
-		// check for correctness
-		//if rn != sn.nRounds {
-		//	log.Fatal("2nd Phase round number mix up", rn, "!=", sn.nRounds)
-		//	return errors.New("2nd Phase round number mix up")
-		//}
-
 		// log time it took for second round to complete
 		totalTime = time.Since(total)
 		sn.logSecondPhase(totalTime - firstRoundTime)

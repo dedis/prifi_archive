@@ -256,7 +256,9 @@ func (h *TCPHost) Pending() map[string]bool {
 }
 
 func (h *TCPHost) AddPeerToPending(p string) {
+	h.PeerLock.Lock()
 	h.PendingPeers[p] = true
+	h.PeerLock.Unlock()
 	log.Println("added peer to pending:", p)
 }
 

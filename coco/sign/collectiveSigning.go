@@ -165,7 +165,7 @@ func (sn *Node) get() error {
 				case ViewChange:
 					// if we have already seen this view before skip it
 					if int64(sm.View) <= sn.lastView {
-						log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.lastView)
+						log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.lastView, sm.From)
 						return
 					}
 					sn.lastView = int64(sm.View)
@@ -411,7 +411,6 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			sn.multiplexOnChildren(vcm.ViewNo, sm)
 
 			atomic.StoreInt64(&sn.ChangingView, FALSE)
-			atomic.StoreInt64(&sn.ViewNo, int64(vcm.ViewNo))
 			sn.viewChangeCh <- "root"
 		} else {
 			log.Errorln(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
