@@ -1,74 +1,70 @@
+/* Modelled off coco/signingMessage.go, this file is responsible for encoding/
+ * decoding messages sent as a part of the insurance policy protocol.
+ */
 package insure
 
 import (
 	"bytes"
-	"math"
-	"math/big"
-
+	"encoding/binary"
+	"io"
+	"strconv"
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/anon"
-	"github.com/dedis/crypto/config"
-	"github.com/dedis/crypto/nist"
-	"github.com/dedis/crypto/poly"
-	"github.com/dedis/crypto/random"
-
-	"github.com/dedis/protobuf"
+	"github.com/dedis/crypto/poly/promise"
 )
 
-/* Modelled off coco/signingMessage.go, this file is responsible for encoding/
- * decoding messages sent as a part of the insurance policy protocol.
- */
+// Used mostly in marshalling code, this is the size of a uint32
+var uint32Size int = binary.Size(uint32(0))
 
 type MessageType int
 
 const (
 	Error MessageType = iota
-	RequestInsurance
-	PolicyApproved
+	PromiseResponse
+	CertifyPromise
 )
 
 type PolicyMessage struct {
 	Type MessageType
-	rim  *RequestInsuranceMessage
-	pam  *PolicyApprovedMessage
+	cpm  *CertifyPromiseMessage
+	prm  *PromiseResponseMessage
 }
 
 /* Creates a new PolicyMessage
  *
  * Arguments:
- *	m = A RequestInsuranceMessage for sending over the network
+ *	m = A CertifyPromiseMessage for sending over the network
  *
  * Returns:
- *	A new PolicyMessage responsible for sending an RequestInsuranceMessage
+ *	A new PolicyMessage responsible for sending an CertifyPromiseMessage
  */
-func (pm *PolicyMessage) createRIMessage(m *RequestInsuranceMessage) *PolicyMessage {
-	pm.Type = RequestInsurance
-	pm.rim = m
+func (pm *PolicyMessage) createCPMessage(m *CertifyPromiseMessage) *PolicyMessage {
+	pm.Type = CertifyPromise
+	pm.cpm  = m
 	return pm
 }
 
 /* Creates a new PolicyMessage
  *
  * Arguments:
- *	m = A PolicyApprovedMessage for sending over the network
+ *	m = A PromiseResponseMessage for sending over the network
  *
  * Returns:
- *	A new PolicyMessage responsible for sending an PolicyApprovedMessage
+ *	A new PolicyMessage responsible for sending an PromiseResponseMessage
  */
-func (pm *PolicyMessage) createPAMessage(m *PolicyApprovedMessage) *PolicyMessage {
-	pm.Type = PolicyApproved
-	pm.pam = m
+func (pm *PolicyMessage) createPRMessage(m *PromiseResponseMessage) *PolicyMessage {
+	pm.Type = PromiseResponse
+	pm.prm  = m
 	return pm
 }
 
-// Returns the RequestInsuranceMessage of this PolicyMessage
-func (pm *PolicyMessage) getRIM() *RequestInsuranceMessage {
-	return pm.rim
+// Returns the CertifyPromiseMessage of this PolicyMessage
+func (pm *PolicyMessage) getCPM() *CertifyPromiseMessage {
+	return pm.cpm
 }
 
-// Returns the PolicyApprovedMessage of this PolicyMessage
-func (pm *PolicyMessage) getPAM() *PolicyApprovedMessage {
-	return pm.pam
+// Returns the PromiseResponseMessage of this PolicyMessage
+func (pm *PolicyMessage) getPRM() *PromiseResponseMessage {
+	return pm.prm
 }
 
 // This code is responsible for mashalling the message for sending off.
@@ -79,10 +75,10 @@ func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 	b.WriteByte(byte(pm.Type))
 	// marshal sub message based on its Type
 	switch pm.Type {
-	case RequestInsurance:
-		sub, err = pm.rim.MarshalBinary()
-	case PolicyApproved:
-		sub, err = pm.pam.MarshalBinary()
+	case CertifyPromise:
+		sub, err = pm.cpm.MarshalBinary()
+	case PromiseResponse:
+		sub, err = pm.prm.MarshalBinary()
 	}
 	if err == nil {
 		b.Write(sub)
@@ -97,10 +93,12 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 	msgBytes := data[1:]
 	var err error
 	switch pm.Type {
-	case RequestInsurance:
-		pm.rim, err = new(RequestInsuranceMessage).UnmarshalBinary(msgBytes)
-	case PolicyApproved:
-		pm.pam, err = new(PolicyApprovedMessage).UnmarshalBinary(msgBytes)
+	case CertifyPromise:
+		pm.cpm = new(CertifyPromiseMessage)
+		err = pm.cpm.UnmarshalBinary(msgBytes)
+	case PromiseResponse:
+		pm.prm = new(PromiseResponseMessage)
+		err = pm.prm.UnmarshalBinary(msgBytes)
 	}
 	return err
 }
@@ -108,18 +106,12 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 // These messages are used to send insurance requests. A node looking for an
 // insurance policy will send these to other nodes to ask them to become
 // insurers.
-type RequestInsuranceMessage struct {
-	// The public key of the insured.
-	PubKey abstract.Point
+type CertifyPromiseMessage struct {
+	// The index of the share being sent.
+	ShareIndex int
 
-	// The number of the share being sent.
-	ShareNumber *nist.Int
-
-	// The private share to give to the insurer
-	Share abstract.Secret
-
-	// The public polynomial used to verify the share
-	PubCommit *poly.PubPoly
+	// The promise to be insured
+	Promise promise.Promise
 }
 
 /* Creates a new insurance request message
@@ -131,122 +123,332 @@ type RequestInsuranceMessage struct {
  * Returns:
  *	A new insurance request message.
  */
-func (msg *RequestInsuranceMessage) createMessage(p abstract.Point, shareNum int,
-	s abstract.Secret, pc *poly.PubPoly) *RequestInsuranceMessage {
-	msg.PubKey = p
-	msg.ShareNumber = nist.NewInt(int64(shareNum), big.NewInt(int64(math.MaxInt64)))
-	msg.Share = s
-	msg.PubCommit = pc
+func (msg *CertifyPromiseMessage) createMessage(shareIndex int,
+	promise promise.Promise) *CertifyPromiseMessage {
+	msg.ShareIndex = shareIndex
+	msg.Promise    = promise
 	return msg
 }
 
-// Encodes the message for sending.
-func (msg *RequestInsuranceMessage) MarshalBinary() ([]byte, error) {
-	b := bytes.Buffer{}
-	abstract.Write(&b, msg, INSURE_GROUP)
-	return b.Bytes(), nil
-	//	return protobuf.Encode(msg);
+/* Initializes a CertifyPromiseMessage for unmarshalling
+ *
+ * Arguments
+ *    suite = the suite used within the Promise
+ *
+ * Returns
+ *   An initialized Promise ready to be unmarshalled
+ */
+func (msg *CertifyPromiseMessage) UnmarshalInit(t,r,n int, suite abstract.Suite) *CertifyPromiseMessage {
+	msg.Promise = promise.Promise{}
+	msg.Promise.UnmarshalInit(t, r, n, suite)
+	return msg
 }
 
-// Decodes a message received.
-// NOTE: In order to be encoded properly, public polynomials need to be
-// initialized with the right group and minimum number of shares.
-func (msg *RequestInsuranceMessage) UnmarshalBinary(data []byte) (*RequestInsuranceMessage, error) {
-	msg.PubCommit = new(poly.PubPoly)
-	msg.PubCommit.Init(INSURE_GROUP, TSHARES, nil)
-	msg.PubKey = KEY_SUITE.Point()
-	msg.Share = INSURE_GROUP.Secret().Pick(random.Stream)
-	msg.ShareNumber = nist.NewInt(int64(0), big.NewInt(int64(math.MaxInt64)))
-	b := bytes.NewBuffer(data)
-	err := abstract.Read(b, msg, INSURE_GROUP)
+// Compares two messages to see if they are equal
+func (msg *CertifyPromiseMessage) Equal(msg2 *CertifyPromiseMessage) bool {
+	return msg.ShareIndex == msg2.ShareIndex &&
+	       msg.Promise.Equal(&msg2.Promise)
+}
+
+
+/* Returns the number of bytes used by this struct when marshalled
+ *
+ * Returns
+ *   The marshal size
+ * Note
+ *   This function can be used after UnmarshalInit
+ */
+func (msg *CertifyPromiseMessage) MarshalSize() int {
+	return uint32Size + msg.Promise.MarshalSize()
+}
+
+/* Marshals a CertifyPromiseMessage struct into a byte array
+ *
+ * Returns
+ *   A buffer of the marshalled struct
+ *   The error status of the marshalling (nil if no error)
+ *
+ * Note
+ *   The buffer is formatted as follows:
+ *
+ *      ||ShareIndex||Promise||
+ *
+ */
+func (msg *CertifyPromiseMessage) MarshalBinary() ([]byte, error) {
+	buf := make([]byte, msg.MarshalSize())
+
+	binary.LittleEndian.PutUint32(buf, uint32(msg.ShareIndex))
+
+	promiseBuf, err := msg.Promise.MarshalBinary()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return msg, err
-	//	return 	msg, protobuf.Decode(data, msg)
-
+	copy(buf[uint32Size:], promiseBuf)
+	return buf, nil
 }
 
-// Compares two messages to see if they are equal
-func (msg *RequestInsuranceMessage) Equal(otherMsg *RequestInsuranceMessage) bool {
-	return msg.PubKey.Equal(otherMsg.PubKey) &&
-		msg.ShareNumber.V.Sign() == otherMsg.ShareNumber.V.Sign() &&
-		msg.Share.Equal(otherMsg.Share) &&
-		msg.PubCommit.Equal(otherMsg.PubCommit)
+/* Unmarshals a CertifyPromiseMessage from a byte buffer
+ *
+ * Arguments
+ *    buf = the buffer containing the Promise
+ *
+ * Returns
+ *   The error status of the unmarshalling (nil if no error)
+ */
+func (msg *CertifyPromiseMessage) UnmarshalBinary(buf []byte) error {
+
+	msg.ShareIndex = int(binary.LittleEndian.Uint32(buf))
+
+	// Decode pubKey and pubPoly
+	bufPos      := uint32Size
+	promiseSize := msg.Promise.MarshalSize()
+	if err := msg.Promise.UnmarshalBinary(buf[bufPos : bufPos+promiseSize]);
+		err != nil {
+		return err
+	}
+	return nil
 }
 
-type PolicyApprovedMessage struct {
-	// The public key of the insurer.
-	PubKey abstract.Point
-
-	// The message stating that the insurer has approved of being an insurer
-	Message []byte
-
-	// A certificate certifying that an insurer has indeed approved of
-	// the policy and signed with their own key.
-	Signature []byte
+/* Marshals a CertifyPromiseMessage struct using an io.Writer
+ *
+ * Arguments
+ *    w = the writer to use for marshalling
+ *
+ * Returns
+ *   The number of bytes written
+ *   The error status of the write (nil if no errors)
+ */
+func (msg *CertifyPromiseMessage) MarshalTo(w io.Writer) (int, error) {
+	buf, err := msg.MarshalBinary()
+	if err != nil {
+		return 0, err
+	}
+	return w.Write(buf)
 }
 
-/* Creates a new policy-approved message
+/* Unmarshals a Promise struct using an io.Reader
+ *
+ * Arguments
+ *    r = the reader to use for unmarshalling
+ *
+ * Returns
+ *   The number of bytes read
+ *   The error status of the read (nil if no errors)
+ */
+func (msg *CertifyPromiseMessage) UnmarshalFrom(r io.Reader) (int, error) {
+	// Retrieve promiseSize to find the entire length of the message
+	buf := make([]byte, msg.MarshalSize())
+	n, err := io.ReadFull(r, buf)
+	if err != nil {
+		return n, err
+	}
+	return n , msg.UnmarshalBinary(buf)
+}
+
+/* Returns a string representation of the CertifyPromiseMessage for easy debugging
+ *
+ * Returns
+ *   The CertifyPromiseMessage's string representation
+ */
+func (msg *CertifyPromiseMessage) String()  string {
+	s := "{CertifyPromiseMessage:\n"
+	s += "ShareIndex => " + strconv.Itoa(msg.ShareIndex) + ",\n"
+	s += "Promise => " + msg.Promise.String() + "\n"
+	s += "}\n"
+	return s
+}
+
+type PromiseResponseMessage struct {
+
+	// The index of teh share that this is a response to.
+	ShareIndex int
+
+	// The index of teh share that this is a response to.
+	PromiserId string
+
+	// The index of the share that this is a response to.
+	Id string
+
+	// The insurer's response denoting whether it approves or rejects the
+	// promise.
+	Response *promise.Response
+}
+
+
+/* Creates a new insurance request message
  *
  * Arguments:
- *	kp       = the private/public key of the insuring server.
- *      theirKey = the public key of the server who requested the insurance
+ *	s  = the shared secret to give to the insurer.
+ *      pc = the public polynomial to check the share against.
  *
  * Returns:
- *	A new policy approved message.
- *
- * NOTE:
- *	The approved certificate is a string of the form:
- *     		"My_Public_Key insures Their_Public_Key"
- *
- *	It will always be of this form for easy validation.
+ *	A new insurance request message.
  */
-func (msg *PolicyApprovedMessage) createMessage(kp *config.KeyPair,
-	theirKey abstract.Point) *PolicyApprovedMessage {
-
-	set := anon.Set{kp.Public}
-	approveMsg := kp.Public.String() + " insures " + theirKey.String()
-	msg.PubKey = kp.Public
-	msg.Message = []byte(approveMsg)
-	msg.Signature = anon.Sign(kp.Suite, random.Stream, msg.Message,
-		set, nil, 0, kp.Secret)
+func (msg *PromiseResponseMessage) createMessage(shareIndex int, promise promise.Promise,
+	response *promise.Response) *PromiseResponseMessage {
+	msg.Id         = promise.Id()
+	msg.PromiserId = promise.PromiserId()
+	msg.ShareIndex = shareIndex
+	msg.Response   = response
 	return msg
 }
 
-// Encodes a policy message for sending over the Internet
-func (msg *PolicyApprovedMessage) MarshalBinary() ([]byte, error) {
-	return protobuf.Encode(msg)
-}
-
-// Decodes a policy message for sending over the Internet
-func (msg *PolicyApprovedMessage) UnmarshalBinary(data []byte) (*PolicyApprovedMessage, error) {
-	msg.PubKey = KEY_SUITE.Point()
-	return msg, protobuf.Decode(data, msg)
-}
-
-/* Verifies that a PolicyApproveMessage has been properly constructed.
+/* Initializes a CertifyPromiseMessage for unmarshalling
  *
- * Arguments:
- *	su         = the suite that the insurer's public key was derived from.
- *      insuredKey = the public key of the insured or the client
- *      insurerKey = the public key of the insurer or "trustee"
+ * Arguments
+ *    suite = the suite used within the Promise
  *
- * Returns:
- *	whether or not the message is valid.
+ * Returns
+ *   An initialized Promise ready to be unmarshalled
  */
-func (msg *PolicyApprovedMessage) verifyCertificate(su abstract.Suite,
-	insuredKey abstract.Point) bool {
-
-	set := anon.Set{msg.PubKey}
-	_, err := anon.Verify(su, msg.Message, set, nil, msg.Signature)
-	correctMsg := msg.PubKey.String() + " insures " + insuredKey.String()
-	return err == nil && correctMsg == string(msg.Message)
+func (msg *PromiseResponseMessage) UnmarshalInit(suite abstract.Suite) *PromiseResponseMessage {
+	msg.Response = new(promise.Response).UnmarshalInit(suite)
+	return msg
 }
 
 // Compares two messages to see if they are equal
-func (msg *PolicyApprovedMessage) Equal(otherMsg *PolicyApprovedMessage) bool {
-	return msg.PubKey.Equal(otherMsg.PubKey) &&
-		string(msg.Message) == string(otherMsg.Message) &&
-		string(msg.Signature) == string(otherMsg.Signature)
+func (msg *PromiseResponseMessage) Equal(msg2 *PromiseResponseMessage) bool {
+	return msg.ShareIndex == msg2.ShareIndex &&
+	       msg.Response.Equal(msg2.Response)
 }
+
+
+/* Returns the number of bytes used by this struct when marshalled
+ *
+ * Returns
+ *   The marshal size
+ * Note
+ *   Since promise.Response can be variable (it can contain acceptance or
+ *   rejection messages), this can not be used before UnMarshalling.
+ */
+func (msg *PromiseResponseMessage) MarshalSize() int {
+	return 4*uint32Size + len(msg.Id) + len(msg.PromiserId) + msg.Response.MarshalSize()
+}
+
+/* Marshals a CertifyPromiseMessage struct into a byte array
+ *
+ * Returns
+ *   A buffer of the marshalled struct
+ *   The error status of the marshalling (nil if no error)
+ *
+ * Note
+ *   The buffer is formatted as follows:
+ *
+ *      ||Response_Size||ShareIndex||Response||
+ *
+ */
+func (msg *PromiseResponseMessage) MarshalBinary() ([]byte, error) {
+	buf := make([]byte, msg.MarshalSize())
+	idLen  := len(msg.Id)
+	promiserIdLen := len(msg.PromiserId)
+
+	binary.LittleEndian.PutUint32(buf, uint32(idLen))
+	binary.LittleEndian.PutUint32(buf[uint32Size:], uint32(promiserIdLen))
+	binary.LittleEndian.PutUint32(buf[2*uint32Size:], uint32(msg.Response.MarshalSize()))
+	binary.LittleEndian.PutUint32(buf[3*uint32Size:], uint32(msg.ShareIndex))
+
+	copy(buf[4*uint32Size:], []byte(msg.Id))
+	copy(buf[4*uint32Size + idLen:], []byte(msg.PromiserId))
+
+	responseBuf, err := msg.Response.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	copy(buf[4*uint32Size + idLen + promiserIdLen:], responseBuf)
+	return buf, nil
+}
+
+/* Unmarshals a PromiseResponseMessage from a byte buffer
+ *
+ * Arguments
+ *    buf = the buffer containing the Promise
+ *
+ * Returns
+ *   The error status of the unmarshalling (nil if no error)
+ */
+func (msg *PromiseResponseMessage) UnmarshalBinary(buf []byte) error {
+  
+	promiseSize    := int(binary.LittleEndian.Uint32(buf))
+	idLen          := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
+	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+	msg.ShareIndex  = int(binary.LittleEndian.Uint32(buf[3*uint32Size:]))
+
+	// Decode pubKey and pubPoly
+	bufPos      := 4*uint32Size
+	msg.Id = string(buf[bufPos:bufPos+idLen])
+	bufPos += idLen
+	
+	msg.PromiserId = string(buf[bufPos:bufPos+promiserIdLen])
+	bufPos += promiserIdLen
+
+	if err := msg.Response.UnmarshalBinary(buf[bufPos : bufPos+promiseSize]);
+		err != nil {
+		return err
+	}
+	return nil
+}
+
+/* Marshals a CertifyPromiseMessage struct using an io.Writer
+ *
+ * Arguments
+ *    w = the writer to use for marshalling
+ *
+ * Returns
+ *   The number of bytes written
+ *   The error status of the write (nil if no errors)
+ */
+func (msg *PromiseResponseMessage) MarshalTo(w io.Writer) (int, error) {
+	buf, err := msg.MarshalBinary()
+	if err != nil {
+		return 0, err
+	}
+	return w.Write(buf)
+}
+
+/* Unmarshals a Promise struct using an io.Reader
+ *
+ * Arguments
+ *    r = the reader to use for unmarshalling
+ *
+ * Returns
+ *   The number of bytes read
+ *   The error status of the read (nil if no errors)
+ */
+func (msg *PromiseResponseMessage) UnmarshalFrom(r io.Reader) (int, error) {
+	// Retrieve responseSize to find the entire length of the message
+	buf := make([]byte, 3*uint32Size)
+	n, err := io.ReadFull(r, buf)
+	if err != nil {
+		return n, err
+	}
+	responseLen := int(binary.LittleEndian.Uint32(buf))
+	idLen          := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
+	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+
+	// Calculate the final buffer, copy the old data to it, and fill it
+	// for unmarshalling
+	finalLen := 4*uint32Size + idLen + promiserIdLen + responseLen
+	finalBuf := make([]byte, finalLen)
+	copy(finalBuf, buf)
+	m, err := io.ReadFull(r, finalBuf[n:])
+	if err != nil {
+		return n + m, err
+	}
+	return n + m, msg.UnmarshalBinary(finalBuf)
+}
+
+/* Returns a string representation of the CertifyPromiseMessage for easy debugging
+ *
+ * Returns
+ *   The CertifyPromiseMessage's string representation
+ */
+func (msg *PromiseResponseMessage) String()  string {
+	s := "{PromiseResponseMessage:\n"
+	s += "ShareIndex => " + strconv.Itoa(msg.ShareIndex) + ",\n"
+	s += "PromiserId => " + msg.PromiserId + ",\n"
+	s += "Id => " + msg.Id + ",\n"
+	s += "Response => " + msg.Response.String() + "\n"
+	s += "}\n"
+	return s
+}
+
