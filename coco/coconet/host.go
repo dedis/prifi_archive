@@ -99,4 +99,7 @@ type Host interface {
 	AddPendingPeer(view int, name string) error
 	RemovePeer(view int, name string) bool
 	Pending() map[string]bool
+
+	AddPeerToHostlist(view int, name string)
+	RemovePeerFromHostlist(view int, name string)
 }

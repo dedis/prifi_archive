@@ -253,6 +253,14 @@ func (h *GoHost) AddPeerToPending(p string) {
 	h.PendingPeers[p] = true
 }
 
+func (h *GoHost) AddPeerToHostlist(view int, name string) {
+	h.views.AddPeerToHostlist(view, name)
+}
+
+func (h *GoHost) RemovePeerFromHostlist(view int, name string) {
+	h.views.RemovePeerFromHostlist(view, name)
+}
+
 func (h *GoHost) AddPendingPeer(view int, name string) error {
 	h.PeerLock.Lock()
 	if _, ok := h.PendingPeers[name]; !ok {

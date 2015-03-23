@@ -1,8 +1,10 @@
 package coconet
 
 import (
-	log "github.com/Sirupsen/logrus"
+	"sort"
 	"sync"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 type View struct {
@@ -21,8 +23,18 @@ func (v *View) AddParent(parent string) {
 }
 
 func (v *View) AddChildren(children ...string) {
+	m := make(map[string]bool)
+	for _, c := range v.Children {
+		m[c] = true
+	}
 	v.Lock()
-	v.Children = append(v.Children, children...)
+	// only add unadded children
+	for _, c := range children {
+		if !m[c] {
+			v.Children = append(v.Children, c)
+		}
+
+	}
 	v.Unlock()
 }
 
@@ -108,6 +120,45 @@ func (v *Views) NewView(view int, parent string, children []string, hostlist []s
 
 	v.Views[view] = vi
 	v.Unlock()
+}
+
+func (vs *Views) AddPeerToHostlist(view int, name string) {
+	v := vs.Views[view]
+	m := make(map[string]bool)
+	for _, h := range v.HostList {
+		if h != name {
+			m[h] = true
+		}
+	}
+	m[name] = true
+	hostlist := make([]string, 0, len(m))
+
+	for h := range m {
+		hostlist = append(hostlist, h)
+	}
+
+	sortable := sort.StringSlice(hostlist)
+	sortable.Sort()
+	v.HostList = []string(sortable)
+}
+
+func (vs *Views) RemovePeerFromHostlist(view int, name string) {
+	v := vs.Views[view]
+	m := make(map[string]bool)
+	for _, h := range v.HostList {
+		if h != name {
+			m[h] = true
+		}
+	}
+	hostlist := make([]string, 0, len(m))
+
+	for h := range m {
+		hostlist = append(hostlist, h)
+	}
+
+	sortable := sort.StringSlice(hostlist)
+	sortable.Sort()
+	v.HostList = []string(sortable)
 }
 
 func (v *Views) AddParent(view int, parent string) {

@@ -938,6 +938,7 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 	// Apply action on new view
 	if vreq.Action == "add" {
 		log.Println("adding pending peer:", view, vreq)
+		sn.AddPeerToHostlist(view, vreq.Name)
 		err := sn.AddPendingPeer(view, vreq.Name)
 		// unable to add pending peer
 		if err != nil {
@@ -949,9 +950,10 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 		// sn.NotifyPeerOfVote(view, vreq)
 	} else if vreq.Action == "remove" {
 		log.Println(sn.Name(), "looking to remove peer")
-		if ok := sn.RemovePeer(view, vreq.Name); ok {
-			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
-		}
+		sn.AddPeerToHostlist(view, vreq.Name)
+		// if ok := sn.RemovePeer(view, vreq.Name); ok {
+		// 	log.Println(sn.Name(), "REMOVED peer", vreq.Name)
+		// }
 		// sn.NotifyPeerOfVote(view, vreq)
 	} else {
 		log.Errorln("Vote Request contains uknown action:", vreq.Action)

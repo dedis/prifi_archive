@@ -331,18 +331,26 @@ func (h *TCPHost) AddChildren(view int, cs ...string) {
 	}
 }
 
+func (h *TCPHost) AddPeerToHostlist(view int, name string) {
+	h.views.AddPeerToHostlist(view, name)
+}
+
+func (h *TCPHost) RemovePeerFromHostlist(view int, name string) {
+	h.views.RemovePeerFromHostlist(view, name)
+}
+
 func (h *TCPHost) AddPendingPeer(view int, name string) error {
-	//	h.PeerLock.Lock()
-	//	if _, ok := h.PendingPeers[name]; !ok {
-	//		h.PeerLock.Unlock()
-	//		return errors.New("error adding pending peer: not in pending peers")
-	//	}
-	//	delete(h.PendingPeers, name)
-	//
-	//	h.PeerLock.Unlock()
-	//
-	//	// ignores peer if already added
-	//	h.ConnectTo(name)
+	h.PeerLock.Lock()
+	if _, ok := h.PendingPeers[name]; !ok {
+		h.PeerLock.Unlock()
+		return errors.New("error adding pending peer: not in pending peers")
+	}
+	delete(h.PendingPeers, name)
+
+	h.PeerLock.Unlock()
+
+	// we have already connected to the name
+	// h.ConnectTo(name)
 
 	h.AddChildren(view, name)
 	return nil
