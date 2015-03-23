@@ -170,7 +170,7 @@ func (sn *Node) get() error {
 					}
 					sn.lastView = int64(sm.View)
 					sn.StopHeartbeat()
-					log.Printf("Host (%s) VIEWCHANGE", sn.Name())
+					log.Printf("Host (%s) VIEWCHANGE", sn.Name(), sm.Vcm)
 					if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
 						if err == coconet.ErrClosed || err == io.EOF {
 							sn.closed <- io.EOF
@@ -349,7 +349,7 @@ var ViewRejectedError error = errors.New("View Rejected: not all nodes accepted 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == ", vcm.Round, lsr)
+	log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == , view == ", vcm.Round, lsr, view)
 
 	// update max seen round
 	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
@@ -387,7 +387,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
 	// wait for votes from children
-	log.Println(sn.Name(), "waiting on view accept messages from children")
+	log.Println(sn.Name(), "waiting on view accept messages from children:", sn.Children(view))
 	messgs := sn.waitOn(vcm.ViewNo, sn.VamCh, 3*ROUND_TIME, "viewchanges for view"+strconv.Itoa(vcm.ViewNo))
 	votes := 1
 	for _, messg := range messgs {
@@ -882,6 +882,7 @@ func (sn *Node) TryViewChange(view int) {
 	// should ideally be compare and swap
 	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", atomic.LoadInt64(&sn.lastView))
 	if int64(view) <= atomic.LoadInt64(&sn.lastView) {
+		log.Println("view < sn.lastView")
 		return
 	}
 	changing := atomic.LoadInt64(&sn.ChangingView)
@@ -977,6 +978,7 @@ func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 		// propagate view change if new view leader
 		log.Println("actOnVotes: vote has been accepted: trying viewchange")
 		sn.NotifyPeerOfVote(view, vreq)
+		time.Sleep(7 * time.Second) // wait for all vote responses to be propogated before trying to change view
 		sn.TryViewChange(view + 1)
 	}
 
