@@ -899,13 +899,13 @@ func (sn *Node) TryViewChange(view int) {
 		nextParent := ""
 		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
 
-		time.Sleep(1 * time.Second)
 		sn.ViewChange(nextViewNo, nextParent, vcm)
 	}
 }
 
 func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
 	// if I am peers with this
+	log.Println("NOTIFYING PEER OF VOTE")
 	if good, ok := sn.Pending()[vreq.Name]; !ok || !good {
 		log.Println("not notifying peer of vote: not connected: ", ok, good)
 		return
@@ -935,7 +935,7 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 		if ok := sn.RemovePeer(view, vreq.Name); ok {
 			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
 		}
-		//sn.NotifyPeerOfVote(view, vreq)
+		// sn.NotifyPeerOfVote(view, vreq)
 	} else {
 		log.Errorln("Vote Request contains uknown action:", vreq.Action)
 	}
