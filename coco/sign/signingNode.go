@@ -186,7 +186,6 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	go func() {
 		err := sn.Announce(int(atomic.LoadInt64(&sn.ViewNo)), am)
 		if err != nil {
-			log.Println("Signature fails if at least one node says it failed")
 			log.Errorln(err)
 			cancelederr = err
 			cancel()

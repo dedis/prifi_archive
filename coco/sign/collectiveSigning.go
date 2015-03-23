@@ -452,9 +452,10 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 		}
 	}
 
+	log.Println(sn.Name(), "RECEIVED annoucement on", view)
 	changingView := atomic.LoadInt64(&sn.ChangingView)
 	if changingView == TRUE {
-		log.Println(sn.Name(), "RECEIVED annoucement on", view)
+		log.Println("currently chaning view")
 		return ChangingViewError
 	}
 
@@ -874,6 +875,7 @@ func (sn *Node) TryViewChange(view int) {
 	}
 	changing := atomic.LoadInt64(&sn.ChangingView)
 	if changing == TRUE {
+		log.Errorln("cannot try view change: already chaning view")
 		return
 	}
 	atomic.StoreInt64(&sn.ChangingView, TRUE)
@@ -896,9 +898,10 @@ func (sn *Node) TryViewChange(view int) {
 		nextViewNo := view
 		nextParent := ""
 		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
+
+		time.Sleep(1 * time.Second)
 		sn.ViewChange(nextViewNo, nextParent, vcm)
 	}
-
 }
 
 func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
@@ -932,7 +935,7 @@ func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 		if ok := sn.RemovePeer(view, vreq.Name); ok {
 			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
 		}
-		sn.NotifyPeerOfVote(view, vreq)
+		//sn.NotifyPeerOfVote(view, vreq)
 	} else {
 		log.Errorln("Vote Request contains uknown action:", vreq.Action)
 	}
