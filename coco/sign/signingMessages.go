@@ -151,5 +151,6 @@ type GroupChangeMessage struct {
 }
 
 type GroupChangeResponse struct {
-	Vr VoteRequest
+	Vr       VoteRequest
+	Hostlist []string
 }

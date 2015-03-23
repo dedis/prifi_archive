@@ -310,6 +310,7 @@ func (h *TCPHost) AddParent(view int, c string) {
 	// remove from pending peers list
 	delete(h.PendingPeers, c)
 	h.PeerLock.Unlock()
+	log.Errorln("adding parent to views")
 	h.views.AddParent(view, c)
 }
 

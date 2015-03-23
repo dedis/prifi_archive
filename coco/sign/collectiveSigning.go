@@ -219,14 +219,23 @@ func (sn *Node) get() error {
 				case GroupChanged:
 					sn.StopHeartbeat()
 					// only the leaf that initiated the GroupChange should get a response
-					log.Println("Received Group Changed Message: GroupChanged")
-					vr := sm.Gcm.Vr
-
+					log.Errorln("Received Group Changed Response: GroupChanged:", sm, sm.Gcr)
+					vr := sm.Gcr.Vr
 					if vr.Action == "remove" {
 						log.Println("Stopping Heartbeat")
 						return
 					}
+					log.Errorln("view ==", sm.View)
 					view := sm.View
+					log.Errorln("AddParent:", sm.From)
+
+					sn.Views().Lock()
+					_, exists := sn.Views().Views[view]
+					sn.Views().Unlock()
+					if !exists {
+						sn.NewView(view, sm.From, nil, sm.Gcr.Hostlist)
+					}
+					// create the view
 					sn.AddParent(view, sm.From)
 					log.Println("GROUP CHANGE RESPONSE:", vr)
 				case Error:
@@ -902,7 +911,7 @@ func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
 	sn.PutTo(
 		context.TODO(),
 		vreq.Name,
-		&SigningMessage{Type: GroupChanged, View: view, Gcr: &GroupChangeResponse{Vr: *vreq}})
+		&SigningMessage{Type: GroupChanged, View: view, Gcr: &GroupChangeResponse{Hostlist: sn.Hostlist(), Vr: *vreq}})
 }
 
 func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
