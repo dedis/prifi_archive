@@ -332,6 +332,7 @@ func (h *TCPHost) AddChildren(view int, cs ...string) {
 func (h *TCPHost) AddPendingPeer(view int, name string) error {
 	h.PeerLock.Lock()
 	if _, ok := h.PendingPeers[name]; !ok {
+		h.PeerLock.Unlock()
 		return errors.New("error adding pending peer: not in pending peers")
 	}
 	delete(h.PendingPeers, name)

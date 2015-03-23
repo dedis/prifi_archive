@@ -878,7 +878,7 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 func (sn *Node) TryViewChange(view int) {
 	// should ideally be compare and swap
-	// log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", atomic.LoadInt64(&sn.lastView))
+	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", atomic.LoadInt64(&sn.lastView))
 	if int64(view) <= atomic.LoadInt64(&sn.lastView) {
 		return
 	}
@@ -895,7 +895,7 @@ func (sn *Node) TryViewChange(view int) {
 	if rfv = sn.RootFor(view); rfv == sn.Name() {
 		atomic.SwapInt64(&sn.AmNextRoot, TRUE)
 	}
-	// log.Println(sn.Name(), "thinks", rfv, "should be root for view", view)
+	log.Println(sn.Name(), "thinks", rfv, "should be root for view", view)
 
 	// take action if new view root
 	anr := atomic.LoadInt64(&sn.AmNextRoot)
