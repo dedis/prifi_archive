@@ -848,6 +848,7 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 	}
 
 	if sn.TimeForViewChange() {
+		log.Println("acting on responses: trying viewchanges")
 		sn.TryViewChange(view + 1)
 	}
 
@@ -948,6 +949,7 @@ func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 		sn.ActionsLock.Unlock()
 
 		// propagate view change if new view leader
+		log.Println("actOnVotes: vote has been accepted: trying viewchange")
 		sn.TryViewChange(view + 1)
 	}
 
