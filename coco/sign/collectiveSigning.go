@@ -930,7 +930,7 @@ func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
 func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
 	// Apply action on new view
 	if vreq.Action == "add" {
-		log.Println("adding pending peer")
+		log.Println("adding pending peer:", view, vreq)
 		err := sn.AddPendingPeer(view, vreq.Name)
 		// unable to add pending peer
 		if err != nil {
