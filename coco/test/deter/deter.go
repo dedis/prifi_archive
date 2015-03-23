@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -38,15 +37,11 @@ import (
 
 var rootname string
 
-func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerport, rootwait string, testConnect bool) string {
+func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerport, rootwait string, random_leaf string) string {
 	total := ""
-	connectOn := -1
-	if testConnect == true {
-		connectOn = rand.Intn(len(names))
-	}
-	for i, n := range names {
+	for _, n := range names {
 		connect := false
-		if connectOn == i {
+		if n == random_leaf && testConnect {
 			connect = true
 		}
 		amroot := " -amroot=false"
@@ -163,6 +158,15 @@ func main() {
 	hostnames := cf.Hosts
 
 	depth := graphs.Depth(cf.Tree)
+	var random_leaf string
+	cf.Tree.TraverseTree(func(t *graphs.Tree) {
+		if random_leaf == "" {
+			return
+		}
+		if len(t.Children) == 0 {
+			random_leaf = t.Name
+		}
+	})
 
 	rootname = hostnames[0]
 
@@ -229,23 +233,13 @@ func main() {
 		i = (i + 1) % len(loggerports)
 	}
 	rootwait := strconv.Itoa(10)
-	var connectOn = -1
-	if testConnect {
-		connectOn = rand.Intn(len(physToServer))
-	}
-	physi := 0
 	for phys, virts := range physToServer {
 		if len(virts) == 0 {
 			continue
 		}
-		connect := false
-		if connectOn == physi {
-			connect = true
-		}
 		log.Println("starting timestamper")
-		cmd := GenExecCmd(rFail, fFail, failures, phys, virts, loggerports[i], rootwait, connect)
+		cmd := GenExecCmd(rFail, fFail, failures, phys, virts, loggerports[i], rootwait, random_leaf)
 		i = (i + 1) % len(loggerports)
-		physi++
 		wg.Add(1)
 		//time.Sleep(500 * time.Millisecond)
 		go func(phys, cmd string) {
