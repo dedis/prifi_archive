@@ -222,7 +222,6 @@ func (sn *Node) get() error {
 					log.Println("Received Group Changed Message: GroupChanged")
 					vr := sm.Gcm.Vr
 
-					sn.heartbeat.Stop()
 					if vr.Action == "remove" {
 						log.Println("Stopping Heartbeat")
 						return
