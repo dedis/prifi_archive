@@ -226,6 +226,11 @@ func (sn *Node) get() error {
 					// only the leaf that initiated the GroupChange should get a response
 					log.Errorln("Received Group Changed Response: GroupChanged:", sm, sm.Gcr)
 					vr := sm.Gcr.Vr
+					// clear pending actions
+					sn.ActionsLock.Lock()
+					sn.Actions = make([]*VoteRequest, 0)
+					sn.ActionsLock.Unlock()
+
 					if vr.Action == "remove" {
 						log.Println("Stopping Heartbeat")
 						return
