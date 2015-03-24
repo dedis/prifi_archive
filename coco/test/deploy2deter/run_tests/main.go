@@ -277,9 +277,16 @@ var HostsTest = []T{
 	{DefaultMachs, 64, 16, 30, 20, 0, 0, 0, false, "stamp"},
 	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false, "stamp"},
 }
+
 var VTest = []T{
-	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, false, "vote"},
-	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 1, 3, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 2, 4, 30, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 4, 6, 30, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 8, 8, 30, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 16, 16, 30, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 32, 16, 30, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 64, 16, 30, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false, "vote"},
 }
 
 func main() {
