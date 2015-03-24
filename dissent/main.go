@@ -495,7 +495,7 @@ func clientReadRelay(rconn net.Conn, fromrelay chan<- connbuf) {
 	}
 }
 
-func startClient(clino int) {
+func startClient(clino int, port int) {
 	fmt.Printf("startClient %d\n", clino)
 
 	tg := dcnet.TestSetup(suite, factory, nclients, ntrustees)
@@ -513,7 +513,7 @@ func startClient(clino int) {
 	close := make(chan int)
 	conns := make([]net.Conn, 1)	// reserve conns[0]
 	if clino == 0 {
-		go clientListen(":1080",newconn)
+		go clientListen(fmt.Sprintf(":%d", port),newconn)
 		//go clientListen(":8080",newconn)
 	}
 
@@ -632,6 +632,7 @@ func main() {
 	isrel := flag.Bool("relay", false, "Start relay node")
 	iscli := flag.Int("client", -1, "Start client node")
 	istru := flag.Int("trustee", -1, "Start trustee node")
+	listenport := flag.Int("port", 1080, "Port to listen on")
 	flag.Parse()
 
 	readConfig()
@@ -639,7 +640,7 @@ func main() {
 	if *isrel {
 		startRelay()
 	} else if *iscli >= 0 {
-		startClient(*iscli)
+		startClient(*iscli, *listenport)
 	} else if *istru >= 0 {
 		startTrustee(*istru)
 	} else {
