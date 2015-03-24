@@ -233,7 +233,13 @@ func (s *Server) runAsRoot(nRounds int) string {
 			start := time.Now()
 			log.Println(s.Name(), "is STAMP SERVER STARTING SIGNING ROUND FOR:", s.LastRound()+1, "of", nRounds)
 
-			err := s.StartSigningRound()
+			var err error
+			if s.App == "vote" {
+				err = s.StartVotingRound(sign.VoteRequest{Name: s.Name(), Action: "add"})
+			} else {
+				err = s.StartSigningRound()
+			}
+
 			if err == sign.ChangingViewError {
 				// report change in view, and continue with the select
 				log.WithFields(log.Fields{
@@ -241,7 +247,6 @@ func (s *Server) runAsRoot(nRounds int) string {
 					"type": "view_change",
 				}).Info("Tried to stary signing round on " + s.Name() + " but it reports view change in progress")
 				// skip # of failed round
-				// s.SetLastSeenRound(s.LastRound() + 1)
 				break
 			}
 

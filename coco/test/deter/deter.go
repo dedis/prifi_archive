@@ -58,6 +58,7 @@ func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerp
 			" -logger=" + loggerport +
 			" -debug=" + debug +
 			" -rounds=" + strconv.Itoa(rounds) +
+			" -app=" + app +
 			" -test_connect=" + strconv.FormatBool(connect) +
 			amroot +
 			" ); "
@@ -77,6 +78,7 @@ var fFail int
 var rounds int
 var kill bool
 var testConnect bool
+var app string
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
@@ -90,6 +92,7 @@ func init() {
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
 	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
 	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
+	flag.StringVar(&app, "app", "stamp", "app to run")
 }
 
 func main() {
@@ -215,23 +218,25 @@ func main() {
 	// start up one timeclient per physical machine
 	// it requests timestamps from all the servers on that machine
 	i := 0
-	for p, ss := range physToServer {
-		if len(ss) == 0 {
-			continue
-		}
-		servers := strings.Join(ss, ",")
-		go func(i int, p string) {
-			_, err := cliutils.SshRun("", p, "cd remote; sudo ./timeclient -nmsgs="+nmsgs+
-				" -name=client@"+p+
-				" -server="+servers+
-				" -logger="+loggerports[i]+
-				" -debug="+debug+
-				" -rate="+strconv.Itoa(rate))
-			if err != nil {
-				log.Println(err)
+	if app == "time" {
+		for p, ss := range physToServer {
+			if len(ss) == 0 {
+				continue
 			}
-		}(i, p)
-		i = (i + 1) % len(loggerports)
+			servers := strings.Join(ss, ",")
+			go func(i int, p string) {
+				_, err := cliutils.SshRun("", p, "cd remote; sudo ./timeclient -nmsgs="+nmsgs+
+					" -name=client@"+p+
+					" -server="+servers+
+					" -logger="+loggerports[i]+
+					" -debug="+debug+
+					" -rate="+strconv.Itoa(rate))
+				if err != nil {
+					log.Println(err)
+				}
+			}(i, p)
+			i = (i + 1) % len(loggerports)
+		}
 	}
 	rootwait := strconv.Itoa(10)
 	for phys, virts := range physToServer {

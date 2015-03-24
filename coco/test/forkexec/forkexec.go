@@ -31,7 +31,7 @@ func init() {
 	flag.StringVar(&hostname, "hostname", "", "the hostname of this node")
 	flag.StringVar(&configFile, "config", "cfg.json", "the json configuration file")
 	flag.StringVar(&logger, "logger", "", "remote logger")
-	flag.StringVar(&app, "app", "time", "application to run [sign|time]")
+	flag.StringVar(&app, "app", "stamp", "application to run [sign|stamp|vote]")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run")
 	flag.StringVar(&pprofaddr, "pprof", ":10000", "the address to run the pprof server at")
 	flag.StringVar(&physaddr, "physaddr", "", "the physical address of the noded [for deterlab]")

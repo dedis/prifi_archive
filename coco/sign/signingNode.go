@@ -173,17 +173,6 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	sn.AnnounceLock.Lock()
 	defer sn.AnnounceLock.Unlock()
 
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.WithFields(log.Fields{
-			"file":  logutils.File(),
-			"type":  "root_round",
-			"round": sn.LastRound(),
-			"time":  elapsed,
-		}).Info("root round")
-	}()
-
 	log.Infoln("root", sn.Name(), "starting announcement round for round: ", sn.nRounds, "on view", sn.lastView)
 
 	first := time.Now()

@@ -49,6 +49,7 @@ type T struct {
 	rFail       int
 	fFail       int
 	testConnect bool
+	app         string
 }
 
 var DefaultMachs int = 32
@@ -75,7 +76,8 @@ func RunTest(t T) (RunStats, error) {
 	rFail := fmt.Sprintf("-rfail=%d", t.rFail)
 	fFail := fmt.Sprintf("-ffail=%d", t.fFail)
 	tcon := fmt.Sprintf("-test_connect=%t", t.testConnect)
-	cmd := exec.Command("./deploy2deter", nmachs, hpn, nmsgs, bf, rate, rounds, debug, failures, rFail, fFail, tcon)
+	app := fmt.Sprintf("-app=%s", t.app)
+	cmd := exec.Command("./deploy2deter", nmachs, hpn, nmsgs, bf, rate, rounds, debug, failures, rFail, fFail, tcon, app)
 	log.Println("RUNNING TEST:", cmd.Args)
 	log.Println("FAILURES PERCENT:", t.failures)
 	cmd.Stdout = os.Stdout
@@ -190,58 +192,58 @@ func RunTests(name string, ts []T) {
 // high and low specify how many milliseconds between messages
 func RateLoadTest(hpn, bf int) []T {
 	return []T{
-		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0, false}, // never send a message
-		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0, false}, // one per round
-		{DefaultMachs, hpn, bf, 500, DefaultRounds, 0, 0, 0, false},  // 10 per round
-		{DefaultMachs, hpn, bf, 50, DefaultRounds, 0, 0, 0, false},   // 100 per round
-		{DefaultMachs, hpn, bf, 30, DefaultRounds, 0, 0, 0, false},   // 1000 per round
+		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0, false, "stamp"}, // never send a message
+		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0, false, "stamp"}, // one per round
+		{DefaultMachs, hpn, bf, 500, DefaultRounds, 0, 0, 0, false, "stamp"},  // 10 per round
+		{DefaultMachs, hpn, bf, 50, DefaultRounds, 0, 0, 0, false, "stamp"},   // 100 per round
+		{DefaultMachs, hpn, bf, 30, DefaultRounds, 0, 0, 0, false, "stamp"},   // 1000 per round
 	}
 }
 
 func DepthTest(hpn, low, high, step int) []T {
 	ts := make([]T, 0)
 	for bf := low; bf <= high; bf += step {
-		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0, false})
+		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0, false, "stamp"})
 	}
 	return ts
 }
 
 func DepthTestFixed(hpn int) []T {
 	return []T{
-		{DefaultMachs, hpn, 1, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 2, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 4, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 8, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 16, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 32, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 64, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 128, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 256, 30, DefaultRounds, 0, 0, 0, false},
-		{DefaultMachs, hpn, 512, 30, DefaultRounds, 0, 0, 0, false},
+		{DefaultMachs, hpn, 1, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 2, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 4, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 8, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 16, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 32, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 64, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 128, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 256, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 512, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
 	}
 }
 
 func ScaleTest(bf, low, high, mult int) []T {
 	ts := make([]T, 0)
 	for hpn := low; hpn <= high; hpn *= mult {
-		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0, false})
+		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0, false, "stamp"})
 	}
 	return ts
 }
 
 // nmachs=32, hpn=128, bf=16, rate=500, failures=20, root failures, failures
 var FailureTests = []T{
-	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false},
-	{DefaultMachs, 64, 16, 30, 50, 0, 5, 0, false},
-	{DefaultMachs, 64, 16, 30, 50, 0, 10, 0, false},
-	{DefaultMachs, 64, 16, 30, 50, 5, 0, 5, false},
-	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, false},
-	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, true},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 0, 5, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 0, 10, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 5, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, true, "stamp"},
 }
 
 var VotingTest = []T{
-	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, true},
-	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, true, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false, "stamp"},
 }
 
 func FullTests() []T {
@@ -256,7 +258,7 @@ func FullTests() []T {
 		for _, hpn := range hpns {
 			for _, bf := range bfs {
 				for _, rate := range rates {
-					tests = append(tests, T{nmach, hpn, bf, rate, DefaultRounds, failures, 0, 0, false})
+					tests = append(tests, T{nmach, hpn, bf, rate, DefaultRounds, failures, 0, 0, false, "stamp"})
 				}
 			}
 		}
@@ -266,17 +268,18 @@ func FullTests() []T {
 }
 
 var HostsTest = []T{
-	{DefaultMachs, 1, 2, 30, 20, 0, 0, 0, false},
-	{DefaultMachs, 2, 3, 30, 20, 0, 0, 0, false},
-	{DefaultMachs, 4, 3, 30, 20, 0, 0, 0, false},
-	{DefaultMachs, 8, 8, 30, 20, 0, 0, 0, false},
-	{DefaultMachs, 16, 16, 30, 20, 0, 0, 0, false},
-	{DefaultMachs, 32, 16, 30, 20, 0, 0, 0, false},
-	{DefaultMachs, 64, 16, 30, 20, 0, 0, 0, false},
-	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false},
+	{DefaultMachs, 1, 2, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 2, 3, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 4, 3, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 8, 8, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 16, 16, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 32, 16, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false, "stamp"},
 }
 var VTest = []T{
-	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, true},
+	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, false, "stamp"},
 }
 
 func main() {
