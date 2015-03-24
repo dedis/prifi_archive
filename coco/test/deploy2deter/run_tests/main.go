@@ -275,6 +275,9 @@ var HostsTest = []T{
 	{DefaultMachs, 64, 16, 30, 20, 0, 0, 0, false},
 	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false},
 }
+var VTest = []T{
+	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, false},
+}
 
 func main() {
 	SetDebug(false)
@@ -294,12 +297,12 @@ func main() {
 	cmd.Run()
 
 	// test the testing framework
-
+	RunTests("vote_test_no_signing.csv", VTest)
 	// DefaultRounds = 5
 	// t := FailureTests
 	// RunTests("failure_test.csv", t)
-	RunTests("vote_test", VotingTest)
-	RunTests("failure_test", FailureTests)
+	// RunTests("vote_test", VotingTest)
+	// RunTests("failure_test", FailureTests)
 	// RunTests("host_test", HostsTest)
 	// t := FailureTests
 	// RunTests("failure_test", t)
