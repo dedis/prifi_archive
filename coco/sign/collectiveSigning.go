@@ -377,14 +377,18 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	}
 
 	// Apply pending actions (add, remove) on view
+
 	sn.ActionsLock.Lock()
-	log.Println("Applying Actions:", sn.Actions)
-	for _, action := range sn.Actions {
-		log.Println(sn.Name(), "applying action:", action)
-		sn.ApplyAction(vcm.ViewNo, action)
-		log.Println(sn.Name(), "applied action:", action)
-	}
-	// clear out old votes
+	/*
+		log.Println("Applying Actions:", sn.Actions)
+		for _, action := range sn.Actions {
+			log.Println(sn.Name(), "applying action:", action)
+			sn.ApplyAction(vcm.ViewNo, action)
+			log.Println(sn.Name(), "applied action:", action)
+		}
+
+		// clear out old votes
+	*/
 	sn.Actions = make([]*VoteRequest, 0)
 	sn.ActionsLock.Unlock()
 
@@ -984,9 +988,12 @@ func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
 
 		// propagate view change if new view leader
 		log.Println("actOnVotes: vote has been accepted: trying viewchange")
-		sn.NotifyPeerOfVote(view, vreq)
-		time.Sleep(7 * time.Second) // wait for all vote responses to be propogated before trying to change view
-		sn.TryViewChange(view + 1)
+		// XXX WHEN TESTING DO NOT VIEW CHANGE XXX TODO
+		/*
+			sn.NotifyPeerOfVote(view, vreq)
+			time.Sleep(7 * time.Second) // wait for all vote responses to be propogated before trying to change view
+			sn.TryViewChange(view + 1)
+		*/
 	}
 
 	// List out all votes
