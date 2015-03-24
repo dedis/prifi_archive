@@ -3,17 +3,19 @@ package coconet
 // TCPHost is a simple implementation of Host that does not specify the
 import (
 	"errors"
+	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/nist"
+	"github.com/dedis/prifi/coco"
 )
 
 // Default timeout for any network operation
-const DefaultTCPTimeout time.Duration = 500 * time.Millisecond
+const DefaultTCPTimeout time.Duration = 5 * time.Second
 
 // communication medium (goroutines/channels, network nodes/tcp, ...).
 type TCPHost struct {
@@ -33,7 +35,12 @@ type TCPHost struct {
 	mupk   sync.RWMutex
 	Pubkey abstract.Point // own public key
 
-	pool sync.Pool
+	pool  sync.Pool
+	suite abstract.Suite
+}
+
+func (h *TCPHost) SetSuite(suite abstract.Suite) {
+	h.suite = suite
 }
 
 func (h *TCPHost) DefaultTimeout() time.Duration {
@@ -103,7 +110,7 @@ func (h *TCPHost) Listen() error {
 			conn, err := ln.Accept()
 			if err != nil {
 				// handle error
-				log.Errorln("failed to accept connection")
+				log.Errorln("failed to accept connection: ", err)
 				continue
 			}
 			if conn == nil {
@@ -120,13 +127,13 @@ func (h *TCPHost) Listen() error {
 				continue
 			}
 			name := string(mname)
-			log.Infoln("successfully received name:", name)
+			// log.Infoln("successfully received name:", name)
 
 			// create connection
 			tp.SetName(name)
 
 			// get and set public key
-			suite := nist.NewAES128SHA256P256()
+			suite := h.suite
 			pubkey := suite.Point()
 			err = tp.Get(pubkey)
 			if err != nil {
@@ -155,7 +162,9 @@ func (h *TCPHost) Listen() error {
 			h.rlock.Lock()
 			h.ready[name] = true
 			h.peers[name] = tp
-			log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
+			if coco.DEBUG {
+				log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
+			}
 			h.rlock.Unlock()
 		}
 	}()
@@ -168,7 +177,9 @@ func (h *TCPHost) Connect() error {
 	}
 	conn, err := net.Dial("tcp", h.parent)
 	if err != nil {
-		log.Errorln(err)
+		if coco.DEBUG {
+			log.Warnln("tcphost: failed to connect to parent:", err)
+		}
 		return err
 	}
 	tp := NewTCPConnFromNet(conn)
@@ -192,15 +203,18 @@ func (h *TCPHost) Connect() error {
 	h.ready[tp.Name()] = true
 	h.peers[h.parent] = tp
 	h.rlock.Unlock()
-
-	log.Infoln("CONNECTED TO PARENT:", h.parent)
+	if coco.DEBUG {
+		log.Infoln("CONNECTED TO PARENT:", h.parent)
+	}
 	return nil
 }
 
 func (h *TCPHost) Close() {
 	h.rlock.Lock()
 	for k, p := range h.peers {
-		p.Close()
+		if p != nil {
+			p.Close()
+		}
 		h.peers[k] = nil
 	}
 	h.rlock.Unlock()
@@ -224,6 +238,7 @@ func (h *TCPHost) AddChildren(cs ...string) {
 			h.peers[c] = nil
 		} else {
 			// skip children that we have already added
+			h.rlock.Unlock()
 			continue
 		}
 		h.rlock.Unlock()
@@ -303,6 +318,7 @@ func (h *TCPHost) PutUp(data BinaryMarshaler) error {
 		// not the root and I have closed my parent connection
 		return ErrorConnClosed
 	}
+	//log.Println("Putting Up:")
 	return parent.Put(data)
 }
 
@@ -322,6 +338,8 @@ func (h *TCPHost) GetUp(data BinaryUnmarshaler) error {
 	return parent.Get(data)
 }
 
+var ErrorChildNotReady error = errors.New("child is not ready")
+
 // PutDown sends a message (an interface{} value) up to all children through
 // whatever 'network' interface each child Peer implements.
 func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
@@ -338,7 +356,8 @@ func (h *TCPHost) PutDown(data []BinaryMarshaler) error {
 	for i, c := range children {
 		h.rlock.Lock()
 		if !h.ready[c] {
-			err = errors.New("child is not ready")
+			err = ErrorChildNotReady
+			h.rlock.Unlock()
 			continue
 		}
 		conn := h.peers[c]
@@ -399,6 +418,8 @@ func (h *TCPHost) GetDown() (chan NetworkMessg, chan error) {
 					if e == ErrorConnClosed {
 						errch <- errors.New("connection has been closed")
 						return
+					} else if e == io.EOF {
+						os.Exit(1)
 					}
 
 					ch <- NetworkMessg{Data: data, From: c}

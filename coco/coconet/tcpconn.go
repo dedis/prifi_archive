@@ -3,8 +3,10 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
+	"io"
 	"net"
 	"sync"
+	"syscall"
 
 	log "github.com/Sirupsen/logrus"
 
@@ -15,6 +17,7 @@ import (
 type TCPConn struct {
 	sync.RWMutex
 
+	lock sync.Mutex
 	name string
 	conn net.Conn
 	enc  *gob.Encoder
@@ -89,13 +92,22 @@ func (tc *TCPConn) Put(bm BinaryMarshaler) error {
 
 	err := tc.enc.Encode(bm)
 	if err != nil {
-		log.Errorln("failed to put/encode:", err)
+		oe, ok := err.(*net.OpError)
+		if ok && oe.Err == syscall.EPIPE {
+			return io.EOF
+		}
+		if err == io.ErrClosedPipe {
+			return io.EOF
+		}
 	}
 	return err
 }
 
 // blocks until we get something
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
+
 	for tc.dec == nil {
 		// panic("no decoder yet")
 		return ConnectionNotEstablished
@@ -103,16 +115,27 @@ func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
 
 	err := tc.dec.Decode(bum)
 	if err != nil {
+		oe, ok := err.(*net.OpError)
+		if ok && oe.Err == syscall.EPIPE {
+			return io.EOF
+		}
+
+		if err == io.ErrClosedPipe {
+			err = io.EOF
+		}
 		log.Errorln("failed to decode:", err)
 	}
 	return err
 }
 
 func (tc *TCPConn) Close() {
-	log.Errorln("Closing Connection")
+	// log.Errorln("Closing Connection")
 	if tc.conn != nil {
 		tc.conn.Close()
 	}
+
+	tc.lock.Lock()
+	defer tc.lock.Unlock()
 	tc.conn = nil
 	tc.enc = nil
 	tc.dec = nil

@@ -4,6 +4,8 @@ import "github.com/dedis/crypto/abstract"
 import "github.com/dedis/prifi/coco/hashid"
 import "github.com/dedis/prifi/coco/proof"
 
+const FIRST_ROUND int = 1 // start counting rounds at 1
+
 type Round struct {
 	c abstract.Secret // round lasting challenge
 	r abstract.Secret // round lasting response
@@ -34,11 +36,16 @@ type Round struct {
 	ChildV_hat map[string]abstract.Point
 	// combined public keys of children servers in subtree
 	ChildX_hat map[string]abstract.Point
+	// for internal verification purposes
+	exceptionV_hat abstract.Point
+
+	BackLink hashid.HashId
+	AccRound []byte
 }
 
-func NewRound() *Round {
+func NewRound(suite abstract.Suite) *Round {
 	round := &Round{}
 	round.ExceptionList = make([]abstract.Point, 0)
-
+	round.Log.Suite = suite
 	return round
 }

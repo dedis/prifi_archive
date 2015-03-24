@@ -6,10 +6,12 @@ package sign
 
 import (
 	"bytes"
-	"log"
 	"sort"
 	"strconv"
 
+	log "github.com/Sirupsen/logrus"
+
+	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/proof"
@@ -81,9 +83,11 @@ func (sn *Node) SendLocalMerkleProof(chm *ChallengeMessage) error {
 		proofForClient = append(proofForClient, round.Proofs["local"]...)
 
 		// if want to verify partial and full proofs
-		log.Println("*****")
-		log.Println(sn.Name(), chm.Round, proofForClient)
-		sn.VerifyAllProofs(chm, proofForClient)
+		// log.Println("*****")
+		// log.Println(sn.Name(), chm.Round, proofForClient)
+		if coco.DEBUG == true {
+			sn.VerifyAllProofs(chm, proofForClient)
+		}
 
 		// 'reply' to client
 		// TODO: add error to done function

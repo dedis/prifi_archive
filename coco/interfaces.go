@@ -6,6 +6,8 @@ import (
 	"github.com/dedis/prifi/coco/proof"
 )
 
+var DEBUG bool // to avoid veryfing paths and signatures all the time
+
 // Returns commitment contribution for a round
 type CommitFunc func() []byte
 
@@ -18,7 +20,9 @@ type Signer interface {
 	Name() string
 	IsRoot() bool
 	Suite() abstract.Suite
-	StartSigningRound()
+	StartSigningRound() error
+
+	LastRound() int // last round number seen by Signer
 
 	// // proof can be nil for simple non Merkle Tree signatures
 	// // could add option field for Sign
@@ -29,4 +33,8 @@ type Signer interface {
 	RegisterAnnounceFunc(cf CommitFunc)
 
 	RegisterDoneFunc(df DoneFunc)
+
+	// Allows user of Signer to inform Signer to run with simulated failures
+	// As to test robustness of Signer
+	SetFailureRate(val int)
 }

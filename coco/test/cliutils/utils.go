@@ -22,7 +22,18 @@ func Scp(username, host, file, dest string) error {
 	if username != "" {
 		addr = username + "@" + addr
 	}
-	cmd := exec.Command("rsync", "-az", file, addr)
+	cmd := exec.Command("scp", "-r", file, addr)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func Rsync(username, host, file, dest string) error {
+	addr := host + ":" + dest
+	if username != "" {
+		addr = username + "@" + addr
+	}
+	cmd := exec.Command("rsync", "-aWu", "-e", "ssh -T -c arcfour -o Compression=no -x", file, addr)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -51,6 +62,18 @@ func SshRunStdout(username, host, command string) error {
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 	return cmd.Run()
+}
+
+func SshRunBackground(username, host, command string) error {
+	addr := host
+	if username != "" {
+		addr = username + "@" + addr
+	}
+
+	cmd := exec.Command("ssh", "-v", "-o", "StrictHostKeyChecking=no", addr,
+		"eval '"+command+" > /dev/null 2>/dev/null < /dev/null &' > /dev/null 2>/dev/null < /dev/null &")
+	return cmd.Run()
+
 }
 
 func Build(path, goarch, goos string) error {

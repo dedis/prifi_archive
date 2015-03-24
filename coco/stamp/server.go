@@ -73,12 +73,10 @@ var clientNumber int = 0
 // this server needs to be running on a different port
 // than the Signer that is beneath it
 func (s *Server) Listen() error {
-	log.Println("Listening @ ", s.name)
+	// log.Println("Listening @ ", s.name)
 	ln, err := net.Listen("tcp4", s.name)
 	if err != nil {
-		log.Println("failed to listen:", err)
 		panic(err)
-		//return err
 	}
 
 	go func() {
@@ -89,9 +87,6 @@ func (s *Server) Listen() error {
 				// handle error
 				log.Errorln("failed to accept connection")
 				continue
-			}
-			if conn == nil {
-				log.Errorln("!!!nil connection!!!")
 			}
 
 			c := coconet.NewTCPConnFromNet(conn)
@@ -111,7 +106,7 @@ func (s *Server) Listen() error {
 						}
 						switch tsm.Type {
 						default:
-							log.Printf("Message of unknown type: %v\n", tsm.Type)
+							log.Errorf("Message of unknown type: %v\n", tsm.Type)
 						case StampRequestType:
 							// log.Println("RECEIVED STAMP REQUEST")
 							s.mux.Lock()
@@ -126,9 +121,11 @@ func (s *Server) Listen() error {
 
 		}
 	}()
+
 	return nil
 }
 
+// Used for goconns
 // should only be used if clients are created in batch
 func (s *Server) ListenToClients() {
 	for _, c := range s.Clients {
@@ -143,7 +140,7 @@ func (s *Server) ListenToClients() {
 				}
 				switch tsm.Type {
 				default:
-					log.Println("Message of unknown type")
+					log.Errorln("Message of unknown type")
 				case StampRequestType:
 					// log.Println("STAMP REQUEST")
 					s.mux.Lock()
@@ -160,24 +157,37 @@ func (s *Server) ListenToClients() {
 // Listen on client connections. If role is root also send annoucement
 // for all of the nRounds
 func (s *Server) Run(role string, nRounds int) {
+	defer log.Println("done running")
 	s.rLock.Lock()
 	s.maxRounds = nRounds
 	s.rLock.Unlock()
 	switch role {
 
 	case "root":
-		// count only productive rounds
-		ticker := time.Tick(5000 * time.Millisecond)
+		// every 5 seconds start a new round
+		ticker := time.Tick(ROUND_TIME)
 		for _ = range ticker {
 			s.nRounds++
 			if s.nRounds > nRounds {
 				log.Errorln("exceeded the max round: terminating")
 				break
 			}
+
 			start := time.Now()
-			log.Infoln("starting signing round")
-			s.StartSigningRound()
-			log.Infoln("signing round complete")
+			log.Println("stamp server starting signing round for:", s.nRounds)
+			err := s.StartSigningRound()
+			if err != nil {
+				log.Errorln(err)
+				return
+			}
+
+			lr := s.LastRound()
+			if lr != s.nRounds {
+				log.Errorln("Signer and Stamper rounds out of sync:")
+				log.Errorln(strconv.Itoa(lr) + "," + strconv.Itoa(s.nRounds))
+				return
+			}
+
 			elapsed := time.Since(start)
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),
@@ -205,14 +215,13 @@ func (s *Server) Run(role string, nRounds int) {
 
 func (s *Server) OnAnnounce() coco.CommitFunc {
 	return func() []byte {
-		log.Println("Aggregating Commits")
+		//log.Println("Aggregating Commits")
 		return s.AggregateCommits()
 	}
 }
 
 func (s *Server) OnDone() coco.DoneFunc {
 	return func(SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
-		log.Println("DONE")
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
 			// proof to get from s.Root to big root
@@ -223,7 +232,9 @@ func (s *Server) OnDone() coco.DoneFunc {
 			combProof = append(combProof, s.Proofs[i]...)
 
 			// proof that i can get from a leaf message to the big root
-			proof.CheckProof(s.Signer.(*sign.Node).Suite().Hash, SNRoot, s.Leaves[i], combProof)
+			if coco.DEBUG == true {
+				proof.CheckProof(s.Signer.(*sign.Node).Suite().Hash, SNRoot, s.Leaves[i], combProof)
+			}
 
 			respMessg := TimeStampMessage{
 				Type:  StampReplyType,
@@ -238,7 +249,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 }
 
 func (s *Server) AggregateCommits() []byte {
-	// log.Println("Aggregateing Commits")
+	log.Println(s.Name(), "calling AggregateCommits")
 	s.mux.Lock()
 	// get data from s once to avoid refetching from structure
 	Queue := s.Queue
@@ -278,10 +289,12 @@ func (s *Server) AggregateCommits() []byte {
 
 	// create Merkle tree for this round's messages and check corectness
 	s.Root, s.Proofs = proof.ProofTree(s.Suite().Hash, s.Leaves)
-	if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
-		log.Println("Local Proofs of", s.name, "successful for round "+strconv.Itoa(s.nRounds))
-	} else {
-		panic("Local Proofs" + s.name + " unsuccessful for round " + strconv.Itoa(s.nRounds))
+	if coco.DEBUG == true {
+		if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
+			log.Println("Local Proofs of", s.Name(), "successful for round "+strconv.Itoa(s.nRounds))
+		} else {
+			panic("Local Proofs" + s.Name() + " unsuccessful for round " + strconv.Itoa(s.nRounds))
+		}
 	}
 
 	return s.Root
@@ -289,5 +302,8 @@ func (s *Server) AggregateCommits() []byte {
 
 // Send message to client given by name
 func (s *Server) PutToClient(name string, data coconet.BinaryMarshaler) {
-	s.Clients[name].Put(data)
+	err := s.Clients[name].Put(data)
+	if err != nil && err != coconet.ConnectionNotEstablished {
+		log.Warn("error putting to client:", err)
+	}
 }

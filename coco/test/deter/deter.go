@@ -20,11 +20,13 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,17 +35,61 @@ import (
 	"github.com/dedis/prifi/coco/test/graphs"
 )
 
-func main() {
-	fmt.Println("running deter")
-	// fs defines the list of files that are needed to run the timestampers.
-	fs := []string{"exec", "timeclient", "cfg.json", "virt.txt", "phys.txt"}
+var rootname string
 
-	// read in the hosts file.
-	virt, err := cliutils.ReadLines("virt.txt")
+func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait string) string {
+	total := ""
+	for _, n := range names {
+		amroot := " -amroot=false"
+		if n == rootname {
+			amroot = " -amroot=true"
+		}
+		total += "(cd remote; sudo ./forkexec -rootwait=" + rootwait +
+			" -failures=" + strconv.Itoa(failures) +
+			" -physaddr=" + phys +
+			" -hostname=" + n +
+			" -logger=" + loggerport +
+			" -debug=" + debug +
+			" -suite=" + suite +
+			" -rounds=" + strconv.Itoa(rounds) +
+			amroot +
+			" </dev/null 2>/dev/null 1>/dev/null &); "
+	}
+	return total
+}
+
+var nmsgs string
+var hpn string
+var bf string
+var debug string
+var rate int
+var failures int
+var rounds int
+var kill bool
+var suite string
+
+func init() {
+	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
+	flag.StringVar(&hpn, "hpn", "", "number of hosts per node")
+	flag.StringVar(&bf, "bf", "", "branching factor")
+	flag.StringVar(&debug, "debug", "false", "set debug mode")
+	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages")
+	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
+	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
+}
+
+func main() {
+	flag.Parse()
+	log.SetFlags(log.Lshortfile)
+	fmt.Println("running deter with nmsgs:", nmsgs, rate, rounds)
+
+	virt, err := cliutils.ReadLines("remote/virt.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
-	phys, err := cliutils.ReadLines("phys.txt")
+	phys, err := cliutils.ReadLines("remote/phys.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,88 +103,132 @@ func main() {
 		wg.Add(1)
 		go func(h string) {
 			defer wg.Done()
-			cliutils.SshRun("", h, "killall exec logserver timeclient scp ssh")
+			cliutils.SshRun("", h, "sudo killall exec logserver timeclient scp ssh 2>/dev/null >/dev/null")
+			time.Sleep(1 * time.Second)
+			cliutils.SshRun("", h, "sudo killall forkexec 2>/dev/null >/dev/null")
 		}(h)
 	}
 	wg.Wait()
-	logger := phys[len(phys)-1]
-	phys = phys[:len(phys)-1]
-	virt = virt[:len(virt)-1]
+
+	if kill {
+		return
+	}
+
+	for _, h := range phys {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			cliutils.Rsync("", h, "remote", "")
+		}(h)
+	}
+	wg.Wait()
+
+	masterLogger := phys[0]
+	slaveLogger1 := phys[1]
+	slaveLogger2 := phys[2]
+	loggers := []string{masterLogger, slaveLogger1, slaveLogger2}
+
+	phys = phys[3:]
+	virt = virt[3:]
 
 	// Read in and parse the configuration file
-	file, e := ioutil.ReadFile("cfg.json")
-	if e != nil {
-		log.Fatal("Error Reading Configuration File: %v\n", e)
-	}
-
-	var tree graphs.Tree
-	json.Unmarshal(file, &tree)
-
-	hostnames := make([]string, 0, len(virt))
-	tree.TraverseTree(func(t *graphs.Tree) {
-		hostnames = append(hostnames, t.Name)
-	})
-
-	cf := config.ConfigFromTree(&tree, hostnames)
-	cfb, err := json.Marshal(cf)
+	file, err := ioutil.ReadFile("remote/cfg.json")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("deter.go: error reading configuration file: %v\n", err)
 	}
-
-	// write out a true configuration file
-	log.Println(string(cfb))
-	err = ioutil.WriteFile("cfg.json", cfb, 0666)
+	log.Println("cfg file:", string(file))
+	var cf config.ConfigFile
+	err = json.Unmarshal(file, &cf)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("unable to unmarshal config.ConfigFile:", err)
 	}
 
-	fmt.Println("copying over files")
-	// copy the files over to all the host machines.
-	for _, f := range fs {
-		for _, h := range phys {
-			wg.Add(1)
-			go func(h string, f string) {
-				defer wg.Done()
-				cliutils.Scp("", h, f, f)
-			}(h, f)
-		}
+	hostnames := cf.Hosts
+
+	depth := graphs.Depth(cf.Tree)
+
+	rootname = hostnames[0]
+
+	log.Println("depth of tree:", depth)
+
+	// mapping from physical node name to the timestamp servers that are running there
+	// essentially a reverse mapping of vpmap except ports are also used
+	physToServer := make(map[string][]string)
+	for _, virt := range hostnames {
+		v, _, _ := net.SplitHostPort(virt)
+		p := vpmap[v]
+		ss := physToServer[p]
+		ss = append(ss, virt)
+		physToServer[p] = ss
 	}
-
-	cliutils.Scp("", logger, "logserver", "")
-
-	wg.Wait()
 
 	// start up the logging server on the final host at port 10000
 	fmt.Println("starting up logserver")
-	loggerport := logger + ":10000"
-	go cliutils.SshRunStdout("", logger, "cd logserver; ./logserver -addr="+loggerport)
-	// wait a little bit for the logserver to start up
-	time.Sleep(2 * time.Second)
-	fmt.Println("starting time clients")
-	for _, host := range hostnames {
-		h, p, _ := net.SplitHostPort(host)
-		pn, _ := strconv.Atoi(p)
-		hp := net.JoinHostPort(h, strconv.Itoa(pn+1))
-		go cliutils.SshRunStdout("", h, "./timeclient -rate=5000 -name=client@"+hp+" -server="+hp)
-	}
-	// now start up each timestamping server
-	fmt.Println("starting up timestampers")
-	tree.TraverseTree(func(t *graphs.Tree) {
-		h, _, err := net.SplitHostPort(t.Name)
-		if err != nil {
-			log.Fatal("improperly formatted host. must be host:port")
+	// start up the master logger
+	loggerports := make([]string, len(loggers))
+	for i, logger := range loggers {
+		loggerport := logger + ":10000"
+		loggerports[i] = loggerport
+		// redirect to the master logger
+		master := masterLogger + ":10000"
+		// if this is the master logger than don't set the master to anything
+		if loggerport == masterLogger+":10000" {
+			master = ""
 		}
-		// get the physical node this is associated with
-		phys := vpmap[h]
+
+		go cliutils.SshRunStdout("", logger, "cd remote/logserver; sudo ./logserver -addr="+loggerport+
+			" -hosts="+strconv.Itoa(len(hostnames))+
+			" -depth="+strconv.Itoa(depth)+
+			" -bf="+bf+
+			" -hpn="+hpn+
+			" -nmsgs="+nmsgs+
+			" -rate="+strconv.Itoa(rate)+
+			" -master="+master)
+	}
+
+	// wait a little bit for the logserver to start up
+	time.Sleep(5 * time.Second)
+	fmt.Println("starting time clients")
+
+	// start up one timeclient per physical machine
+	// it requests timestamps from all the servers on that machine
+	i := 0
+	for p, ss := range physToServer {
+		if len(ss) == 0 {
+			continue
+		}
+		servers := strings.Join(ss, ",")
+		go func(i int, p string) {
+			_, err := cliutils.SshRun("", p, "cd remote; sudo ./timeclient -nmsgs="+nmsgs+
+				" -name=client@"+p+
+				" -server="+servers+
+				" -logger="+loggerports[i]+
+				" -debug="+debug+
+				" -rate="+strconv.Itoa(rate))
+			if err != nil {
+				log.Println(err)
+			}
+		}(i, p)
+		i = (i + 1) % len(loggerports)
+	}
+	rootwait := strconv.Itoa(10)
+	for phys, virts := range physToServer {
+		if len(virts) == 0 {
+			continue
+		}
+		cmd := GenExecCmd(failures, phys, virts, loggerports[i], rootwait)
+		i = (i + 1) % len(loggerports)
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			// run the timestampers
-			log.Println("ssh timestamper at:", phys)
-			log.Println("running timestamp at @", t.Name, "listening to logger:", loggerport)
-			cliutils.SshRunStdout("", phys, "./exec -hostname="+t.Name+" -logger="+loggerport)
-		}()
-	})
+		//time.Sleep(500 * time.Millisecond)
+		go func(phys, cmd string) {
+			//log.Println("running on ", phys, cmd)
+			err := cliutils.SshRunBackground("", phys, cmd)
+			if err != nil {
+				log.Fatal("ERROR STARTING TIMESTAMPER:", err)
+			}
+		}(phys, cmd)
+	}
 	// wait for the servers to finish before stopping
 	wg.Wait()
+	time.Sleep(10 * time.Minute)
 }
