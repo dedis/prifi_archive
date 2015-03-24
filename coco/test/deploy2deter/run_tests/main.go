@@ -276,7 +276,7 @@ var HostsTest = []T{
 	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false},
 }
 var VTest = []T{
-	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, false},
+	{DefaultMachs, 1, 2, 10000000, 50, 0, 0, 0, true},
 }
 
 func main() {
