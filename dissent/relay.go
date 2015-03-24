@@ -173,7 +173,7 @@ func startRelay() {
 			if n < clisize {
 				panic("Read from client: "+err.Error())
 			}
-			//println("client slice")
+			// fmt.Printf("client slice %x\n", cslice[i])
 			//println(hex.Dump(cslice[i]))
 			me.Coder.DecodeClient(cslice[i])
 		}
