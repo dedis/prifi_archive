@@ -164,7 +164,7 @@ func (c *ownedCoder) ClientEncode(payload []byte, payloadlen int,
 	}
 
 	// Build the full cell ciphertext
-	out := p.Encode()
+	out, _ := p.MarshalBinary()
 	out = append(out, payout...)
 	return out
 }
@@ -238,7 +238,8 @@ func (c *ownedCoder) TrusteeSetup(suite abstract.Suite,
 	// Release the negation of the composite shared verifiable secret
 	// to the relay, so the relay can decode each cell's header.
 	c.vkey.Neg(c.vkey)
-	return c.vkey.Encode()
+	out, _ := c.vkey.MarshalBinary()
+	return out
 }
 
 func (c *ownedCoder) TrusteeEncode(payloadlen int) []byte {
@@ -265,7 +266,7 @@ func (c *ownedCoder) RelaySetup(suite abstract.Suite, trusteeinfo [][]byte) {
 	c.vkey = suite.Secret()
 	for i := range(c.vkeys) {
 		c.vkeys[i] = c.suite.Secret()
-		c.vkeys[i].Decode(trusteeinfo[i])
+		c.vkeys[i].UnmarshalBinary(trusteeinfo[i])
 		c.vkey.Add(c.vkey, c.vkeys[i])
 	}
 
@@ -305,8 +306,8 @@ func (c *ownedCoder) DecodeClient(slice []byte) {
 
 	// Decode and add in the point in the slice header
 	plen := c.suite.PointLen()
-	p := c.suite.Point()
-	if err := c.suite.Point().Decode(slice[:plen]); err != nil {
+	p := c.suite.Point().Null()
+	if err := c.suite.Point().UnmarshalBinary(slice[:plen]); err != nil {
 		println("warning: error decoding point")
 	}
 	c.point.Add(c.point, p)

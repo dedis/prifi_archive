@@ -53,7 +53,8 @@ func (n *TestNode) nodeSetup(name string, peerkeys []abstract.Point) {
 	for j := range(peerkeys) {
 		dh := n.suite.Point().Mul(peerkeys[j], n.spri)
 		//println(" DH",dh.String())
-		n.peerstreams[j] = n.suite.Cipher(dh.Encode())
+		seed, _ := dh.MarshalBinary()
+		n.peerstreams[j] = n.suite.Cipher(seed)
 	}
 }
 
@@ -173,7 +174,7 @@ func TestCellCoder(suite abstract.Suite, factory CellFactory) {
 		p := make([]byte, payloadlen)
 		copy(p, inb)
 		for i := range(clients) {
-p = nil
+			p = nil
 			cslice[i] = clients[i].Coder.ClientEncode(p, payloadlen,
 						clients[i].Histoream)
 			p = nil		// for remaining clients
