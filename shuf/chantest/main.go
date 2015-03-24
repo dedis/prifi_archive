@@ -27,7 +27,7 @@ func main() {
 
 	// s := shuf.IdShuffle{}
 	// s := shuf.DumbShuffle{2}
-	s := shuf.CSwap(&defaultOpts, 23457)
+	s := (*shuf.ConflictSwap)(shuf.NewButterfly(&defaultOpts, 23457))
 
 	gochan.ChanShuffle(s, &defaultOpts, messages)
 	time.Sleep(defaultOpts.TotalTime)
