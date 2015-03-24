@@ -1,7 +1,6 @@
 package shuf
 
 import (
-	"fmt"
 	"math/rand"
 )
 
@@ -23,7 +22,6 @@ func (s ConflictSwap) ShuffleStep(msgs [][]byte, node NodeId,
 	round int, inf *Info) []RouteInstr {
 	vnode := node.Virtual
 
-	fmt.Printf("Shuffe for round %v, vnode %v\n", round, vnode)
 	if round >= len(s.Left) {
 		return []RouteInstr{RouteInstr{nil, msgs}}
 	}
@@ -42,9 +40,13 @@ func (s ConflictSwap) ShuffleStep(msgs [][]byte, node NodeId,
 	case 1:
 		xorInto(rightBytes, msgs[1])
 	}
+
+	// testing hack
+	// leftBytes := msgs[0]
+	// rightBytes := msgs[1]
+
 	var pleft int = s.Left[round][vnode]
 	var pright int = s.Right[round][vnode]
-	fmt.Printf("On %v, left to %v, right to %v\n", vnode, pleft, pright)
 	return []RouteInstr{
 		RouteInstr{&NodeId{s.Physical[pleft], pleft}, [][]byte{leftBytes}},
 		RouteInstr{&NodeId{s.Physical[pright], pright}, [][]byte{rightBytes}},
@@ -99,7 +101,7 @@ func CSwap(inf *Info, seed int64) *ConflictSwap {
 		// assign until everything is used up
 		for inLen > 0 {
 			i := cs.rnd.Intn(inLen)
-			fmt.Printf("Picked %v of %v\n", i, numvnodes)
+			// fmt.Printf("Picked %v of %v\n", i, numvnodes)
 			incoming[i].remaining--
 			from := incoming[i].val
 			lr := incoming[i].remaining
@@ -124,7 +126,7 @@ func CSwap(inf *Info, seed int64) *ConflictSwap {
 			}
 		}
 	}
-	fmt.Printf("Left: %v\n", cs.Left)
-	fmt.Printf("Right: %v\n", cs.Right)
+	// fmt.Printf("Left: %v\n", cs.Left)
+	// fmt.Printf("Right: %v\n", cs.Right)
 	return cs
 }

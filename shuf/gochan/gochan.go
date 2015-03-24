@@ -52,7 +52,7 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs [][]byte) {
 						// fmt.Printf("Node %v completed in round %v\n", i, input.round)
 						result[i] <- ins.Msgs
 					} else {
-						// fmt.Printf("Node %v sends to %v in round %v\n", i, ins.To.Virtual, input.round)
+						// fmt.Printf("Node %v sends to %v in round %v\n", i, ins.To.Physical, input.round)
 
 						// notice when not ACKed
 						go func(ins shuf.RouteInstr, round int) {
@@ -61,9 +61,9 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs [][]byte) {
 							for !ack {
 								crossChans[ins.To.Physical] <- m
 								time.Sleep(inf.ResendTime)
-								// if !ack {
-								// 	fmt.Printf("Node %v round %v not yet ACKed; retrying\n", i, input.round+1)
-								// }
+								if !ack {
+									// fmt.Printf("Node %v round %v not yet ACKed; retrying\n", i, input.round+1)
+								}
 							}
 						}(ins, input.round)
 					}
@@ -121,7 +121,9 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs [][]byte) {
 	// Print out the order as it comes in
 	for i := range result {
 		go func() {
-			fmt.Printf("Index %v: %v\n", i, <-result[i])
+			for {
+				fmt.Printf("Index %v: %v\n", i, <-result[i])
+			}
 		}()
 	}
 

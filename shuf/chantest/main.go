@@ -10,7 +10,7 @@ import (
 func main() {
 
 	defaultOpts := shuf.Info{
-		NumNodes:    2,
+		NumNodes:    1,
 		NumClients:  4,
 		MsgSize:     5,
 		NumRounds:   1,
@@ -26,8 +26,8 @@ func main() {
 	fmt.Printf("Starting with %v\n", messages)
 
 	// s := shuf.IdShuffle{}
-	s := shuf.DumbShuffle{2}
-	// s := shuf.CSwap(&defaultOpts, 2)
+	// s := shuf.DumbShuffle{2}
+	s := shuf.CSwap(&defaultOpts, 23457)
 
 	gochan.ChanShuffle(s, &defaultOpts, messages)
 	time.Sleep(defaultOpts.TotalTime)
