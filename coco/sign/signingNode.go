@@ -172,7 +172,19 @@ var ChangingViewError error = errors.New("In the process of changing view")
 func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	sn.AnnounceLock.Lock()
 	defer sn.AnnounceLock.Unlock()
-	log.Infoln("root", sn.Name(), "starting signing round for round: ", sn.nRounds, "on view", sn.lastView)
+
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		log.WithFields(log.Fields{
+			"file":  logutils.File(),
+			"type":  "root_round",
+			"round": sn.LastRound(),
+			"time":  elapsed,
+		}).Info("root round")
+	}()
+
+	log.Infoln("root", sn.Name(), "starting announcement round for round: ", sn.nRounds, "on view", sn.lastView)
 
 	first := time.Now()
 	total := time.Now()
@@ -224,7 +236,6 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 		}
 		return errors.New("Really bad. Round did not finish response phase and did not report network errors.")
 	}
-
 }
 
 func (sn *Node) StartVotingRound(vr *VoteRequest) error {
