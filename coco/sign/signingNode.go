@@ -227,7 +227,8 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	}
 }
 
-func (sn *Node) StartVotingRound(vr *VoteRequest) error {
+func (sn *Node) StartVotingRound(name, action string) error {
+	vr := &VoteRequest{Name: name, Action: action}
 	lsr := atomic.LoadInt64(&sn.LastSeenRound)
 	sn.nRounds = int(lsr)
 
@@ -258,7 +259,7 @@ func (sn *Node) StartSigningRound() error {
 	log.Println("StartSigningRound:", sn.nRounds, lsr)
 	if sn.Type == Vote && sn.nRounds == 1 {
 		log.Println("StartVotingRound")
-		return sn.StartVotingRound(&VoteRequest{Name: "127.0.1.1:11060", Action: "remove"})
+		return sn.StartVotingRound("127.0.1.1:11060", "remove")
 	}
 
 	sn.nRounds++

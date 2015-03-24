@@ -4,7 +4,6 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/proof"
-	"github.com/dedis/prifi/coco/sign"
 )
 
 var DEBUG bool // to avoid veryfing paths and signatures all the time
@@ -22,7 +21,7 @@ type Signer interface {
 	IsRoot(view int) bool
 	Suite() abstract.Suite
 	StartSigningRound() error
-	StartVotingRound(*sign.VoteRequest) error
+	StartVotingRound(name, action string) error
 
 	LastRound() int64       // last round number seen by Signer
 	SetLastSeenRound(int64) // impose change in round numbering

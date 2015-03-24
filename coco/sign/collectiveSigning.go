@@ -220,7 +220,8 @@ func (sn *Node) get() error {
 					}
 					// I am the root for this
 					log.Println("Starting Voting Round")
-					sn.StartVotingRound(&sm.Gcm.Vr)
+					vr := sm.Gcm.Vr
+					sn.StartVotingRound(vr.Name, vr.Action)
 				case GroupChanged:
 					sn.StopHeartbeat()
 					// only the leaf that initiated the GroupChange should get a response

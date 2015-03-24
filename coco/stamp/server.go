@@ -235,7 +235,7 @@ func (s *Server) runAsRoot(nRounds int) string {
 
 			var err error
 			if s.App == "vote" {
-				err = s.StartVotingRound(sign.VoteRequest{Name: s.Name(), Action: "add"})
+				err = s.StartVotingRound(s.Name(), "add")
 			} else {
 				err = s.StartSigningRound()
 			}
