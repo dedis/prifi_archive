@@ -218,25 +218,23 @@ func main() {
 	// start up one timeclient per physical machine
 	// it requests timestamps from all the servers on that machine
 	i := 0
-	if app == "time" {
-		for p, ss := range physToServer {
-			if len(ss) == 0 {
-				continue
-			}
-			servers := strings.Join(ss, ",")
-			go func(i int, p string) {
-				_, err := cliutils.SshRun("", p, "cd remote; sudo ./timeclient -nmsgs="+nmsgs+
-					" -name=client@"+p+
-					" -server="+servers+
-					" -logger="+loggerports[i]+
-					" -debug="+debug+
-					" -rate="+strconv.Itoa(rate))
-				if err != nil {
-					log.Println(err)
-				}
-			}(i, p)
-			i = (i + 1) % len(loggerports)
+	for p, ss := range physToServer {
+		if len(ss) == 0 {
+			continue
 		}
+		servers := strings.Join(ss, ",")
+		go func(i int, p string) {
+			_, err := cliutils.SshRun("", p, "cd remote; sudo ./timeclient -nmsgs="+nmsgs+
+				" -name=client@"+p+
+				" -server="+servers+
+				" -logger="+loggerports[i]+
+				" -debug="+debug+
+				" -rate="+strconv.Itoa(rate))
+			if err != nil {
+				log.Println(err)
+			}
+		}(i, p)
+		i = (i + 1) % len(loggerports)
 	}
 	rootwait := strconv.Itoa(10)
 	for phys, virts := range physToServer {
