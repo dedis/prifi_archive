@@ -1,6 +1,7 @@
 package shuf
 
 import (
+	"github.com/dedis/crypto/abstract"
 	"math/rand"
 )
 
@@ -12,34 +13,44 @@ type Butterfly struct {
 	rnd      *rand.Rand // Random number generator
 }
 
-func (s Butterfly) ShuffleStep(msgs [][]byte, node NodeId,
+func (s Butterfly) ShuffleStep(msgs Elgamal, node NodeId,
 	round int, inf *Info) []RouteInstr {
+
+	// problem: we shouldn't decrypt it multiple times.
+	// not quite sure how to encrypt it
+
 	vnode := node.Virtual
+	// msgs = decryptPairs(msgs, inf, node.Physical)
 
 	if round >= len(s.Left) {
 		return []RouteInstr{RouteInstr{nil, msgs}}
 	}
 
-	var leftBytes []byte
-	var rightBytes []byte
-	switch s.rnd.Intn(1) {
-	case 0:
-		leftBytes = msgs[0]
-		rightBytes = msgs[1]
-	case 1:
-		rightBytes = msgs[0]
-		leftBytes = msgs[1]
+	var X [2]abstract.Point
+	var Y [2]abstract.Point
+
+	for i, p := range s.rnd.Perm(2) {
+		X[p] = msgs.X[i]
+		Y[p] = msgs.Y[i]
 	}
+
+	left := new(Elgamal)
+	left.X = []abstract.Point{X[0]}
+	left.Y = []abstract.Point{Y[0]}
+
+	right := new(Elgamal)
+	right.X = []abstract.Point{X[1]}
+	right.Y = []abstract.Point{Y[1]}
 
 	var pleft int = s.Left[round][vnode]
 	var pright int = s.Right[round][vnode]
 	return []RouteInstr{
-		RouteInstr{&NodeId{s.Physical[pleft], pleft}, [][]byte{leftBytes}},
-		RouteInstr{&NodeId{s.Physical[pright], pright}, [][]byte{rightBytes}},
+		RouteInstr{&NodeId{s.Physical[pleft], pleft}, *left},
+		RouteInstr{&NodeId{s.Physical[pright], pright}, *right},
 	}
 }
 
-func (cs Butterfly) InitialNode(msg []byte, client int, inf *Info) NodeId {
+func (cs Butterfly) InitialNode(client int, inf *Info) NodeId {
 	v := client % (inf.NumClients / 2)
 	return NodeId{cs.Physical[v], v}
 }
@@ -115,4 +126,8 @@ func NewButterfly(inf *Info, seed int64) *Butterfly {
 	// fmt.Printf("Left: %v\n", cs.Left)
 	// fmt.Printf("Right: %v\n", cs.Right)
 	return cs
+}
+
+func (id Butterfly) MergeGamal(apairs *Elgamal, bpairs Elgamal) *Elgamal {
+	return defaultMergeGamal(apairs, bpairs)
 }

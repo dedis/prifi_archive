@@ -1,19 +1,30 @@
 package shuf
 
 import (
+	"github.com/dedis/crypto/abstract"
 	"math/rand"
 )
 
 // Identity shuffle
 type IdShuffle struct{}
 
-func (i IdShuffle) ShuffleStep(msgs [][]byte, node NodeId,
+func (i IdShuffle) ShuffleStep(pairs Elgamal, node NodeId,
 	round int, inf *Info) []RouteInstr {
-	return []RouteInstr{RouteInstr{nil, msgs}}
+	pairs = decryptPairs(pairs, inf, node.Physical)
+	next := node.Physical + 1
+	if next >= inf.NumNodes {
+		return []RouteInstr{RouteInstr{nil, pairs}}
+	} else {
+		return []RouteInstr{RouteInstr{&NodeId{next, next}, pairs}}
+	}
 }
 
-func (id IdShuffle) InitialNode(msg []byte, client int, inf *Info) NodeId {
+func (id IdShuffle) InitialNode(client int, inf *Info) NodeId {
 	return NodeId{0, 0}
+}
+
+func (id IdShuffle) MergeGamal(apairs *Elgamal, bpairs Elgamal) *Elgamal {
+	return defaultMergeGamal(apairs, bpairs)
 }
 
 // Random, but insecure shuffle
@@ -21,22 +32,31 @@ type DumbShuffle struct {
 	Seed int64
 }
 
-func (d DumbShuffle) InitialNode(msg []byte, client int, inf *Info) NodeId {
+func (d DumbShuffle) InitialNode(client int, inf *Info) NodeId {
 	return NodeId{0, 0}
 }
 
-func (d DumbShuffle) ShuffleStep(msgs [][]byte, node NodeId,
+func (d DumbShuffle) ShuffleStep(pairs Elgamal, node NodeId,
 	round int, inf *Info) []RouteInstr {
-	newMsgs := make([][]byte, len(msgs))
+	newX := make([]abstract.Point, len(pairs.X))
+	newY := make([]abstract.Point, len(pairs.Y))
 	rand.Seed(d.Seed)
-	p := rand.Perm(len(msgs))
+	p := rand.Perm(len(newX))
 	for i := range p {
-		newMsgs[i] = msgs[p[i]]
+		newX[i] = pairs.X[p[i]]
+		newY[i] = pairs.Y[p[i]]
 	}
+	newpairs := Elgamal{newX, newY, nil}
+	newpairs = decryptPairs(newpairs, inf, node.Physical)
+
 	next := node.Physical + 1
 	if next >= inf.NumNodes {
-		return []RouteInstr{RouteInstr{nil, newMsgs}}
+		return []RouteInstr{RouteInstr{nil, newpairs}}
 	} else {
-		return []RouteInstr{RouteInstr{&NodeId{next, next}, newMsgs}}
+		return []RouteInstr{RouteInstr{&NodeId{next, next}, newpairs}}
 	}
+}
+
+func (id DumbShuffle) MergeGamal(apairs *Elgamal, bpairs Elgamal) *Elgamal {
+	return defaultMergeGamal(apairs, bpairs)
 }
