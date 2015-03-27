@@ -1,139 +1,205 @@
 package insure
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
-	"github.com/dedis/crypto/poly"
+	"github.com/dedis/crypto/edwards"
+	"github.com/dedis/crypto/poly/promise"
+	"github.com/dedis/crypto/nist"
 	"github.com/dedis/crypto/random"
 )
 
-var n int = 20
-var secret = INSURE_GROUP.Secret().Pick(random.Stream)
-var point = INSURE_GROUP.Point().Mul(INSURE_GROUP.Point().Base(), secret)
-var point2 = INSURE_GROUP.Point().Mul(INSURE_GROUP.Point().Base(),
-	INSURE_GROUP.Secret())
-var pripoly = new(poly.PriPoly).Pick(INSURE_GROUP, TSHARES, secret, random.Stream)
-var prishares = new(poly.PriShares).Split(pripoly, n)
-var pubCommit = producePubPoly()
+var suite = nist.NewAES128SHA256P256()
+var altSuite = edwards.NewAES128SHA256Ed25519(false)
 
-var keyPair = produceKeyPair()
-var keyPair2 = produceKeyPair()
+var secretKey = produceKeyPair()
+var promiserKey = produceKeyPair()
 
-// Used to initialize the public commit polynomial.
-func producePubPoly() *poly.PubPoly {
-	testPubPoly := new(poly.PubPoly)
-	testPubPoly.Init(INSURE_GROUP, n, nil)
-	return testPubPoly.Commit(pripoly, nil)
-}
+var pt = 10
+var r = 15
+var numInsurers = 20
 
-// Used to initialize the key pairs.
+var insurerKeys = produceinsurerKeys()
+var insurerList = produceinsurerList()
+
+var basicPromise = new(promise.Promise).ConstructPromise(secretKey, promiserKey, pt, r, insurerList)
+var basicPromise2 = new(promise.Promise).ConstructPromise(secretKey,  produceKeyPair(), 5, r, insurerList)
+
+var basicResponse, _ = basicPromise.ProduceResponse(10, insurerKeys[10])
+
+var basicCertifyMessage = new(CertifyPromiseMessage).createMessage(10, *basicPromise)
+var basicResponseMessage = new(PromiseResponseMessage).createMessage(10, *basicPromise, basicResponse)
+
 func produceKeyPair() *config.KeyPair {
 	keyPair := new(config.KeyPair)
-	keyPair.Gen(KEY_SUITE, random.Stream)
+	keyPair.Gen(suite, random.Stream)
 	return keyPair
 }
 
-// Verifies that a RequestInsuranceMessage can be created properly.
-func TestRequestInsuranceCreate(t *testing.T) {
-	share := prishares.Share(0)
-	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0,
-		share, pubCommit)
+func produceAltKeyPair() *config.KeyPair {
+	keyPair := new(config.KeyPair)
+	keyPair.Gen(altSuite, random.Stream)
+	return keyPair
+}
 
-	if !keyPair.Public.Equal(msg.PubKey) || !share.Equal(msg.Share) ||
-		!pubCommit.Equal(msg.PubCommit) || 0 != msg.ShareNumber.V.Int64() {
-		t.Error("RequestInsuranceMessage was not initialized properly.")
+func produceinsurerKeys() []*config.KeyPair {
+	newArray := make([]*config.KeyPair, numInsurers, numInsurers)
+	for i := 0; i < numInsurers; i++ {
+		newArray[i] = produceKeyPair()
+	}
+	return newArray
+}
+
+func produceinsurerList() []abstract.Point {
+	newArray := make([]abstract.Point, numInsurers, numInsurers)
+	for i := 0; i < numInsurers; i++ {
+		newArray[i] = insurerKeys[i].Public
+	}
+	return newArray
+}
+
+
+// Verifies that a CertifyPromiseMessage can be created properly.
+func TestCertifyPromiseMessageCreateMessage(t *testing.T) {
+	msg := new(CertifyPromiseMessage).createMessage(10, *basicPromise)
+
+	if msg.ShareIndex != 10 {
+		t.Error("ShareIndex not properly set.")
+	}
+
+	if !msg.Promise.Equal(basicPromise) {
+		t.Error("Promise not properly set.")
 	}
 }
 
 // Verifies that the Equal method works.
-func TestRequestInsuranceEqual(t *testing.T) {
-	share := prishares.Share(0)
-	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 0,
-		share, pubCommit)
-	msgCopy := msg
+func TestCertifyPromiseMessageEqual(t *testing.T) {
 
-	if !msg.Equal(msgCopy) {
-		t.Error("Messages should be equal.")
+	if !basicCertifyMessage.Equal(basicCertifyMessage) {
+		t.Error("Message should equal itself.")
 	}
 
-	// Fails if only the public keys are different.
-	msg2 := new(RequestInsuranceMessage).createMessage(keyPair2.Public, 0,
-		share, pubCommit)
-	if msg.Equal(msg2) {
-		t.Error("Messages should not be equal.")
+	msg2 := new(CertifyPromiseMessage).createMessage(1, *basicPromise)
+	if basicCertifyMessage.Equal(msg2) {
+		t.Error("Share Indices differ.")
 	}
 
-	// Fails if only the share number is different.
-	msg2 = new(RequestInsuranceMessage).createMessage(keyPair.Public, 1,
-		share, pubCommit)
-	if msg.Equal(msg2) {
-		t.Error("Messages should not be equal.")
-	}
-
-	// Fails if only the shares are different.
-	msg2 = new(RequestInsuranceMessage).createMessage(keyPair.Public, 0,
-		prishares.Share(1), pubCommit)
-	if msg.Equal(msg2) {
-		t.Error("Messages should not be equal.")
-	}
-
-	pripoly2 := new(poly.PriPoly).Pick(INSURE_GROUP, TSHARES, secret,
-		random.Stream)
-	otherPoly := new(poly.PubPoly)
-	otherPoly.Init(INSURE_GROUP, TSHARES, nil)
-	otherPoly.Commit(pripoly2, nil)
-
-	// Fails if only the public polynomial is different
-	msg2 = new(RequestInsuranceMessage).createMessage(keyPair.Public, 0,
-		share, otherPoly)
-	if msg.Equal(msg2) {
-		t.Error("Messages should not be equal.")
+	msg2 = new(CertifyPromiseMessage).createMessage(10, *basicPromise2)
+	if basicCertifyMessage.Equal(msg2) {
+		t.Error("Promises differ.")
 	}
 }
 
-// Verifies that a RequestInsuranceMessage can be marshalled and unmarshalled
-func TestRequestInsuranceMarshallUnMarshall(t *testing.T) {
-	share := prishares.Share(5)
-	msg := new(RequestInsuranceMessage).createMessage(keyPair.Public, 5,
-		share, pubCommit)
-	encodedMsg, err := msg.MarshalBinary()
+// Verifies that a CertifyPromiseMessage can be marshalled and unmarshalled
+func TestCertifyPromiseMessageUnMarshall(t *testing.T) {
+	// Since Equal can't be used on a promise until it has been fully
+	// unmarshalled, simply make sure this doesn't fail.
+	new(CertifyPromiseMessage).UnmarshalInit(pt,r,numInsurers, suite)
+}
+
+// Verifies that blameProof's marshalling methods work properly.
+func TestCertifyPromiseMessageMarshalling(t *testing.T) {
+	// Tests BinaryMarshal, BinaryUnmarshal, and MarshalSize
+	encodedCM, err := basicCertifyMessage.MarshalBinary()
+	if err != nil || len(encodedCM) != basicCertifyMessage.MarshalSize() {
+		t.Fatal("Marshalling failed: ", err)
+	}
+
+	decodedCM := new(CertifyPromiseMessage).UnmarshalInit(pt,r,numInsurers, suite)
+	err = decodedCM.UnmarshalBinary(encodedCM)
 	if err != nil {
-		t.Error("Marshalling failed!")
+		t.Fatal("UnMarshalling failed: ", err)
+	}
+	if !basicCertifyMessage.Equal(decodedCM) {
+		t.Error("Decoded blameProof not equal to original")
+	}
+	if basicCertifyMessage.MarshalSize() != decodedCM.MarshalSize() {
+		t.Error("MarshalSize of decoded and original differ: ",
+			basicCertifyMessage.MarshalSize(), decodedCM.MarshalSize())
 	}
 
-	newMsg, err2 := new(RequestInsuranceMessage).UnmarshalBinary(encodedMsg)
-
-	if err2 != nil {
-		t.Error("Unmarshalling failed!", err2)
-		t.FailNow()
+	// Tests MarshlTo and UnmarshalFrom
+	bufWriter := new(bytes.Buffer)
+	bytesWritter, errs := basicCertifyMessage.MarshalTo(bufWriter)
+	if bytesWritter != basicCertifyMessage.MarshalSize() || errs != nil {
+		t.Fatal("MarshalTo failed: ", bytesWritter, err)
 	}
 
-	if !keyPair.Public.Equal(msg.PubKey) || !share.Equal(msg.Share) ||
-		!pubCommit.Equal(msg.PubCommit) ||
-		!msg.Share.Equal(newMsg.Share) ||
-		!keyPair.Public.Equal(newMsg.PubKey) ||
-		!msg.PubCommit.Equal(newMsg.PubCommit) ||
-		msg.ShareNumber.V.Int64() != newMsg.ShareNumber.V.Int64() ||
-		!msg.PubCommit.Check(int(msg.ShareNumber.V.Int64()), msg.Share) ||
-		!newMsg.PubCommit.Check(int(newMsg.ShareNumber.V.Int64()), newMsg.Share) {
-		t.Error("Data was lost during marshalling.")
+	decodedCM = new(CertifyPromiseMessage).UnmarshalInit(pt,r,numInsurers, suite)
+	bufReader := bytes.NewReader(bufWriter.Bytes())
+	bytesRead, errs2 := decodedCM.UnmarshalFrom(bufReader)
+	if bytesRead != decodedCM.MarshalSize() || errs2 != nil {
+		t.Fatal("UnmarshalFrom failed: ", bytesRead, errs2)
 	}
-}
-
-// Verifies that a PolicyApprovedMessage can be created properly.
-func TestPolicyApprovedCreate(t *testing.T) {
-
-	msg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
-
-	expectedMessage := keyPair.Public.String() + " insures " + keyPair2.Public.String()
-
-	if !keyPair.Public.Equal(msg.PubKey) ||
-		expectedMessage != (string(msg.Message)) {
-		t.Error("RequestInsuranceMessage was not initialized properly.")
+	if basicCertifyMessage.MarshalSize() != decodedCM.MarshalSize() {
+		t.Error("MarshalSize of decoded and original differ: ",
+			basicCertifyMessage.MarshalSize(), decodedCM.MarshalSize())
+	}
+	if !basicCertifyMessage.Equal(decodedCM) {
+		t.Error("blameProof read does not equal original")
 	}
 }
 
+// Verifies that a PromiseResponseMessage can be created properly.
+func TestPromiseResponseMessageCreateMessage(t *testing.T) {
+
+	responseMsg := new(PromiseResponseMessage).createMessage(10, *basicPromise, basicResponse)
+	if responseMsg.ShareIndex != 10 {
+		t.Error("ShareIndex not properly initialized")
+	}
+	if responseMsg.Id != basicPromise.Id() {
+		t.Error("Promise Id differs")
+	}
+	if responseMsg.PromiserId != basicPromise.PromiserId() {
+		t.Error("Id of the Promiser differs")
+	}
+	if !responseMsg.Response.Equal(basicResponse) {
+		t.Error("Responses differ")
+	}
+}
+
+// Verifies that the Equal method works.
+func TestPromiseResponseMessageEqual(t *testing.T) {
+
+	if !basicResponseMessage.Equal(basicResponseMessage) {
+		t.Error("Message should equal itself.")
+	}
+
+	msg2 := new(PromiseResponseMessage).createMessage(1, *basicPromise, basicResponse)
+	if basicResponseMessage.Equal(msg2) {
+		t.Error("Share Indices differ.")
+	}
+
+	newPromise := new(promise.Promise).ConstructPromise(secretKey,  produceKeyPair(), 5, r, insurerList)
+	msg2 = new(PromiseResponseMessage).createMessage(10, *newPromise, basicResponse)
+	if basicResponseMessage.Equal(msg2) {
+		t.Error("PromiserId differs.")
+	}
+
+	newPromise = new(promise.Promise).ConstructPromise(produceKeyPair(),  promiserKey, 5, r, insurerList)
+	msg2 = new(PromiseResponseMessage).createMessage(10, *newPromise, basicResponse)
+	if basicResponseMessage.Equal(msg2) {
+		t.Error("Id differs.")
+	}
+
+	response, _ := basicPromise.ProduceResponse(1, insurerKeys[1])
+	msg2 = new(PromiseResponseMessage).createMessage(10, *basicPromise, response)
+	if basicResponseMessage.Equal(msg2) {
+		t.Error("Response differs.")
+	}
+}
+
+// Verifies that a CertifyPromiseMessage can be marshalled and unmarshalled
+func TestPromiseResponseMessageUnMarshall(t *testing.T) {
+	// Since Equal can't be used on a promise until it has been fully
+	// unmarshalled, simply make sure this doesn't fail.
+	new(PromiseResponseMessage).UnmarshalInit(suite)
+}
+
+/*
 // Verifies that the Equal method works.
 func TestPolicyApprovedEqual(t *testing.T) {
 	msg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
@@ -240,4 +306,4 @@ func TestPolicyMessage(t *testing.T) {
 
 	PolicyMessageHelper(t, new(PolicyMessage).createRIMessage(requestMsg))
 	PolicyMessageHelper(t, new(PolicyMessage).createPAMessage(approveMsg))
-}
+}*/

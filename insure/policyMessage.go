@@ -309,6 +309,8 @@ func (msg *PromiseResponseMessage) UnmarshalInit(suite abstract.Suite) *PromiseR
 // Compares two messages to see if they are equal
 func (msg *PromiseResponseMessage) Equal(msg2 *PromiseResponseMessage) bool {
 	return msg.ShareIndex == msg2.ShareIndex &&
+	       msg.PromiserId == msg2.PromiserId &&
+	       msg.Id == msg2.Id &&
 	       msg.Response.Equal(msg2.Response)
 }
 
