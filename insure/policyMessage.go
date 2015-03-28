@@ -25,12 +25,14 @@ const (
 	Error PolicyMessageType = iota
 	CertifyPromise
 	PromiseResponse
+	PromiseToClient
 )
 
 type PolicyMessage struct {
 	Type PolicyMessageType
 	cpm  *CertifyPromiseMessage
 	prm  *PromiseResponseMessage
+	ptcm *promise.Promise
 }
 
 /* Creates a new PolicyMessage
@@ -61,6 +63,12 @@ func (pm *PolicyMessage) createPRMessage(m *PromiseResponseMessage) *PolicyMessa
 	return pm
 }
 
+func (pm *PolicyMessage) createPTCMessage(m *promise.Promise) *PolicyMessage {
+	pm.Type = PromiseToClient
+	pm.ptcm  = m
+	return pm
+}
+
 // Returns the CertifyPromiseMessage of this PolicyMessage
 func (pm *PolicyMessage) getCPM() *CertifyPromiseMessage {
 	return pm.cpm
@@ -71,10 +79,16 @@ func (pm *PolicyMessage) getPRM() *PromiseResponseMessage {
 	return pm.prm
 }
 
+// Returns the PromiseResponseMessage of this PolicyMessage
+func (pm *PolicyMessage) getPTCM() *promise.Promise {
+	return pm.ptcm
+}
+
 // Call this to initialize a PolicyMessage before Unmarshalling.
 func (pm *PolicyMessage) UnmarshalInit(t,r,n int, suite abstract.Suite) *PolicyMessage{
-	pm.cpm = new(CertifyPromiseMessage).UnmarshalInit(t,r,n, suite)
-	pm.prm = new(PromiseResponseMessage).UnmarshalInit(suite)
+	pm.cpm  = new(CertifyPromiseMessage).UnmarshalInit(t,r,n, suite)
+	pm.prm  = new(PromiseResponseMessage).UnmarshalInit(suite)
+	pm.ptcm = new(promise.Promise).UnmarshalInit(t,r,n, suite)
 	return pm
 }
 
@@ -90,6 +104,8 @@ func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 			sub, err = pm.cpm.MarshalBinary()
 		case PromiseResponse:
 			sub, err = pm.prm.MarshalBinary()
+		case PromiseToClient:
+			sub, err = pm.ptcm.MarshalBinary()
 	}
 	if err == nil {
 		b.Write(sub)
@@ -108,6 +124,8 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 		err    = pm.cpm.UnmarshalBinary(msgBytes)
 	case PromiseResponse:
 		err    = pm.prm.UnmarshalBinary(msgBytes)
+	case PromiseToClient:
+		err    = pm.ptcm.UnmarshalBinary(msgBytes)
 	}
 	return err
 }

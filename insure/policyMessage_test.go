@@ -270,6 +270,10 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 			msg1 := policy.getPRM()
 			msg2 := policyMsg2.getPRM()
 			okay = msg1.Equal(msg2)
+		case PromiseToClient:
+			msg1 := policy.getPTCM()
+			msg2 := policyMsg2.getPTCM()
+			okay  = msg1.Equal(msg2)
 	}
 
 	if !okay {
@@ -284,6 +288,7 @@ func TestPolicyMessage(t *testing.T) {
 
 	PolicyMessageHelper(t, new(PolicyMessage).createCPMessage(basicCertifyMessage))
 	PolicyMessageHelper(t, new(PolicyMessage).createPRMessage(basicResponseMessage))
+	PolicyMessageHelper(t, new(PolicyMessage).createPTCMessage(basicPromise))
 }
 
 // Tests all the string functions. Simply calls them to make sure they return.

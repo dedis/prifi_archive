@@ -28,6 +28,12 @@ import (
 type LifePolicyModule struct {
 	// The long term key pair of the server
 	keyPair *config.KeyPair
+	
+	t int
+	
+	r int
+	
+	n int
 
 	// A hash of promises this server has made.
 	// promise_id => State
@@ -54,8 +60,11 @@ type LifePolicyModule struct {
  *   kp       = the public/private key of the owner server
  *   cmann    = the connection manager to handle requests.
  */
-func (lp *LifePolicyModule) Init(kp *config.KeyPair, cman connMan.ConnManager) *LifePolicyModule {
+func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.ConnManager) *LifePolicyModule {
 	lp.keyPair         = kp
+	lp.t               = t
+	lp.r               = r
+	lp.n               = n
 	lp.cman            = cman
 	lp.promises        = make(map[string]*promise.State)
 	lp.insuredPromises = make(map[string](map[string]promise.Promise))
@@ -101,41 +110,50 @@ func selectInsurersBasic(serverList []abstract.Point, n int) []abstract.Point {
  * selection function.
  */
 
-func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, t, r, n int,
+func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair,
         serverList []abstract.Point,
-	selectInsurers func([]abstract.Point, int) []abstract.Point) bool {
+	selectInsurers func([]abstract.Point, int) []abstract.Point) error {
 
 	// Initialize the policy.
 
 	// If we have no selectInsurers function, use the basic algorithm.
+	// TODO if selectInsurers is malicious, panic.
 	if selectInsurers == nil {
 		selectInsurers = selectInsurersBasic
 	}
-	insurersList := selectInsurers(serverList, n)
+	insurersList := selectInsurers(serverList, lp.n)
 
 	newPromise   := promise.Promise{}
-	newPromise.ConstructPromise(secretPair, lp.keyPair, t, r, insurersList)
+	newPromise.ConstructPromise(secretPair, lp.keyPair, lp.t, lp.r, insurersList)
 	state := new(promise.State).Init(newPromise)
 	lp.promises[newPromise.Id()] = state
+	return lp.getPromiseCertification(state, insurersList)
+}
 
-	// Send each share off to the appropriate server.
-	for i := 0; i < n; i++ {
-		requestMsg := new(CertifyPromiseMessage).createMessage(i, newPromise)
+func (lp *LifePolicyModule) getPromiseCertification(state *promise.State, insurersList []abstract.Point) error {
+
+	// Send a request off to each server
+	for i := 0; i < lp.n; i++ {
+		requestMsg := new(CertifyPromiseMessage).createMessage(i, state.Promise)
 		policyMsg  := new(PolicyMessage).createCPMessage(requestMsg)
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
 
 	// TODO: Add a timeout such that this process will end after a certain
-	// time and a new batch of insurers can be picked.
+	// amount of time.
 	for state.PromiseCertified() != nil {
-		for i := 0; i < n; i++ {	
-			msg := new(PolicyMessage).UnmarshalInit(t,r,n, lp.keyPair.Suite)
+		for i := 0; i < lp.n; i++ {	
+			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
 			lp.handlePolicyMessage(insurersList[i], msg)
 		}
 	}
+	return nil
+}
 
-	return true
+func (lp *LifePolicyModule) SendClientPolicy(clientLongPubKey, secretPubKey abstract.Point) {
+	policyMsg := new(PolicyMessage).createPTCMessage(&lp.promises[secretPubKey.String()].Promise)
+	lp.cman.Put(clientLongPubKey, policyMsg)
 }
 
 /* This function handles policy messages received. This function will handle
@@ -158,6 +176,8 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
 			return CertifyPromise, lp.handleCertifyPromiseMessage(pubKey, msg.getCPM())
 		case PromiseResponse:
 			return PromiseResponse, lp.handlePromiseResponseMessage(msg.getPRM())
+		case PromiseToClient:
+			return PromiseToClient, lp.handlePromiseToClientMessage(pubKey, msg.getPTCM())
 	}
 	return Error, errors.New("Invald message type")
 }
@@ -171,19 +191,23 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
  *
  * Returns:
  *	the error status (possibly nil)
+ *
+ * TODO Add an option to differentiate between taking out a promise and certifying
+ * a promise that already exists.
  */
 func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, msg *CertifyPromiseMessage) error {
-	if _, assigned := lp.insuredPromises[pubKey.String()]; !assigned{
-		lp.insuredPromises[pubKey.String()] = make(map[string]promise.Promise)
+	if _, assigned := lp.insuredPromises[msg.Promise.PromiserId()]; !assigned{
+		lp.insuredPromises[msg.Promise.PromiserId()] = make(map[string]promise.Promise)
 	}
-	if _, assigned := lp.insuredPromises[pubKey.String()][msg.Promise.Id()]; !assigned {
-		lp.insuredPromises[pubKey.String()][msg.Promise.Id()] = msg.Promise
+	if _, assigned := lp.insuredPromises[msg.Promise.PromiserId()][msg.Promise.Id()]; !assigned {
+		lp.insuredPromises[msg.Promise.PromiserId()][msg.Promise.Id()] = msg.Promise
 	}
-	response, err := msg.Promise.ProduceResponse(msg.ShareIndex, lp.keyPair)
+	prom := lp.insuredPromises[msg.Promise.PromiserId()][msg.Promise.Id()]
+	response, err := prom.ProduceResponse(msg.ShareIndex, lp.keyPair)
 	if err != nil {
 		return err
 	}
-	replyMsg := new(PromiseResponseMessage).createMessage(msg.ShareIndex, msg.Promise, response)
+	replyMsg := new(PromiseResponseMessage).createMessage(msg.ShareIndex, prom, response)
 	lp.cman.Put(pubKey, new(PolicyMessage).createPRMessage(replyMsg))
 	return nil
 }
@@ -209,4 +233,23 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 		return nil
 	}	
 	return errors.New("Promise specified does not exist.")
+}
+
+func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, prom *promise.Promise) error {
+	if _, assigned := lp.serverPromises[pubKey.String()]; !assigned{
+		lp.serverPromises[pubKey.String()] = make(map[string]*promise.State)
+	}
+	if _, assigned := lp.serverPromises[pubKey.String()][prom.Id()]; !assigned {
+		state := new(promise.State).Init(*prom)
+		lp.serverPromises[pubKey.String()][prom.Id()] = state
+	}
+
+	state := lp.serverPromises[pubKey.String()][prom.Id()]
+
+	// If this promise is already considered valid, ignore it.
+	if state.PromiseCertified() == nil {
+		return nil
+	}
+	insurers := state.Promise.Insurers()
+	return lp.getPromiseCertification(state, insurers)
 }

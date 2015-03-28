@@ -81,10 +81,7 @@ func setupConn() bool {
 		// Give everyone access to everyone else (Don't give access
 		// to oneself)
 		for j := 0; j < numServers; j++ {
-			if i != j {
-				connectionManagers[i].AddConn(insurerListT[j])
-			}
-		
+			connectionManagers[i].AddConn(insurerListT[j])
 		}
 	}
 
@@ -95,7 +92,7 @@ func setupConn() bool {
 // CertifyPromiseMessage, sends a response, and then exits.
 func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 
-	policy := new(LifePolicyModule).Init(k, cm)
+	policy := new(LifePolicyModule).Init(k,lpt,lpr,lpn, cm)
 
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
@@ -156,11 +153,11 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 		go insurersBasic(t, serverKeys[i], connectionManagers[i])
 	}
 
-	policy:= new(LifePolicyModule).Init(keyPairT, goConn) 
-	ok := policy.TakeOutPolicy(secretKeyT, lpt, lpr, lpn, insurerListT, nil)
+	policy:= new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	err := policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
 
-	if !ok {
-		t.Error("Policy failed to be created.")
+	if err != nil {
+		t.Error("Policy failed to be created: ", err)
 	}
 	
 	newPromiseState, ok := policy.promises[secretKeyT.Public.String()]
@@ -178,10 +175,11 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 
 // This function is the code run by the insurers. The server listens for a
 // CertifyPromiseMessage, sends a response, and then exits.
-func serversIntermediate(t *testing.T, finished, start *sync.WaitGroup, secret,key *config.KeyPair, cm connMan.ConnManager) {
+func serversIntermediate(t *testing.T, finished, start *sync.WaitGroup,
+	secret,key *config.KeyPair, cm connMan.ConnManager) *LifePolicyModule {
 	defer finished.Done()
 	start.Wait()
-	policy := new(LifePolicyModule).Init(key, cm)
+	policy := new(LifePolicyModule).Init(key, lpt,lpr,lpn-1, cm)
 	
 	// The insurer list should not include the server itself.
 	newInsurersList := make([]abstract.Point, numServers-1, numServers-1)
@@ -192,10 +190,10 @@ func serversIntermediate(t *testing.T, finished, start *sync.WaitGroup, secret,k
 		}
 	}
 	
-	ok := policy.TakeOutPolicy(secret, lpt, lpr, lpn-1, newInsurersList, nil)
+	err := policy.TakeOutPolicy(secret, newInsurersList, nil)
 	
-	if !ok {
-		panic("Policy failed to be created.")
+	if err != nil {
+		panic(err)
 	}
 	
 	newPromiseState, ok := policy.promises[secret.Public.String()]
@@ -207,7 +205,8 @@ func serversIntermediate(t *testing.T, finished, start *sync.WaitGroup, secret,k
 	if newPromiseState.PromiseCertified() != nil {
 		panic("Promise should be certified.")
 	}
-
+	
+	return policy
 }
 
 // This is a larger scale test. It insurers that all servers participating can
@@ -224,4 +223,64 @@ func TestTakeOutPolicyIntermediate(t *testing.T) {
 	}
 	start.Done()
 	finished.Wait()
+}
+
+
+
+// This function is the code run by the insurers. The server listens for a
+// CertifyPromiseMessage, sends a response, and then exits.
+func serversAdvanced(t *testing.T, start, middle, end *sync.WaitGroup,
+	secret,key *config.KeyPair, secretKeys []*config.KeyPair, cm connMan.ConnManager) {
+
+	defer end.Done()
+
+	policy := serversIntermediate(t, middle, start, secret, key, cm)
+	
+	// The insurer list should not include the server itself.
+	policy.promises[secret.Public.String()].Promise.Insurers()
+	for i := 0; i < numServers; i++ {
+		policy.SendClientPolicy(insurerListT[i], secret.Public)
+	}
+	middle.Done()
+	middle.Wait()
+	for j := 0; j < 10; j++ {
+		for i := 0; i < numServers; i++ {	
+			msg := new(PolicyMessage).UnmarshalInit(policy.t,policy.r,policy.n, policy.keyPair.Suite)
+			policy.cman.Get(insurerListT[0], msg)
+			policy.handlePolicyMessage(insurerListT[0], msg)
+		}
+	}
+	panic("Boom")
+	for i := 0; i < len(secretKeys); i++ {	
+		if secret.Public.Equal(secretKeys[i].Public) ||
+		   key.Public.Equal(insurerListT[i])  {
+			continue
+		}
+		promiserId := insurerListT[i].String()
+		id := secretKeys[i].Public.String()
+		if policy.serverPromises[promiserId][id].PromiseCertified() != nil {
+			panic("Promise expected to be certified")
+		}
+	}
+}
+
+// This is builds upon the intermediate test. After every server takes out
+// a policy, it then sends the policy to everyone else. Everyone else then checks
+// with the insurers to make sure the promise is certified and then accepts it as
+// certified
+func TestTakeOutPolicyAdvanced(t *testing.T) {
+
+	start := new(sync.WaitGroup)
+	start.Add(1)
+	middle := new(sync.WaitGroup)
+	middle.Add(numServers*2)
+	end := new(sync.WaitGroup)
+	end.Add(numServers)
+	// Start up the other insurers.
+	for i := 0; i < numServers; i++ {
+		go serversAdvanced(t, start, middle, end, secretKeys[i], serverKeys[i], 
+			secretKeys, connectionManagers[i]) 
+	}
+	start.Done()
+	end.Wait()
 }
