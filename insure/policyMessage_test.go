@@ -161,6 +161,14 @@ func TestPromiseResponseMessageCreateMessage(t *testing.T) {
 	}
 }
 
+
+// Verifies that a CertifyPromiseMessage can be marshalled and unmarshalled
+func TestPromiseResponseMessageUnMarshall(t *testing.T) {
+	// Since Equal can't be used on a promise until it has been fully
+	// unmarshalled, simply make sure this doesn't fail.
+	new(PromiseResponseMessage).UnmarshalInit(suite)
+}
+
 // Verifies that the Equal method works.
 func TestPromiseResponseMessageEqual(t *testing.T) {
 
@@ -192,65 +200,46 @@ func TestPromiseResponseMessageEqual(t *testing.T) {
 	}
 }
 
-// Verifies that a CertifyPromiseMessage can be marshalled and unmarshalled
-func TestPromiseResponseMessageUnMarshall(t *testing.T) {
-	// Since Equal can't be used on a promise until it has been fully
-	// unmarshalled, simply make sure this doesn't fail.
-	new(PromiseResponseMessage).UnmarshalInit(suite)
-}
-
-/*
-// Verifies that the Equal method works.
-func TestPolicyApprovedEqual(t *testing.T) {
-	msg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
-	msgCopy := msg
-
-	if !msg.Equal(msgCopy) {
-		t.Error("Messages should be equal.")
+// Verifies that blameProof's marshalling methods work properly.
+func TestPromiseResponseMessageMarshalling(t *testing.T) {
+	// Tests BinaryMarshal, BinaryUnmarshal, and MarshalSize
+	encodedPRM, err := basicResponseMessage.MarshalBinary()
+	if err != nil || len(encodedPRM) != basicResponseMessage.MarshalSize() {
+		t.Fatal("Marshalling failed: ", err)
 	}
 
-	// Fails if the public key pair is different.
-	// A different key will generate a different message and signature.
-	msg2 := new(PolicyApprovedMessage).createMessage(keyPair2, keyPair2.Public)
-	if msg.Equal(msg2) {
-		t.Error("Messages should not be equal.")
-	}
-
-	// Fails if the public key is different
-	msg2 = new(PolicyApprovedMessage).createMessage(keyPair, keyPair.Public)
-	if msg.Equal(msg2) {
-		t.Error("Messages should not be equal.")
-	}
-}
-
-// Verifies that a PolicyApprovedMessage can be marshalled and unmarshalled
-// properly. It also checks the verifyCertificate method as well. It insures
-// that the signature was properly preserved.
-func TestPolicyApprovedMarshallUnMarshallVerify(t *testing.T) {
-	msg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
-
-	encodedMsg, err := msg.MarshalBinary()
+	decodedPRM := new(PromiseResponseMessage).UnmarshalInit(suite)
+	err = decodedPRM.UnmarshalBinary(encodedPRM)
 	if err != nil {
-		t.Fatal("Marshalling failed! ", err)
+		t.Fatal("UnMarshalling failed: ", err)
+	}
+	if !basicResponseMessage.Equal(decodedPRM) {
+		t.Error("Decoded ResponseMessage not equal to original")
+	}
+	if basicResponseMessage.MarshalSize() != decodedPRM.MarshalSize() {
+		t.Error("MarshalSize of decoded and original differ: ",
+			basicResponseMessage.MarshalSize(), decodedPRM.MarshalSize())
 	}
 
-	newMsg, err2 := new(PolicyApprovedMessage).UnmarshalBinary(encodedMsg)
-	if err2 != nil {
-		t.Fatal("Unmarshalling failed! ", err2)
+	// Tests MarshlTo and UnmarshalFrom
+	bufWriter := new(bytes.Buffer)
+	bytesWritter, errs := basicResponseMessage.MarshalTo(bufWriter)
+	if bytesWritter != basicResponseMessage.MarshalSize() || errs != nil {
+		t.Fatal("MarshalTo failed: ", bytesWritter, err)
 	}
 
-	expectedMessage := keyPair.Public.String() + " insures " + keyPair2.Public.String()
-	if !keyPair.Public.Equal(msg.PubKey) ||
-		expectedMessage != string(msg.Message) {
-		t.Error("The original message does not contain the proper values")
+	decodedPRM = new(PromiseResponseMessage).UnmarshalInit(suite)
+	bufReader := bytes.NewReader(bufWriter.Bytes())
+	bytesRead, errs2 := decodedPRM.UnmarshalFrom(bufReader)
+	if bytesRead != decodedPRM.MarshalSize() || errs2 != nil {
+		t.Fatal("UnmarshalFrom failed: ", bytesRead, errs2)
 	}
-	if !msg.PubKey.Equal(newMsg.PubKey) ||
-		string(msg.Message) != string(newMsg.Message) {
-		t.Error("Data was lost during marshalling.")
+	if basicResponseMessage.MarshalSize() != decodedPRM.MarshalSize() {
+		t.Error("MarshalSize of decoded and original differ: ",
+			basicResponseMessage.MarshalSize(), decodedPRM.MarshalSize())
 	}
-	if !msg.verifyCertificate(keyPair.Suite, keyPair2.Public) ||
-		!newMsg.verifyCertificate(keyPair.Suite, keyPair2.Public) {
-		t.Error("The signature is invalid.")
+	if !basicResponseMessage.Equal(decodedPRM) {
+		t.Error("blameProof read does not equal original")
 	}
 }
 
@@ -260,7 +249,7 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 	if err != nil {
 		t.Fatal("Marshalling failed!", err)
 	}
-	policyMsg2 := new(PolicyMessage)
+	policyMsg2 := new(PolicyMessage).UnmarshalInit(pt,r,numInsurers, suite)
 	err = policyMsg2.UnmarshalBinary(encodedMsg)
 	if err != nil {
 		t.Fatal("Unmarshalling failed!", err)
@@ -273,21 +262,14 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 	okay := false
 
 	switch policyMsg2.Type {
-	case RequestInsurance:
-		msg1 := policy.getRIM()
-		msg2 := policyMsg2.getRIM()
-		if msg1.Share.Equal(msg2.Share) &&
-			msg1.PubCommit.Equal(msg2.PubCommit) {
-			okay = true
-		}
-	case PolicyApproved:
-		msg1 := policy.getPAM()
-		msg2 := policyMsg2.getPAM()
-		if msg1.PubKey.Equal(msg2.PubKey) &&
-			string(msg1.Message) == string(msg2.Message) &&
-			string(msg2.Signature) == string(msg2.Signature) {
-			okay = true
-		}
+		case CertifyPromise:
+			msg1 := policy.getCPM()
+			msg2 := policyMsg2.getCPM()
+			okay = msg1.Equal(msg2)
+		case PromiseResponse:
+			msg1 := policy.getPRM()
+			msg2 := policyMsg2.getPRM()
+			okay = msg1.Equal(msg2)
 	}
 
 	if !okay {
@@ -295,15 +277,17 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 	}
 }
 
-// Verifies that a PolicyApprovedMessage can be marshalled and unmarshalled
-// properly. It also checks the verifyCertificate method as well. It insures
-// that the signature was properly preserved.
+// This method and its helper tests the methods of PolicyMessage. PolicyMessage
+// is simply a wrapper around the other messages to help during sending messages.
+// Hence, the functionality of PolicyMessage is tested here.
 func TestPolicyMessage(t *testing.T) {
 
-	requestMsg := new(RequestInsuranceMessage).createMessage(keyPair.Public,
-		0, prishares.Share(0), pubCommit)
-	approveMsg := new(PolicyApprovedMessage).createMessage(keyPair, keyPair2.Public)
+	PolicyMessageHelper(t, new(PolicyMessage).createCPMessage(basicCertifyMessage))
+	PolicyMessageHelper(t, new(PolicyMessage).createPRMessage(basicResponseMessage))
+}
 
-	PolicyMessageHelper(t, new(PolicyMessage).createRIMessage(requestMsg))
-	PolicyMessageHelper(t, new(PolicyMessage).createPAMessage(approveMsg))
-}*/
+// Tests all the string functions. Simply calls them to make sure they return.
+func TestString(t *testing.T) {
+	basicCertifyMessage.String()
+	basicResponseMessage.String()
+}

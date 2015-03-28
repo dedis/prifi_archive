@@ -6,25 +6,29 @@ package insure
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"strconv"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/poly/promise"
 )
 
+// TODO Document this more extensively. Revise documentation.
+// TODO Make PolicyMessage a full blow marshaller.
+
 // Used mostly in marshalling code, this is the size of a uint32
 var uint32Size int = binary.Size(uint32(0))
 
-type MessageType int
+type PolicyMessageType int
 
 const (
-	Error MessageType = iota
-	PromiseResponse
+	Error PolicyMessageType = iota
 	CertifyPromise
+	PromiseResponse
 )
 
 type PolicyMessage struct {
-	Type MessageType
+	Type PolicyMessageType
 	cpm  *CertifyPromiseMessage
 	prm  *PromiseResponseMessage
 }
@@ -67,6 +71,13 @@ func (pm *PolicyMessage) getPRM() *PromiseResponseMessage {
 	return pm.prm
 }
 
+// Call this to initialize a PolicyMessage before Unmarshalling.
+func (pm *PolicyMessage) UnmarshalInit(t,r,n int, suite abstract.Suite) *PolicyMessage{
+	pm.cpm = new(CertifyPromiseMessage).UnmarshalInit(pt,r,n, suite)
+	pm.prm = new(PromiseResponseMessage).UnmarshalInit(suite)
+	return pm
+}
+
 // This code is responsible for mashalling the message for sending off.
 func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
@@ -75,10 +86,10 @@ func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 	b.WriteByte(byte(pm.Type))
 	// marshal sub message based on its Type
 	switch pm.Type {
-	case CertifyPromise:
-		sub, err = pm.cpm.MarshalBinary()
-	case PromiseResponse:
-		sub, err = pm.prm.MarshalBinary()
+		case CertifyPromise:
+			sub, err = pm.cpm.MarshalBinary()
+		case PromiseResponse:
+			sub, err = pm.prm.MarshalBinary()
 	}
 	if err == nil {
 		b.Write(sub)
@@ -89,16 +100,14 @@ func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 // This function is responsible for unmarshalling the data. It keeps track
 // of which type the message is and decodes it properly.
 func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
-	pm.Type = MessageType(data[0])
+	pm.Type = PolicyMessageType(data[0])
 	msgBytes := data[1:]
 	var err error
 	switch pm.Type {
 	case CertifyPromise:
-		pm.cpm = new(CertifyPromiseMessage)
-		err = pm.cpm.UnmarshalBinary(msgBytes)
+		err    = pm.cpm.UnmarshalBinary(msgBytes)
 	case PromiseResponse:
-		pm.prm = new(PromiseResponseMessage)
-		err = pm.prm.UnmarshalBinary(msgBytes)
+		err    = pm.prm.UnmarshalBinary(msgBytes)
 	}
 	return err
 }
@@ -196,6 +205,10 @@ func (msg *CertifyPromiseMessage) MarshalBinary() ([]byte, error) {
  *   The error status of the unmarshalling (nil if no error)
  */
 func (msg *CertifyPromiseMessage) UnmarshalBinary(buf []byte) error {
+
+	if len(buf) < msg.Promise.MarshalSize() {
+		return errors.New("Buffer size too small")
+	}
 
 	msg.ShareIndex = int(binary.LittleEndian.Uint32(buf))
 
@@ -370,10 +383,20 @@ func (msg *PromiseResponseMessage) MarshalBinary() ([]byte, error) {
  */
 func (msg *PromiseResponseMessage) UnmarshalBinary(buf []byte) error {
   
-	promiseSize    := int(binary.LittleEndian.Uint32(buf))
-	idLen          := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
-	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+  	if len(buf) < 4*uint32Size {
+  		panic("BOOM!")
+		return errors.New("Buffer size too small")
+	}
+  
+	idLen          := int(binary.LittleEndian.Uint32(buf))
+	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
+	responseSize   := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
 	msg.ShareIndex  = int(binary.LittleEndian.Uint32(buf[3*uint32Size:]))
+
+ 	if len(buf) < 4*uint32Size + idLen + promiserIdLen + responseSize {
+ 		panic("BAM BOOM!")
+		return errors.New("Buffer size too small")
+	}
 
 	// Decode pubKey and pubPoly
 	bufPos      := 4*uint32Size
@@ -383,7 +406,7 @@ func (msg *PromiseResponseMessage) UnmarshalBinary(buf []byte) error {
 	msg.PromiserId = string(buf[bufPos:bufPos+promiserIdLen])
 	bufPos += promiserIdLen
 
-	if err := msg.Response.UnmarshalBinary(buf[bufPos : bufPos+promiseSize]);
+	if err := msg.Response.UnmarshalBinary(buf[bufPos : bufPos+responseSize]);
 		err != nil {
 		return err
 	}
