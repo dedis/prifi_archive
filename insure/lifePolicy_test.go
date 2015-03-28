@@ -8,21 +8,27 @@ import (
 	"github.com/dedis/crypto/random"
 
 	"github.com/dedis/prifi/connMan"
-	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/coco/coconet"
 )
 
 var goDir = coconet.NewGoDirectory()
 
 // Variables for the server to take out the policy.
+var secretKeyT = produceKeyPairT()
 var keyPairT = produceKeyPairT()
 var goConn = produceChanConn(keyPairT)
 
 // Alter this to easily scale the number of servers to test with. This
 // represents the number of other servers waiting to approve policies.
-var numServers int = 10
+var numServers = 10
+
+var lpt = 5
+var lpr = 7
+var lpn = 10
 
 // Variables for the servers to accept the policy
-var serverKeys = produceServerKeys()
+var serverKeys = produceKeys()
+var secretKeys = produceKeys()
 var insurerList = produceInsuredList()
 var connectionManagers = produceGoConnArray()
 var setupOkay = setupConn()
@@ -37,7 +43,7 @@ func produceChanConn(k *config.KeyPair) *connMan.ChanConnManager {
 	return new(connMan.ChanConnManager).Init(k.Public, goDir)
 }
 
-func produceServerKeys() []*config.KeyPair {
+func produceKeys() []*config.KeyPair {
 	newArray := make([]*config.KeyPair, numServers, numServers)
 	for i := 0; i < numServers; i++ {
 		newArray[i] = produceKeyPairT()
@@ -75,37 +81,36 @@ func setupConn() bool {
 	return true
 }
 
-// This function is the code ran by the insurers. The server listens for a
-// RequestInsuranceMessage, sends a response, and then exits.
-func insurers(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
+// This function is the code run by the insurers. The server listens for a
+// CertifyPromiseMessage, sends a response, and then exits.
+func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 
-	policy := new(LifePolicy).Init(k, cm)
+	policy := new(LifePolicyModule).Init(k, cm)
 
 	for true {
-		msg := new(PolicyMessage)
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(keyPairT.Public, msg)
 
-		msgType, ok := policy.handlePolicyMessage(msg)
+		msgType, ok := policy.handlePolicyMessage(keyPairT.Public, msg)
 
-		// If a RequestInsuranceMessage, send an acceptance message and
-		// then exit.
-		if msgType == RequestInsurance && ok == nil {
-			keyValue := msg.getRIM().PubKey.String() +
-				msg.getRIM().Share.String()
-			if storedMsg, ok := policy.insuredClients[keyValue]; !ok || !storedMsg.Equal(msg.getRIM()) {
-				t.Error("Request message not stored.")
+		// If a CertifyPromiseMessage, exit
+		if msgType == CertifyPromise && ok == nil {
+			cpmMsg        := msg.getCPM()
+			storedPromise := policy.insuredPromises[keyPairT.Public.String()][cpmMsg.Promise.Id()]
+			if !cpmMsg.Promise.Equal(&storedPromise) {
+				t.Error("Promise not stored.")
 			}
 			return
 		}
 	}
 }
 
-func TestTakeOutPolicy(t *testing.T) {
+func TestTakeOutPolicyBasic(t *testing.T) {
 
 	// ERROR CHECKING
 
 	// Invalid n
-	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
+/*	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
 		insurerList, nil, INSURE_GROUP, TSHARES, 0)
 
 	if ok1 {
@@ -132,69 +137,73 @@ func TestTakeOutPolicy(t *testing.T) {
 
 	if ok3 {
 		t.Fatal("Policy should fail not enough servers are given.")
-	}
+	}*/
 
 	// Success Cases
 
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
-		go insurers(t, serverKeys[i], connectionManagers[i])
+		go insurersBasic(t, serverKeys[i], connectionManagers[i])
 	}
 
-	policy, ok := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
-		insurerList, nil, INSURE_GROUP, TSHARES, numServers)
+	policy:= new(LifePolicyModule).Init(keyPairT, goConn) 
+	ok := policy.TakeOutPolicy(secretKeyT, lpt, lpr, lpn, insurerList, nil)
 
 	if !ok {
 		t.Error("Policy failed to be created.")
 	}
-
-	if keyPairT != policy.GetKeyPair() {
-		t.Error("The key for the policy not properly set.")
+	
+	newPromiseState, ok := policy.promises[secretKeyT.Public.String()]
+	
+	if !ok || newPromiseState.Promise.Id() != secretKeyT.Public.String() {
+		t.Error("Promise failed to be stored.")
 	}
 
-	resultInsurerList := policy.GetInsurers()
+	if newPromiseState.PromiseCertified() != nil {
+		t.Error("Promise should be certified.")
+	}
+}
 
-	if len(resultInsurerList) != numServers {
-		t.Error("The insurer list was not properly chosen.")
+
+
+// This function is the code run by the insurers. The server listens for a
+// CertifyPromiseMessage, sends a response, and then exits.
+func serversIntermediate(t *testing.T, secret,key *config.KeyPair, cm connMan.ConnManager) {
+
+	policy := new(LifePolicyModule).Init(key, cm)
+	
+	// The insurer list should not include the server itself.
+	newInsurersList := make([]abstract.Point, numServers-1, numServers-1)
+	for i, j := 0, 0; i < numServers-1; i++ {
+		if !key.Public.Equal(insurerList[i]) {
+			newInsurersList[j] = insurerList[i]
+			j += 1
+		}
+	}
+	
+	ok := policy.TakeOutPolicy(secret, lpt, lpr, lpn-1, newInsurersList, nil)
+
+	if !ok {
+		t.Error("Policy failed to be created.")
+	}
+	
+	newPromiseState, ok := policy.promises[secretKeyT.Public.String()]
+	
+	if !ok || newPromiseState.Promise.Id() != secretKeyT.Public.String() {
+		t.Error("Promise failed to be stored.")
 	}
 
+	if newPromiseState.PromiseCertified() != nil {
+		t.Error("Promise should be certified.")
+	}
+}
+
+// This is a larger scale test. It insurers that all servers participating can
+// take out policies, ask each other for insurance, and produce a verified policy
+func TestTakeOutPolicyIntermediate(t *testing.T) {
+
+	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
-
-		seen := false
-		for j := 0; j < numServers; j++ {
-			if insurerList[i].Equal(resultInsurerList[j]) {
-				seen = true
-				break
-			}
-		}
-
-		if !seen {
-			t.Error("A server was left out of the insurance list.")
-			t.Error("Duplicates in server lis.")
-		}
-	}
-
-	resultProofList := policy.GetPolicyProof()
-	if resultProofList.Len() != numServers {
-		t.Error("Insufficient number of proofs.")
-	}
-
-	seenList := make([]bool, len(insurerList))
-
-	for nextElt := resultProofList.Front(); nextElt != nil; nextElt = nextElt.Next() {
-
-		newMessage := nextElt.Value.(*PolicyApprovedMessage)
-		for i := 0; i < numServers; i++ {
-			if insurerList[i].Equal(newMessage.PubKey) {
-				seenList[i] = true
-				break
-			}
-		}
-	}
-
-	for i := 0; i < numServers; i++ {
-		if !seenList[i] {
-			t.Error("All servers not included in proof list.")
-		}
+		go serversIntermediate(t, secretKeys[i], serverKeys[i], connectionManagers[i])
 	}
 }

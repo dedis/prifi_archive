@@ -73,7 +73,7 @@ func (pm *PolicyMessage) getPRM() *PromiseResponseMessage {
 
 // Call this to initialize a PolicyMessage before Unmarshalling.
 func (pm *PolicyMessage) UnmarshalInit(t,r,n int, suite abstract.Suite) *PolicyMessage{
-	pm.cpm = new(CertifyPromiseMessage).UnmarshalInit(pt,r,n, suite)
+	pm.cpm = new(CertifyPromiseMessage).UnmarshalInit(t,r,n, suite)
 	pm.prm = new(PromiseResponseMessage).UnmarshalInit(suite)
 	return pm
 }

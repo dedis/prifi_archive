@@ -103,7 +103,7 @@ func selectInsurersBasic(serverList []abstract.Point, n int) []abstract.Point {
 
 func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, t, r, n int,
         serverList []abstract.Point,
-	selectInsurers func([]abstract.Point, int) []abstract.Point) (*LifePolicyModule, bool) {
+	selectInsurers func([]abstract.Point, int) []abstract.Point) bool {
 
 	// Initialize the policy.
 
@@ -127,18 +127,15 @@ func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, t, r, n in
 
 	// TODO: Add a timeout such that this process will end after a certain
 	// time and a new batch of insurers can be picked.
-
-	// TODO: Make it so that it stops as soon as we get R other insurers
-	// for t <= r <= n
 	for state.PromiseCertified() != nil {
 		for i := 0; i < n; i++ {
-			msg := new(PolicyMessage)
+			msg := new(PolicyMessage).UnmarshalInit(t,r,n, lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
-			msgType, err := lp.handlePolicyMessage(insurersList[i], msg)
+			lp.handlePolicyMessage(insurersList[i], msg)
 		}
 	}
 
-	return lp, true
+	return true
 }
 
 /* This function handles policy messages received. This function will handle
@@ -155,7 +152,7 @@ func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, t, r, n in
  * NOTE: An error need not be alarming. For example, if one node sends a
  * duplicate request, the policy can simply ignore the duplicate.
  */
-func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *PolicyMessage) (MessageType, error) {
+func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *PolicyMessage) (PolicyMessageType, error) {
 	switch msg.Type {
 		case CertifyPromise:
 			return CertifyPromise, lp.handleCertifyPromiseMessage(pubKey, msg.getCPM())
@@ -176,8 +173,12 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
  *	the error status (possibly nil)
  */
 func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, msg *CertifyPromiseMessage) error {
-
-	lp.insuredPromises[pubKey.String()][msg.Promise.Id()] = msg.Promise
+	if _, assigned := lp.insuredPromises[pubKey.String()]; !assigned{
+		lp.insuredPromises[pubKey.String()] = make(map[string]promise.Promise)
+	}
+	if _, assigned := lp.insuredPromises[pubKey.String()][msg.Promise.Id()]; !assigned {
+		lp.insuredPromises[pubKey.String()][msg.Promise.Id()] = msg.Promise
+	}
 	response, err := msg.Promise.ProduceResponse(msg.ShareIndex, lp.keyPair)
 	if err != nil {
 		return err
