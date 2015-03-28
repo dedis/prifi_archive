@@ -128,7 +128,7 @@ func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, t, r, n in
 	// TODO: Add a timeout such that this process will end after a certain
 	// time and a new batch of insurers can be picked.
 	for state.PromiseCertified() != nil {
-		for i := 0; i < n; i++ {
+		for i := 0; i < n; i++ {	
 			msg := new(PolicyMessage).UnmarshalInit(t,r,n, lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
 			lp.handlePolicyMessage(insurersList[i], msg)

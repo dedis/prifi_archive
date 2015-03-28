@@ -1,6 +1,7 @@
 package insure
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/dedis/crypto/abstract"
@@ -29,7 +30,7 @@ var lpn = 10
 // Variables for the servers to accept the policy
 var serverKeys = produceKeys()
 var secretKeys = produceKeys()
-var insurerList = produceInsuredList()
+var insurerListT = produceInsuredList()
 var connectionManagers = produceGoConnArray()
 var setupOkay = setupConn()
 
@@ -70,12 +71,21 @@ func produceGoConnArray() []*connMan.ChanConnManager {
 func setupConn() bool {
 	// Give server #1 connections to everyone else.
 	for i := 0; i < numServers; i++ {
-		goConn.AddConn(insurerList[i])
+		goConn.AddConn(insurerListT[i])
 	}
 
 	// Give everyone else connections to server #1
 	for i := 0; i < numServers; i++ {
 		connectionManagers[i].AddConn(keyPairT.Public)
+		
+		// Give everyone access to everyone else (Don't give access
+		// to oneself)
+		for j := 0; j < numServers; j++ {
+			if i != j {
+				connectionManagers[i].AddConn(insurerListT[j])
+			}
+		
+		}
 	}
 
 	return true
@@ -98,7 +108,7 @@ func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 			cpmMsg        := msg.getCPM()
 			storedPromise := policy.insuredPromises[keyPairT.Public.String()][cpmMsg.Promise.Id()]
 			if !cpmMsg.Promise.Equal(&storedPromise) {
-				t.Error("Promise not stored.")
+				panic("Promise not stored.")
 			}
 			return
 		}
@@ -111,7 +121,7 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 
 	// Invalid n
 /*	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
-		insurerList, nil, INSURE_GROUP, TSHARES, 0)
+		insurerListT, nil, INSURE_GROUP, TSHARES, 0)
 
 	if ok1 {
 		t.Fatal("Policy should fail if n < TSHARES.")
@@ -133,7 +143,7 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 	}
 
 	_, ok3 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
-		insurerList, badFunc, INSURE_GROUP, TSHARES, numServers)
+		insurerListT, badFunc, INSURE_GROUP, TSHARES, numServers)
 
 	if ok3 {
 		t.Fatal("Policy should fail not enough servers are given.")
@@ -147,7 +157,7 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 	}
 
 	policy:= new(LifePolicyModule).Init(keyPairT, goConn) 
-	ok := policy.TakeOutPolicy(secretKeyT, lpt, lpr, lpn, insurerList, nil)
+	ok := policy.TakeOutPolicy(secretKeyT, lpt, lpr, lpn, insurerListT, nil)
 
 	if !ok {
 		t.Error("Policy failed to be created.")
@@ -168,42 +178,50 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 
 // This function is the code run by the insurers. The server listens for a
 // CertifyPromiseMessage, sends a response, and then exits.
-func serversIntermediate(t *testing.T, secret,key *config.KeyPair, cm connMan.ConnManager) {
-
+func serversIntermediate(t *testing.T, finished, start *sync.WaitGroup, secret,key *config.KeyPair, cm connMan.ConnManager) {
+	defer finished.Done()
+	start.Wait()
 	policy := new(LifePolicyModule).Init(key, cm)
 	
 	// The insurer list should not include the server itself.
 	newInsurersList := make([]abstract.Point, numServers-1, numServers-1)
-	for i, j := 0, 0; i < numServers-1; i++ {
-		if !key.Public.Equal(insurerList[i]) {
-			newInsurersList[j] = insurerList[i]
+	for i, j := 0, 0; i < numServers; i++ {
+		if !key.Public.Equal(insurerListT[i]) {
+			newInsurersList[j] = insurerListT[i]
 			j += 1
 		}
 	}
 	
 	ok := policy.TakeOutPolicy(secret, lpt, lpr, lpn-1, newInsurersList, nil)
-
+	
 	if !ok {
-		t.Error("Policy failed to be created.")
+		panic("Policy failed to be created.")
 	}
 	
-	newPromiseState, ok := policy.promises[secretKeyT.Public.String()]
+	newPromiseState, ok := policy.promises[secret.Public.String()]
 	
-	if !ok || newPromiseState.Promise.Id() != secretKeyT.Public.String() {
-		t.Error("Promise failed to be stored.")
+	if !ok || newPromiseState.Promise.Id() != secret.Public.String() {
+		panic("Promise failed to be stored.")
 	}
 
 	if newPromiseState.PromiseCertified() != nil {
-		t.Error("Promise should be certified.")
+		panic("Promise should be certified.")
 	}
+
 }
 
 // This is a larger scale test. It insurers that all servers participating can
 // take out policies, ask each other for insurance, and produce a verified policy
 func TestTakeOutPolicyIntermediate(t *testing.T) {
 
+	start := new(sync.WaitGroup)
+	start.Add(1)
+	finished := new(sync.WaitGroup)
+	finished.Add(numServers)
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
-		go serversIntermediate(t, secretKeys[i], serverKeys[i], connectionManagers[i])
+		go serversIntermediate(t, finished, start, secretKeys[i], serverKeys[i], connectionManagers[i])
 	}
+	start.Done()
+	finished.Wait()
 }
