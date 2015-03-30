@@ -26,6 +26,8 @@ const (
 	CertifyPromise
 	PromiseResponse
 	PromiseToClient
+	ShareRevealRequest
+	ShareRevealResponse
 )
 
 type PolicyMessage struct {
@@ -33,6 +35,8 @@ type PolicyMessage struct {
 	cpm  *CertifyPromiseMessage
 	prm  *PromiseResponseMessage
 	ptcm *promise.Promise
+	sreq *PromiseShareMessage
+	srsp *PromiseShareMessage
 }
 
 /* Creates a new PolicyMessage
@@ -46,6 +50,34 @@ type PolicyMessage struct {
 func (pm *PolicyMessage) createCPMessage(m *CertifyPromiseMessage) *PolicyMessage {
 	pm.Type = CertifyPromise
 	pm.cpm  = m
+	return pm
+}
+
+/* Creates a new PolicyMessage
+ *
+ * Arguments:
+ *	m = A PromiseResponseMessage for sending over the network
+ *
+ * Returns:
+ *	A new PolicyMessage responsible for sending an PromiseResponseMessage
+ */
+func (pm *PolicyMessage) createSREQMessage(m *PromiseShareMessage) *PolicyMessage {
+	pm.Type = ShareRevealRequest
+	pm.sreq  = m
+	return pm
+}
+
+/* Creates a new PolicyMessage
+ *
+ * Arguments:
+ *	m = A PromiseResponseMessage for sending over the network
+ *
+ * Returns:
+ *	A new PolicyMessage responsible for sending an PromiseResponseMessage
+ */
+func (pm *PolicyMessage) createSRSPMessage(m *PromiseShareMessage) *PolicyMessage {
+	pm.Type = ShareRevealResponse
+	pm.srsp  = m
 	return pm
 }
 
@@ -84,11 +116,23 @@ func (pm *PolicyMessage) getPTCM() *promise.Promise {
 	return pm.ptcm
 }
 
+// Returns the PromiseResponseMessage of this PolicyMessage
+func (pm *PolicyMessage) getSREQ() *PromiseShareMessage {
+	return pm.sreq
+}
+
+// Returns the PromiseResponseMessage of this PolicyMessage
+func (pm *PolicyMessage) getSRSP() *PromiseShareMessage {
+	return pm.srsp
+}
+
 // Call this to initialize a PolicyMessage before Unmarshalling.
 func (pm *PolicyMessage) UnmarshalInit(t,r,n int, suite abstract.Suite) *PolicyMessage{
 	pm.cpm  = new(CertifyPromiseMessage).UnmarshalInit(t,r,n, suite)
 	pm.prm  = new(PromiseResponseMessage).UnmarshalInit(suite)
 	pm.ptcm = new(promise.Promise).UnmarshalInit(t,r,n, suite)
+	pm.sreq = new(PromiseShareMessage).UnmarshalInit(suite)
+	pm.srsp = new(PromiseShareMessage).UnmarshalInit(suite)
 	return pm
 }
 
@@ -106,6 +150,10 @@ func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 			sub, err = pm.prm.MarshalBinary()
 		case PromiseToClient:
 			sub, err = pm.ptcm.MarshalBinary()
+		case ShareRevealRequest:
+			sub, err = pm.sreq.MarshalBinary()
+		case ShareRevealResponse:
+			sub, err = pm.srsp.MarshalBinary()
 	}
 	if err == nil {
 		b.Write(sub)
@@ -126,6 +174,10 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 		err    = pm.prm.UnmarshalBinary(msgBytes)
 	case PromiseToClient:
 		err    = pm.ptcm.UnmarshalBinary(msgBytes)
+	case ShareRevealRequest:
+		err    = pm.sreq.UnmarshalBinary(msgBytes)
+	case ShareRevealResponse:
+		err    = pm.srsp.UnmarshalBinary(msgBytes)
 	}
 	return err
 }
@@ -402,7 +454,6 @@ func (msg *PromiseResponseMessage) MarshalBinary() ([]byte, error) {
 func (msg *PromiseResponseMessage) UnmarshalBinary(buf []byte) error {
   
   	if len(buf) < 4*uint32Size {
-  		panic("BOOM!")
 		return errors.New("Buffer size too small")
 	}
   
@@ -412,7 +463,6 @@ func (msg *PromiseResponseMessage) UnmarshalBinary(buf []byte) error {
 	msg.ShareIndex  = int(binary.LittleEndian.Uint32(buf[3*uint32Size:]))
 
  	if len(buf) < 4*uint32Size + idLen + promiserIdLen + responseSize {
- 		panic("BAM BOOM!")
 		return errors.New("Buffer size too small")
 	}
 
@@ -464,9 +514,9 @@ func (msg *PromiseResponseMessage) UnmarshalFrom(r io.Reader) (int, error) {
 	if err != nil {
 		return n, err
 	}
-	responseLen := int(binary.LittleEndian.Uint32(buf))
-	idLen          := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
-	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+	idLen          := int(binary.LittleEndian.Uint32(buf))
+	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
+	responseLen    := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
 
 	// Calculate the final buffer, copy the old data to it, and fill it
 	// for unmarshalling
@@ -491,6 +541,253 @@ func (msg *PromiseResponseMessage) String()  string {
 	s += "PromiserId => " + msg.PromiserId + ",\n"
 	s += "Id => " + msg.Id + ",\n"
 	s += "Response => " + msg.Response.String() + "\n"
+	s += "}\n"
+	return s
+}
+
+
+/* The PromiseShareMessage message is the heart of Promise.RevealShare networking.
+ * Clients can use this message to send requests to insurers to reveal a share.
+ * Insurers can use this message to send back a result. The only difference is
+ * in whether share is set.
+ */
+type PromiseShareMessage struct {
+
+	// The index of the share to be revealed
+	ShareIndex int
+
+	// A string of the long term public key of the promiser.
+	PromiserId string
+
+	// A string of the public key of the secret promised.
+	Id string
+
+	// The secret share of the insurer for responses, nil for requests.
+	Share abstract.Secret
+}
+
+/* Creates a new PromiseShareMessage to be used for requests to reveal a share.
+ *
+ * Arguments:
+ *	shareIndex  = the index of the share to be revealed.
+ *      promise     = the promise holding the secret that is attempting to be
+ *                    reconstructed.
+ *
+ * Returns:
+ *	A new PromiseShareMessage
+ */
+func (msg *PromiseShareMessage) createRequestMessage(shareIndex int,
+	promise promise.Promise) *PromiseShareMessage {
+	msg.Id         = promise.Id()
+	msg.PromiserId = promise.PromiserId()
+	msg.ShareIndex = shareIndex
+	msg.Share      = nil
+	return msg
+}
+
+/* Creates a new PromiseShareMessage insurers can use to reveal a shared secret.
+ *
+ * Arguments:
+ *	shareIndex  = the index of the share to be revealed.
+ *      promise     = the promise holding the secret that is attempting to be
+ *                    reconstructed.
+ *      share       = the share to reconstruct.
+ *
+ * Returns:
+ *	A new PromiseShareMessage
+ */
+func (msg *PromiseShareMessage) createResponseMessage(shareIndex int,
+	promise promise.Promise, share abstract.Secret) *PromiseShareMessage {
+	msg.Id         = promise.Id()
+	msg.PromiserId = promise.PromiserId()
+	msg.ShareIndex = shareIndex
+	msg.Share      = share
+	return msg
+}
+
+/* Initializes a PromiseShareMessage for unmarshalling
+ *
+ * Arguments
+ *    suite = the suite used for the secret share
+ *
+ * Returns
+ *   An initialized PromiseShareMessage ready to be unmarshalled
+ */
+func (msg *PromiseShareMessage) UnmarshalInit(suite abstract.Suite) *PromiseShareMessage {
+	msg.Share = suite.Secret()
+	return msg
+}
+
+// Compares two messages to see if they are equal
+func (msg *PromiseShareMessage) Equal(msg2 *PromiseShareMessage) bool {
+	return msg.ShareIndex == msg2.ShareIndex &&
+	       msg.PromiserId == msg2.PromiserId &&
+	       msg.Id == msg2.Id &&
+	       (msg.Share == nil && msg2.Share == nil ||
+	          (msg.Share != nil && msg2.Share != nil &&
+	            msg.Share.Equal(msg2.Share)))
+}
+
+
+/* Returns the number of bytes used by this struct when marshalled
+ *
+ * Returns
+ *   The marshal size
+ * Note
+ *   Since promise.Response can be variable (it can contain acceptance or
+ *   rejection messages), this can not be used before UnMarshalling.
+ */
+func (msg *PromiseShareMessage) MarshalSize() int {
+	shareSize := 0
+	if msg.Share != nil {
+		shareSize = msg.Share.MarshalSize()
+	}	
+	return 4*uint32Size + len(msg.Id) + len(msg.PromiserId) + shareSize
+}
+
+/* Marshals a PromiseResponseMessage struct into a byte array
+ *
+ * Returns
+ *   A buffer of the marshalled struct
+ *   The error status of the marshalling (nil if no error)
+ *
+ * Note
+ *   The buffer is formatted as follows:
+ *
+ *      ||Response_Size||ShareIndex||Response||
+ *
+ */
+func (msg *PromiseShareMessage) MarshalBinary() ([]byte, error) {
+	buf := make([]byte, msg.MarshalSize())
+	idLen  := len(msg.Id)
+	promiserIdLen := len(msg.PromiserId)
+	shareSize := 0
+	if msg.Share != nil {
+		shareSize = msg.Share.MarshalSize()
+	}
+
+	binary.LittleEndian.PutUint32(buf, uint32(idLen))
+	binary.LittleEndian.PutUint32(buf[uint32Size:], uint32(promiserIdLen))
+	binary.LittleEndian.PutUint32(buf[2*uint32Size:], uint32(shareSize))
+	binary.LittleEndian.PutUint32(buf[3*uint32Size:], uint32(msg.ShareIndex))
+
+	copy(buf[4*uint32Size:], []byte(msg.Id))
+	copy(buf[4*uint32Size + idLen:], []byte(msg.PromiserId))
+
+	if msg.Share != nil {
+		shareBuf, err := msg.Share.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		copy(buf[4*uint32Size + idLen + promiserIdLen:], shareBuf)
+	}
+	return buf, nil
+}
+
+/* Unmarshals a PromiseResponseMessage from a byte buffer
+ *
+ * Arguments
+ *    buf = the buffer containing the Promise
+ *
+ * Returns
+ *   The error status of the unmarshalling (nil if no error)
+ */
+func (msg *PromiseShareMessage) UnmarshalBinary(buf []byte) error {
+  
+  	if len(buf) < 4*uint32Size {
+		return errors.New("Buffer size too small")
+	}
+  
+	idLen          := int(binary.LittleEndian.Uint32(buf))
+	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
+	shareSize      := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+	msg.ShareIndex  = int(binary.LittleEndian.Uint32(buf[3*uint32Size:]))
+
+ 	if len(buf) < 4*uint32Size + idLen + promiserIdLen + shareSize {
+		return errors.New("Buffer size too small")
+	}
+
+	// Decode pubKey and pubPoly
+	bufPos      := 4*uint32Size
+	msg.Id = string(buf[bufPos:bufPos+idLen])
+	bufPos += idLen
+	
+	msg.PromiserId = string(buf[bufPos:bufPos+promiserIdLen])
+	bufPos += promiserIdLen
+
+	if shareSize == 0 {
+		msg.Share = nil
+	} else if err := msg.Share.UnmarshalBinary(buf[bufPos : bufPos+shareSize]);
+		err != nil {
+		return err
+	}
+	return nil
+}
+
+/* Marshals a CertifyPromiseMessage struct using an io.Writer
+ *
+ * Arguments
+ *    w = the writer to use for marshalling
+ *
+ * Returns
+ *   The number of bytes written
+ *   The error status of the write (nil if no errors)
+ */
+func (msg *PromiseShareMessage) MarshalTo(w io.Writer) (int, error) {
+	buf, err := msg.MarshalBinary()
+	if err != nil {
+		return 0, err
+	}
+	return w.Write(buf)
+}
+
+/* Unmarshals a Promise struct using an io.Reader
+ *
+ * Arguments
+ *    r = the reader to use for unmarshalling
+ *
+ * Returns
+ *   The number of bytes read
+ *   The error status of the read (nil if no errors)
+ */
+func (msg *PromiseShareMessage) UnmarshalFrom(r io.Reader) (int, error) {
+	// Retrieve responseSize to find the entire length of the message
+	buf := make([]byte, 3*uint32Size)
+	n, err := io.ReadFull(r, buf)
+	if err != nil {
+		return n, err
+	}
+	idLen          := int(binary.LittleEndian.Uint32(buf))
+	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
+	shareSizeLen   := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+
+	// Calculate the final buffer, copy the old data to it, and fill it
+	// for unmarshalling
+	finalLen := 4*uint32Size + idLen + promiserIdLen + shareSizeLen
+	finalBuf := make([]byte, finalLen)
+	copy(finalBuf, buf)
+	m, err := io.ReadFull(r, finalBuf[n:])
+	if err != nil {
+		return n + m, err
+	}
+	return n + m, msg.UnmarshalBinary(finalBuf)
+}
+
+/* Returns a string representation of the CertifyPromiseMessage for easy debugging
+ *
+ * Returns
+ *   The CertifyPromiseMessage's string representation
+ */
+func (msg *PromiseShareMessage) String()  string {
+	shareString := "None"
+	if msg.Share != nil {
+		shareString = msg.Share.String()
+	}
+	s := "{PromiseShareMessage:\n"
+	s += "ShareIndex => " + strconv.Itoa(msg.ShareIndex) + ",\n"
+	s += "PromiserId => " + msg.PromiserId + ",\n"
+	s += "Id => " + msg.Id + ",\n"
+	s += "Share => " + shareString + "\n"
 	s += "}\n"
 	return s
 }

@@ -41,7 +41,7 @@ type LifePolicyModule struct {
 	
 	// A hash of promises that this server is insuring
 	// PromiserLongTermKey => PromiserShortTermKey => Promise
-	insuredPromises map[string](map[string]promise.Promise)
+	insuredPromises map[string](map[string]*promise.State)
 
 	// A hash of promises sent to this server from others servers.
 	// PromiserLongTermKey => PromiserShortTermKey => State
@@ -67,7 +67,7 @@ func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.Con
 	lp.n               = n
 	lp.cman            = cman
 	lp.promises        = make(map[string]*promise.State)
-	lp.insuredPromises = make(map[string](map[string]promise.Promise))
+	lp.insuredPromises = make(map[string](map[string]*promise.State))
 	lp.serverPromises  = make(map[string](map[string]*promise.State))
 	return lp
 }
@@ -156,6 +156,46 @@ func (lp *LifePolicyModule) SendClientPolicy(clientLongPubKey, secretPubKey abst
 	lp.cman.Put(clientLongPubKey, policyMsg)
 }
 
+func (lp *LifePolicyModule) ReconstructSecret(longTermKey,secretPubKey abstract.Point) error {
+
+	state        := lp.serverPromises[longTermKey.String()][secretPubKey.String()]
+	insurersList := state.Promise.Insurers()
+
+	// Send a request off to each server
+	for i := 0; i < lp.n; i++ {
+		requestMsg := new(PromiseShareMessage).createRequestMessage(i, state.Promise)
+		policyMsg  := new(PolicyMessage).createSREQMessage(requestMsg)
+		lp.cman.Put(insurersList[i], policyMsg)
+	}
+
+	// TODO: Add a timeout such that this process will end after a certain
+	// amount of time.
+	
+	// It is important to have this seen before array. The reason is that
+	// Secret reconstruction will panic if not enough shares are provided.
+	// Hence, this is used to make sure that a malicious insurer does not
+	// send multiple shares and trick the client into thinking it has 
+	// received unique ones.
+	seenBefore := make([]bool, lp.n, lp.n)
+	for i:= 0; i < lp.n; i++ {
+		seenBefore[i] = false;
+	}
+	sharesRetrieved := 0;
+	for sharesRetrieved < lp.t {
+		for i := 0; i < lp.n; i++ {	
+			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
+			lp.cman.Get(insurersList[i], msg)
+			msgType, err := lp.handlePolicyMessage(insurersList[i], msg)
+			if msgType == ShareRevealResponse && err == nil &&
+			   seenBefore[i] == false {
+				seenBefore[i] = true
+				sharesRetrieved += 1
+			}
+		}
+	}
+	return nil
+}
+
 /* This function handles policy messages received. This function will handle
  * updating the life policy appropriately. Simply give it the policy message
  * and let it handle the rest.
@@ -178,6 +218,10 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
 			return PromiseResponse, lp.handlePromiseResponseMessage(msg.getPRM())
 		case PromiseToClient:
 			return PromiseToClient, lp.handlePromiseToClientMessage(pubKey, msg.getPTCM())
+		case ShareRevealRequest:
+			return ShareRevealRequest, lp.handleRevealShareRequestMessage(pubKey, msg.getSREQ())
+		case ShareRevealResponse:
+			return ShareRevealResponse, lp.handleRevealShareResponseMessage(msg.getSRSP())
 	}
 	return Error, errors.New("Invald message type")
 }
@@ -196,18 +240,36 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
  * a promise that already exists.
  */
 func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, msg *CertifyPromiseMessage) error {
-	if _, assigned := lp.insuredPromises[msg.Promise.PromiserId()]; !assigned{
-		lp.insuredPromises[msg.Promise.PromiserId()] = make(map[string]promise.Promise)
+	promiserId := msg.Promise.PromiserId()
+	id         := msg.Promise.Id()
+	if _, assigned := lp.insuredPromises[promiserId]; !assigned{
+		lp.insuredPromises[promiserId] = make(map[string]*promise.State)
 	}
-	if _, assigned := lp.insuredPromises[msg.Promise.PromiserId()][msg.Promise.Id()]; !assigned {
-		lp.insuredPromises[msg.Promise.PromiserId()][msg.Promise.Id()] = msg.Promise
+	if _, assigned := lp.insuredPromises[promiserId][id]; !assigned {
+		state := new(promise.State).Init(msg.Promise)
+		lp.insuredPromises[promiserId][id] = state
+		
+		// The following must be done since shares can not be revealed unless
+		// a promise is certified. Hence, an insurer that is requested to
+		// insure a promise must make sure that it receives enough signatures
+		// for the promise to be considered certified. Since it will be doing
+		// so, it might as well added the promise to its serverPromises as well
+		// to make itself a client of the promiser.
+		//
+		// PS: the pointers stored are to the same object.
+			if _, assigned := lp.serverPromises[promiserId]; !assigned{
+				lp.serverPromises[promiserId] = make(map[string]*promise.State)
+			}
+			if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
+				lp.serverPromises[promiserId][id] = state
+			}
 	}
-	prom := lp.insuredPromises[msg.Promise.PromiserId()][msg.Promise.Id()]
-	response, err := prom.ProduceResponse(msg.ShareIndex, lp.keyPair)
+	state := lp.insuredPromises[promiserId][id]
+	response, err := state.Promise.ProduceResponse(msg.ShareIndex, lp.keyPair)
 	if err != nil {
 		return err
 	}
-	replyMsg := new(PromiseResponseMessage).createMessage(msg.ShareIndex, prom, response)
+	replyMsg := new(PromiseResponseMessage).createMessage(msg.ShareIndex, state.Promise, response)
 	lp.cman.Put(pubKey, new(PolicyMessage).createPRMessage(replyMsg))
 	return nil
 }
@@ -223,7 +285,6 @@ func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, m
  *	Whether or not the request was accepted.
  */
 func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMessage) error {
-
 	if state, ok := lp.promises[msg.Id]; ok {
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
@@ -231,7 +292,8 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 	if state, ok := lp.serverPromises[msg.PromiserId][msg.Id]; ok {
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
-	}	
+	}
+	panic("DEATH AND DOOM")
 	return errors.New("Promise specified does not exist.")
 }
 
@@ -252,4 +314,39 @@ func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, 
 	}
 	insurers := state.Promise.Insurers()
 	return lp.getPromiseCertification(state, insurers)
+}
+
+
+func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Point, msg *PromiseShareMessage) error {
+	promiserId := msg.PromiserId
+	id := msg.Id
+	if state, assigned := lp.insuredPromises[promiserId][id]; assigned {
+		if state.PromiseCertified() != nil {
+			// A promise must be certified before a share can be revealed.
+			// get the certification if so.
+			
+			// TODO if you add a timelimit to getPromiseCertification
+			// make sure that you check it here before continuing.
+			insurers := state.Promise.Insurers()
+			lp.getPromiseCertification(state, insurers)
+		}
+		share := state.RevealShare(msg.ShareIndex, lp.keyPair)
+		
+		responseMsg := new(PromiseShareMessage).createResponseMessage(
+			msg.ShareIndex, state.Promise, share)
+		lp.cman.Put(pubKey, new(PolicyMessage).createSRSPMessage(responseMsg))
+		return nil
+	}
+	return errors.New("This server insurers no such Promise.")
+}
+
+// Add the share to the Promise if it is valid. Ignore it otherwise.
+func (lp *LifePolicyModule) handleRevealShareResponseMessage(msg *PromiseShareMessage) error {
+	if state, assigned := lp.serverPromises[msg.PromiserId][msg.Id]; assigned {
+		if err := state.Promise.VerifyRevealedShare(msg.ShareIndex, msg.Share); err != nil {
+			return err
+		}
+		state.PriShares.SetShare(msg.ShareIndex, msg.Share)
+	}
+	return errors.New("This server does not know of the specified promise.")
 }
