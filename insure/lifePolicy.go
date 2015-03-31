@@ -29,6 +29,8 @@ type LifePolicyModule struct {
 	// The long term key pair of the server
 	keyPair *config.KeyPair
 	
+	serverId string
+	
 	t int
 	
 	r int
@@ -38,12 +40,10 @@ type LifePolicyModule struct {
 	// A hash of promises this server has made.
 	// promise_id => State
 	promises map[string]*promise.State
-	
-	// A hash of promises that this server is insuring
-	// PromiserLongTermKey => PromiserShortTermKey => Promise
-	insuredPromises map[string](map[string]*promise.State)
 
 	// A hash of promises sent to this server from others servers.
+	// Promises that this server is insuring and promises received from
+	// other servers are stored here.
 	// PromiserLongTermKey => PromiserShortTermKey => State
 	serverPromises map[string](map[string]*promise.State)
 
@@ -62,12 +62,12 @@ type LifePolicyModule struct {
  */
 func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.ConnManager) *LifePolicyModule {
 	lp.keyPair         = kp
+	lp.serverId        = kp.Public.String()
 	lp.t               = t
 	lp.r               = r
 	lp.n               = n
 	lp.cman            = cman
 	lp.promises        = make(map[string]*promise.State)
-	lp.insuredPromises = make(map[string](map[string]*promise.State))
 	lp.serverPromises  = make(map[string](map[string]*promise.State))
 	return lp
 }
@@ -151,9 +151,13 @@ func (lp *LifePolicyModule) getPromiseCertification(state *promise.State, insure
 	return nil
 }
 
-func (lp *LifePolicyModule) SendClientPolicy(clientLongPubKey, secretPubKey abstract.Point) {
-	policyMsg := new(PolicyMessage).createPTCMessage(&lp.promises[secretPubKey.String()].Promise)
-	lp.cman.Put(clientLongPubKey, policyMsg)
+func (lp *LifePolicyModule) SendClientPolicy(clientLongPubKey, secretPubKey abstract.Point) error {
+	if state, assigned := lp.promises[secretPubKey.String()]; assigned {
+		policyMsg := new(PolicyMessage).createPTCMessage(&state.Promise)
+		lp.cman.Put(clientLongPubKey, policyMsg)	
+		return nil
+	}
+	return errors.New("Promise does not exist")
 }
 
 func (lp *LifePolicyModule) ReconstructSecret(longTermKey,secretPubKey abstract.Point) error {
@@ -242,29 +246,14 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
 func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, msg *CertifyPromiseMessage) error {
 	promiserId := msg.Promise.PromiserId()
 	id         := msg.Promise.Id()
-	if _, assigned := lp.insuredPromises[promiserId]; !assigned{
-		lp.insuredPromises[promiserId] = make(map[string]*promise.State)
+	if _, assigned := lp.serverPromises[promiserId]; !assigned{
+		lp.serverPromises[promiserId] = make(map[string]*promise.State)
 	}
-	if _, assigned := lp.insuredPromises[promiserId][id]; !assigned {
+	if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
 		state := new(promise.State).Init(msg.Promise)
-		lp.insuredPromises[promiserId][id] = state
-		
-		// The following must be done since shares can not be revealed unless
-		// a promise is certified. Hence, an insurer that is requested to
-		// insure a promise must make sure that it receives enough signatures
-		// for the promise to be considered certified. Since it will be doing
-		// so, it might as well added the promise to its serverPromises as well
-		// to make itself a client of the promiser.
-		//
-		// PS: the pointers stored are to the same object.
-			if _, assigned := lp.serverPromises[promiserId]; !assigned{
-				lp.serverPromises[promiserId] = make(map[string]*promise.State)
-			}
-			if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
-				lp.serverPromises[promiserId][id] = state
-			}
+		lp.serverPromises[promiserId][id] = state
 	}
-	state := lp.insuredPromises[promiserId][id]
+	state := lp.serverPromises[promiserId][id]
 	response, err := state.Promise.ProduceResponse(msg.ShareIndex, lp.keyPair)
 	if err != nil {
 		return err
@@ -285,42 +274,55 @@ func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, m
  *	Whether or not the request was accepted.
  */
 func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMessage) error {
-	if state, ok := lp.promises[msg.Id]; ok {
+	if state, ok := lp.promises[msg.Id]; ok &&
+		msg.PromiserId == lp.keyPair.Public.String() {
+
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
-	}
+	}	
 	if state, ok := lp.serverPromises[msg.PromiserId][msg.Id]; ok {
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
 	}
+
 	panic("DEATH AND DOOM")
 	return errors.New("Promise specified does not exist.")
 }
 
+// TODO check to make sure origin of the promise and the promiser are the same.
 func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, prom *promise.Promise) error {
-	if _, assigned := lp.serverPromises[pubKey.String()]; !assigned{
-		lp.serverPromises[pubKey.String()] = make(map[string]*promise.State)
+	if prom.PromiserId() != pubKey.String() {
+		return errors.New("The sender does not own the promise sent.")
 	}
-	if _, assigned := lp.serverPromises[pubKey.String()][prom.Id()]; !assigned {
-		state := new(promise.State).Init(*prom)
-		lp.serverPromises[pubKey.String()][prom.Id()] = state
+	if lp.serverId == prom.PromiserId() {
+		return errors.New("Sent promise to oneself. Ignoring.")
 	}
+	promiserId := prom.PromiserId()
+	id         := prom.Id()
 
-	state := lp.serverPromises[pubKey.String()][prom.Id()]
+	if _, assigned := lp.serverPromises[promiserId]; !assigned {
+		lp.serverPromises[promiserId] = make(map[string]*promise.State)
+	}
+	if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
+		state := new(promise.State).Init(*prom)
+		lp.serverPromises[promiserId][id] = state
+	}
+	state := lp.serverPromises[promiserId][id]
 
 	// If this promise is already considered valid, ignore it.
 	if state.PromiseCertified() == nil {
+		panic("Should not happen in tests")
 		return nil
 	}
+
 	insurers := state.Promise.Insurers()
 	return lp.getPromiseCertification(state, insurers)
 }
 
-
 func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Point, msg *PromiseShareMessage) error {
 	promiserId := msg.PromiserId
 	id := msg.Id
-	if state, assigned := lp.insuredPromises[promiserId][id]; assigned {
+	if state, assigned := lp.serverPromises[promiserId][id]; assigned {
 		if state.PromiseCertified() != nil {
 			// A promise must be certified before a share can be revealed.
 			// get the certification if so.
@@ -330,8 +332,9 @@ func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Poin
 			insurers := state.Promise.Insurers()
 			lp.getPromiseCertification(state, insurers)
 		}
+		// TODO change RevealShare to do standard checking and to return
+		// an error if it finds one.
 		share := state.RevealShare(msg.ShareIndex, lp.keyPair)
-		
 		responseMsg := new(PromiseShareMessage).createResponseMessage(
 			msg.ShareIndex, state.Promise, share)
 		lp.cman.Put(pubKey, new(PolicyMessage).createSRSPMessage(responseMsg))

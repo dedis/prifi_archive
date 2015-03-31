@@ -102,8 +102,8 @@ func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 
 		// If a CertifyPromiseMessage, exit
 		if msgType == CertifyPromise && ok == nil {
-			cpmMsg        := msg.getCPM()
-			state := policy.insuredPromises[keyPairT.Public.String()][cpmMsg.Promise.Id()]
+			cpmMsg  := msg.getCPM()
+			state := policy.serverPromises[keyPairT.Public.String()][cpmMsg.Promise.Id()]
 			if !cpmMsg.Promise.Equal(&state.Promise) {
 				panic("Promise not stored.")
 			}
@@ -239,17 +239,22 @@ func serversAdvanced(t *testing.T, start, middle, end *sync.WaitGroup,
 	// The insurer list should not include the server itself.
 	policy.promises[secret.Public.String()].Promise.Insurers()
 	for i := 0; i < numServers; i++ {
-		policy.SendClientPolicy(insurerListT[i], secret.Public)
+		err := policy.SendClientPolicy(insurerListT[i], secret.Public)
+		if err != nil {
+			panic(err)
+		}
 	}
 	middle.Done()
 	middle.Wait()
-	for i := 0; i < numServers; i++ {	
-		msg := new(PolicyMessage).UnmarshalInit(policy.t,policy.r,policy.n, policy.keyPair.Suite)
-		policy.cman.Get(insurerListT[0], msg)
-		policy.handlePolicyMessage(insurerListT[0], msg)
-	}
-	panic("Boom")
-	for i := 0; i < len(secretKeys); i++ {	
+	//for repeat :=0; repeat < 10; repeat++ {
+		for i := 0; i < numServers; i++ {	
+			msg := new(PolicyMessage).UnmarshalInit(policy.t,policy.r,policy.n, policy.keyPair.Suite)
+			policy.cman.Get(insurerListT[i], msg)
+			policy.handlePolicyMessage(insurerListT[i], msg)
+		}
+	//}
+
+	for i := 0; i < len(secretKeys); i++ {
 		if secret.Public.Equal(secretKeys[i].Public) ||
 		   key.Public.Equal(insurerListT[i])  {
 			continue
@@ -267,7 +272,7 @@ func serversAdvanced(t *testing.T, start, middle, end *sync.WaitGroup,
 // with the insurers to make sure the promise is certified and then accepts it as
 // certified
 func TestTakeOutPolicyAdvanced(t *testing.T) {
-/*
+
 	start := new(sync.WaitGroup)
 	start.Add(1)
 	middle := new(sync.WaitGroup)
@@ -280,5 +285,5 @@ func TestTakeOutPolicyAdvanced(t *testing.T) {
 			secretKeys, connectionManagers[i]) 
 	}
 	start.Done()
-	end.Wait()*/
+	end.Wait()
 }
