@@ -29,21 +29,21 @@ func main() {
 	// fmt.Printf("Starting with %v\n", messages)
 
 	// ElGamal-encrypt all these messages with the server key
-	// var X, Y [4]abstract.Point
-	// r := suite.Secret() // temporary
-	// for i := 0; i < 4; i++ {
-	// 	r.Pick(rand)
-	// 	X[i] = suite.Point().Mul(nil, r)
-	// 	Y[i] = suite.Point().Mul(H, r) // ElGamal blinding factor
-	// 	Y[i].Add(Y[i], messages[i])    // Encrypted client public key
-	// }
+	var X, Y [4]abstract.Point
+	r := suite.Secret() // temporary
+	for i := 0; i < 4; i++ {
+		r.Pick(rand)
+		X[i] = suite.Point().Mul(nil, r)
+		Y[i] = suite.Point().Mul(H, r) // ElGamal blinding factor
+		Y[i].Add(Y[i], messages[i])    // Encrypted client public key
+	}
 
 	// For butterfly and conflict (so far)
-	var X, Y [4]abstract.Point
-	for i := 0; i < 4; i++ {
-		X[i] = suite.Point().Base()
-		Y[i] = messages[i]
-	}
+	// var X, Y [4]abstract.Point
+	// for i := 0; i < 4; i++ {
+	// 	X[i] = suite.Point().Base()
+	// 	Y[i] = messages[i]
+	// }
 
 	// Package these up into separate Elgamal boxes
 	pairs := make([]shuf.Elgamal, 4)
@@ -68,8 +68,9 @@ func main() {
 
 	// s := shuf.IdShuffle{}
 	// s := shuf.DumbShuffle{2}
+	s := shuf.NewSubsetShuffle(2, 1)
 	// s := shuf.NewButterfly(&defaultOpts, 2)
-	s := (*shuf.ConflictSwap)(shuf.NewButterfly(&defaultOpts, 23457))
+	// s := (*shuf.ConflictSwap)(shuf.NewButterfly(&defaultOpts, 23457))
 	// s := shuf.NeffShuffle{}
 
 	gochan.ChanShuffle(s, &defaultOpts, pairs)
