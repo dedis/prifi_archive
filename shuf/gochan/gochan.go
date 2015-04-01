@@ -45,7 +45,14 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal,
 		// Verification step
 		go func(i int) {
 			for {
-				_ = <-proofs[i]
+				p := <-proofs[i]
+				err := s.VerifyShuffle(p.newpairs, p.oldpairs, p.h, inf, p.proof)
+				if err != nil {
+					fmt.Printf("Node %v found a proof error: %s\n", i, err.Error())
+					for cl := range cproofs {
+						cproofs[cl] <- p
+					}
+				}
 			}
 		}(i)
 
@@ -125,11 +132,25 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal,
 		}(i)
 	}
 
-	// Print out the order as it comes in
-	for i := range result {
-		go func(i int) {
+	for i := range cproofs {
+		done := false
+
+		// All clients check for proofs of false shuffles
+		go func(i int, done *bool) {
+			for !(*done) {
+				p := <-cproofs[i]
+				err := s.VerifyShuffle(p.newpairs, p.oldpairs, p.h, inf, p.proof)
+				if err != nil {
+					fmt.Printf("Client %v found a proof error: %s\n", i, err.Error())
+					*done = true
+				}
+			}
+		}(i, &done)
+
+		// Print out the order as it comes in
+		go func(i int, done *bool) {
 			counter := 0
-			for counter < inf.NumClients {
+			for counter < inf.NumClients && !(*done) {
 				finalGamal := <-result[i]
 				counter += len(finalGamal.Y)
 				for _, val := range finalGamal.Y {
@@ -141,8 +162,9 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal,
 					}
 				}
 			}
+			*done = true
 			wg.Done()
-		}(i)
+		}(i, &done)
 	}
 
 }
