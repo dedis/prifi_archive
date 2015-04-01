@@ -8,23 +8,24 @@ import (
 // Identity shuffle
 type IdShuffle struct{}
 
-func (i IdShuffle) ShuffleStep(pairs Elgamal, node NodeId,
-	round int, inf *Info) []RouteInstr {
-	pairs = decryptPairs(pairs, inf, node.Physical)
-	next := node.Physical + 1
-	if next >= inf.NumNodes {
-		return []RouteInstr{RouteInstr{nil, pairs}}
-	} else {
-		return []RouteInstr{RouteInstr{&NodeId{next, next}, pairs}}
+func (id IdShuffle) ShuffleStep(pairs Elgamal, node int,
+	round int, inf *Info, H abstract.Point) RouteInstr {
+	pairs, _ = decryptPairs(pairs, inf, node, H)
+	instr := RouteInstr{Pairs: pairs}
+	next := node + 1
+	if next < inf.NumNodes {
+		instr.To = []int{next}
 	}
+	return instr
 }
 
-func (id IdShuffle) InitialNode(client int, inf *Info) NodeId {
-	return NodeId{0, 0}
+func (id IdShuffle) InitialNode(client int, inf *Info) int {
+	return 0
 }
 
-func (id IdShuffle) MergeGamal(apairs *Elgamal, bpairs Elgamal) *Elgamal {
-	return defaultMergeGamal(apairs, bpairs)
+func (id IdShuffle) VerifyShuffle(newPairs, oldPairs Elgamal, h abstract.Point,
+	inf *Info, prf []byte) error {
+	return nil
 }
 
 // Random, but insecure shuffle
@@ -32,31 +33,36 @@ type DumbShuffle struct {
 	Seed int64
 }
 
-func (d DumbShuffle) InitialNode(client int, inf *Info) NodeId {
-	return NodeId{0, 0}
+func (d DumbShuffle) InitialNode(client int, inf *Info) int {
+	return 0
 }
 
-func (d DumbShuffle) ShuffleStep(pairs Elgamal, node NodeId,
-	round int, inf *Info) []RouteInstr {
-	newX := make([]abstract.Point, len(pairs.X))
-	newY := make([]abstract.Point, len(pairs.Y))
+func (d DumbShuffle) ShuffleStep(pairs Elgamal, node int,
+	round int, inf *Info, H abstract.Point) RouteInstr {
+
+	// Create new pairs from a random permutation
+	X := make([]abstract.Point, len(pairs.X))
+	Y := make([]abstract.Point, len(pairs.Y))
 	rand.Seed(d.Seed)
-	p := rand.Perm(len(newX))
+	p := rand.Perm(len(pairs.X))
 	for i := range p {
-		newX[i] = pairs.X[p[i]]
-		newY[i] = pairs.Y[p[i]]
+		X[i] = pairs.X[p[i]]
+		Y[i] = pairs.Y[p[i]]
 	}
-	newpairs := Elgamal{newX, newY, nil}
-	newpairs = decryptPairs(newpairs, inf, node.Physical)
+	pairs.X = X
+	pairs.Y = Y
+	pairs, _ = decryptPairs(pairs, inf, node, H)
 
-	next := node.Physical + 1
+	// Direct it to the next in line
+	instr := RouteInstr{Pairs: pairs}
+	next := node + 1
 	if next >= inf.NumNodes {
-		return []RouteInstr{RouteInstr{nil, newpairs}}
-	} else {
-		return []RouteInstr{RouteInstr{&NodeId{next, next}, newpairs}}
+		instr.To = []int{next}
 	}
+	return instr
 }
 
-func (id DumbShuffle) MergeGamal(apairs *Elgamal, bpairs Elgamal) *Elgamal {
-	return defaultMergeGamal(apairs, bpairs)
+func (d DumbShuffle) VerifyShuffle(newPairs, oldPairs Elgamal,
+	h abstract.Point, inf *Info, prf []byte) error {
+	return nil
 }

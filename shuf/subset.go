@@ -1,15 +1,22 @@
 package shuf
 
 import (
+	"fmt"
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/proof"
 	"github.com/dedis/crypto/shuffle"
 	"math/rand"
 )
 
-func NewSubsetShuffle(seed int64, size int) *SubsetShuffle {
+type SubsetShuffle struct {
+	Directions []int
+}
+
+func NewSubsetShuffle(seed int64, size int, total int) *SubsetShuffle {
 	s := new(SubsetShuffle)
 	s.Directions = make([]int, size)
 	rand.Seed(seed)
-	p := rand.Perm(size)
+	p := deal(total, size)
 	for i := range p {
 		if i < size-1 {
 			s.Directions[p[i]] = p[i+1]
@@ -20,30 +27,33 @@ func NewSubsetShuffle(seed int64, size int) *SubsetShuffle {
 	return s
 }
 
-type SubsetShuffle struct {
-	Directions []int
-}
-
 func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
-	node NodeId, round int, inf *Info) []RouteInstr {
+	node int, round int, inf *Info, H abstract.Point) RouteInstr {
 
-	xx, yy, _ := shuffle.Shuffle(inf.Suite, nil, pairs.Shared, pairs.X, pairs.Y, inf.Suite.Cipher(nil))
+	c := inf.Suite.Cipher(nil)
+	xx, yy, prover := shuffle.Shuffle(inf.Suite, nil, H, pairs.X, pairs.Y, c)
+	prf, err := proof.HashProve(inf.Suite, "PairShuffle", c, prover)
+	if err != nil {
+		fmt.Printf("Error creating proof: %s\n", err.Error())
+	}
 	pairs.X = xx
 	pairs.Y = yy
-	pairs = decryptPairs(pairs, inf, node.Physical)
+	pairs, H = decryptPairs(pairs, inf, node, H)
+	instr := RouteInstr{Pairs: pairs, H: H, Proof: prf}
 
-	p := s.Directions[node.Physical]
+	p := s.Directions[node]
 	if p > 0 {
-		return []RouteInstr{RouteInstr{&NodeId{p, p}, pairs}}
-	} else {
-		return []RouteInstr{RouteInstr{nil, pairs}}
+		instr.To = []int{p}
 	}
+	return instr
 }
 
-func (id SubsetShuffle) InitialNode(client int, inf *Info) NodeId {
-	return NodeId{0, 0}
+func (s SubsetShuffle) InitialNode(client int, inf *Info) int {
+	return 0
 }
 
-func (id SubsetShuffle) MergeGamal(apairs *Elgamal, bpairs Elgamal) *Elgamal {
-	return defaultMergeGamal(apairs, bpairs)
+func (s SubsetShuffle) VerifyShuffle(newPairs, oldPairs Elgamal,
+	H abstract.Point, inf *Info, prf []byte) error {
+	verifier := shuffle.Verifier(inf.Suite, nil, H, oldPairs.X, oldPairs.Y, newPairs.X, newPairs.Y)
+	return proof.HashVerify(inf.Suite, "PairShuffle", verifier, prf)
 }

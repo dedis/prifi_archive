@@ -2,136 +2,147 @@ package gochan
 
 import (
 	"fmt"
+	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
+	"sync"
 	"time"
 )
 
-// Each node waits for CollectTime, gathering messages from clients
-// When a node sees a message it ACKS it. Clients resend after ResendTime if no ACK
-// Nodes call ShuffleStep, and distribute the RouteInstrs
-// If any RouteInstr has a nil To field, distributes to that node's slot in result
-
-// TODO: make sure there's no duplicates
-// TODO: probably need a lock on collection slice
-
-type crossMsg struct {
-	msgs  shuf.Elgamal
-	virt  int
+type msg struct {
+	pairs shuf.Elgamal
 	round int
+	h     abstract.Point
 	ack   *bool
 }
 
-type shufMsg struct {
-	msgs  shuf.Elgamal
-	virt  int
-	round int
+type proofmsg struct {
+	proof    []byte
+	newpairs shuf.Elgamal
+	oldpairs shuf.Elgamal
+	h        abstract.Point
 }
 
-// what should emptyGamal and mergeGamal actually do?
-
-func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal) {
+func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal,
+	h abstract.Point, wg *sync.WaitGroup) {
 
 	// Fake internet
-	shuffleChans := make([]chan shufMsg, inf.NumNodes)
-	crossChans := make([]chan crossMsg, inf.NumNodes)
-	result := make([]chan shuf.Elgamal, inf.NumNodes)
+	chans := make([]chan msg, inf.NumNodes)
+	proofs := make([]chan proofmsg, inf.NumNodes)
+	result := make([]chan shuf.Elgamal, inf.NumClients)
+	cproofs := make([]chan proofmsg, inf.NumClients)
 	for i := range result {
 		result[i] = make(chan shuf.Elgamal)
-		shuffleChans[i] = make(chan shufMsg)
-		crossChans[i] = make(chan crossMsg)
+		cproofs[i] = make(chan proofmsg)
+	}
+	for i := range chans {
+		chans[i] = make(chan msg)
+		proofs[i] = make(chan proofmsg)
 	}
 
 	// Start the Shufflers
-	for i := range shuffleChans {
+	for i := range chans {
 
-		// Shuffling step
+		// Verification step
 		go func(i int) {
 			for {
-				input := <-shuffleChans[i]
-				instrs := s.ShuffleStep(input.msgs, shuf.NodeId{i, input.virt}, input.round, inf)
-				for _, ins := range instrs {
-					if ins.To == nil {
-						// fmt.Printf("Node %v completed in round %v\n", i, input.round)
-						result[i] <- ins.Pairs
-					} else {
-						// fmt.Printf("Node %v sends to %v in round %v\n", i, ins.To.Physical, input.round)
-
-						// notice when not ACKed
-						go func(ins shuf.RouteInstr, round int) {
-							ack := false
-							m := crossMsg{ins.Pairs, ins.To.Virtual, input.round + 1, &ack}
-							for !ack {
-								crossChans[ins.To.Physical] <- m
-								time.Sleep(inf.ResendTime)
-								if !ack {
-									// fmt.Printf("Node %v round %v not yet ACKed; retrying\n", i, input.round+1)
-								}
-							}
-						}(ins, input.round)
-					}
-				}
+				_ = <-proofs[i]
 			}
 		}(i)
 
 		// Collection step
 		go func(i int) {
 			for round := 0; ; round++ {
-				// fmt.Printf("Collecting for node %v, round %v\n", i, round)
-				collection := make(map[int]*shuf.Elgamal)
-				collect := true
-				go func(i int, round int) {
-					for collect {
-						cm := <-crossChans[i]
-						// fmt.Printf("Got something in node %v, round %v with round %v\n", i, round, cm.round)
-						if cm.round == round {
-							collection[cm.virt] = s.MergeGamal(collection[cm.virt], cm.msgs)
-							*(cm.ack) = true
+				var xs, ys []abstract.Point
+				var H abstract.Point
+				for len(xs) < inf.MsgsPerNode {
+					cm := <-chans[i]
+					if cm.round == round {
+						if xs == nil {
+							xs = cm.pairs.X
+							ys = cm.pairs.Y
+						} else {
+							xs = append(xs, cm.pairs.X...)
+							ys = append(ys, cm.pairs.Y...)
 						}
+						H = cm.h
+						*(cm.ack) = true
 					}
-				}(i, round)
-				time.Sleep(inf.CollectTime)
-				collect = false
-				go func(round int) {
-					// fmt.Printf("Round %v node %v: sending collection %v\n", round, i, collection)
-					for k, v := range collection {
-						shuffleChans[i] <- shufMsg{*v, k, round}
+				}
+
+				// Shuffling step
+				oldpairs := shuf.Elgamal{xs, ys}
+				instr := s.ShuffleStep(oldpairs, i, round, inf, H)
+				if instr.To == nil {
+					for cl := range result {
+						result[cl] <- instr.Pairs
 					}
-				}(round)
+				} else {
+					for cl := range proofs {
+						proofs[cl] <- proofmsg{instr.Proof, instr.Pairs, oldpairs, instr.H}
+					}
+					chunk := len(instr.Pairs.Y) / len(instr.To)
+					if chunk*len(instr.To) != len(instr.Pairs.Y) {
+						fmt.Printf("Node %v round %v cannot divide cleanly\n", i, round+1)
+						chunk = len(instr.Pairs.Y)
+					}
+					pairIdx := 0
+					for _, to := range instr.To {
+						go func(pairIdx int, to int) {
+							ack := false
+							gml := shuf.Elgamal{
+								instr.Pairs.X[pairIdx : pairIdx+chunk],
+								instr.Pairs.Y[pairIdx : pairIdx+chunk],
+							}
+							m := msg{gml, round + 1, instr.H, &ack}
+							for !ack {
+								chans[to] <- m
+								time.Sleep(inf.ResendTime)
+								if !ack {
+									fmt.Printf("Node %v round %v not yet ACKed; retrying\n", i, round+1)
+								}
+							}
+						}(pairIdx, to)
+						pairIdx += chunk
+					}
+				}
 			}
 		}(i)
-
 	}
 
 	// All clients send their messages
-	for m := range pairs {
-		go func(m int) {
+	for i := range pairs {
+		go func(i int) {
 			ack := false
-			sendTo := s.InitialNode(m, inf)
-			msg := crossMsg{pairs[m], sendTo.Virtual, 0, &ack}
-			crossChans[sendTo.Physical] <- msg
-			time.Sleep(inf.ResendTime)
-			if !ack {
-				// We're only running one iteration, so resending won't help
-				fmt.Printf("Client %v not Acknowledged\n", m)
+			sendTo := s.InitialNode(i, inf)
+			m := msg{pairs[i], 0, h, &ack}
+			for !ack {
+				chans[sendTo] <- m
+				time.Sleep(inf.ResendTime)
+				if !ack {
+					fmt.Printf("Client %v not ACKed\n", i)
+				}
 			}
-		}(m)
+		}(i)
 	}
 
 	// Print out the order as it comes in
 	for i := range result {
-		go func() {
-			for {
+		go func(i int) {
+			counter := 0
+			for counter < inf.NumClients {
 				finalGamal := <-result[i]
+				counter += len(finalGamal.Y)
 				for _, val := range finalGamal.Y {
 					d, e := val.Data()
 					if e != nil {
-						fmt.Printf("Index %v: Data got corrupted\n", i)
+						fmt.Printf("Client %v: Data got corrupted\n", i)
 					} else {
-						fmt.Printf("Index %v: %v\n", i, string(d))
+						fmt.Printf("Client %v: %v\n", i, string(d))
 					}
 				}
 			}
-		}()
+			wg.Done()
+		}(i)
 	}
 
 }

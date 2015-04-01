@@ -5,6 +5,7 @@ import (
 	"github.com/dedis/crypto/edwards/ed25519"
 	"github.com/dedis/prifi/shuf"
 	"github.com/dedis/prifi/shuf/gochan"
+	"sync"
 	"time"
 )
 
@@ -49,9 +50,8 @@ func main() {
 	pairs := make([]shuf.Elgamal, 4)
 	for i := range pairs {
 		pairs[i] = shuf.Elgamal{
-			X:      []abstract.Point{X[i]},
-			Y:      []abstract.Point{Y[i]},
-			Shared: H,
+			X: []abstract.Point{X[i]},
+			Y: []abstract.Point{Y[i]},
 		}
 	}
 
@@ -59,20 +59,23 @@ func main() {
 	defaultOpts := shuf.Info{
 		Suite:       suite,
 		PrivKey:     privKeyFn,
+		PubKey:      []abstract.Point{H},
 		NumNodes:    1,
 		NumClients:  4,
 		NumRounds:   1,
-		TotalTime:   time.Second * 5,
 		ResendTime:  time.Second / 3,
-		CollectTime: time.Second}
+		MsgSize:     suite.Point().MarshalSize(),
+		MsgsPerNode: 4}
 
-	// s := shuf.IdShuffle{}
+	s := shuf.IdShuffle{}
 	// s := shuf.DumbShuffle{2}
-	s := shuf.NewSubsetShuffle(2, 1)
+	// s := shuf.NewSubsetShuffle(2, 1)
 	// s := shuf.NewButterfly(&defaultOpts, 2)
 	// s := (*shuf.ConflictSwap)(shuf.NewButterfly(&defaultOpts, 23457))
 	// s := shuf.NeffShuffle{}
 
-	gochan.ChanShuffle(s, &defaultOpts, pairs)
-	time.Sleep(defaultOpts.TotalTime)
+	var wg sync.WaitGroup
+	wg.Add(defaultOpts.NumClients)
+	gochan.ChanShuffle(s, &defaultOpts, pairs, H, &wg)
+	wg.Wait()
 }
