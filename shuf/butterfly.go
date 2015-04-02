@@ -1,133 +1,116 @@
 package shuf
 
-// import (
-// 	"github.com/dedis/crypto/abstract"
-// 	"math/rand"
-// )
-//
-// // Butterfly network
-// type Butterfly struct {
-// 	Left     [][]int    // Pointer to the virtual node at left
-// 	Right    [][]int    // Pointer to the virtual node at right
-// 	Physical []int      // Mapping from virtual to physical nodes
-// 	rnd      *rand.Rand // Random number generator
-// }
-//
-// func (s Butterfly) ShuffleStep(msgs Elgamal, node NodeId,
-// 	round int, inf *Info) []RouteInstr {
-//
-// 	// problem: we shouldn't decrypt it multiple times.
-// 	// not quite sure how to encrypt it
-//
-// 	vnode := node.Virtual
-// 	// msgs = decryptPairs(msgs, inf, node.Physical)
-//
-// 	if round >= len(s.Left) {
-// 		return []RouteInstr{RouteInstr{nil, msgs}}
-// 	}
-//
-// 	var X [2]abstract.Point
-// 	var Y [2]abstract.Point
-//
-// 	for i, p := range s.rnd.Perm(2) {
-// 		X[p] = msgs.X[i]
-// 		Y[p] = msgs.Y[i]
-// 	}
-//
-// 	left := new(Elgamal)
-// 	left.X = []abstract.Point{X[0]}
-// 	left.Y = []abstract.Point{Y[0]}
-//
-// 	right := new(Elgamal)
-// 	right.X = []abstract.Point{X[1]}
-// 	right.Y = []abstract.Point{Y[1]}
-//
-// 	var pleft int = s.Left[round][vnode]
-// 	var pright int = s.Right[round][vnode]
-// 	return []RouteInstr{
-// 		RouteInstr{&NodeId{s.Physical[pleft], pleft}, *left},
-// 		RouteInstr{&NodeId{s.Physical[pright], pright}, *right},
-// 	}
-// }
-//
-// func (cs Butterfly) InitialNode(client int, inf *Info) NodeId {
-// 	v := client % (inf.NumClients / 2)
-// 	return NodeId{cs.Physical[v], v}
-// }
-//
-// type npair struct {
-// 	val       int
-// 	remaining int
-// }
-//
-// // Constructs a ConflictSwap with:
-// // 2N messages and clients
-// // N virtual nodes
-// // an arbitrary number of real nodes
-// // a random mapping of real nodes to virtual nodes
-// func NewButterfly(inf *Info, seed int64) *Butterfly {
-// 	numvnodes := inf.NumClients / 2
-// 	cs := new(Butterfly)
-// 	cs.rnd = rand.New(rand.NewSource(seed))
-// 	cs.Left = make([][]int, inf.NumRounds)
-// 	cs.Right = make([][]int, inf.NumRounds)
-// 	cs.Physical = make([]int, numvnodes)
-//
-// 	// Assign real nodes to virtual nodes randomly
-// 	for i := 0; i < numvnodes; i++ {
-// 		cs.Physical[i] = cs.rnd.Intn(inf.NumNodes)
-// 	}
-//
-// 	// Create butterfly network
-// 	for r := 0; r < inf.NumRounds; r++ {
-//
-// 		// Create Left and Right paths
-// 		cs.Left[r] = make([]int, numvnodes)
-// 		cs.Right[r] = make([]int, numvnodes)
-//
-// 		// remaining possible edges for each vnode
-// 		incoming := make([]npair, numvnodes)
-// 		inLen := numvnodes
-// 		outgoing := make([]npair, numvnodes)
-// 		outLen := numvnodes
-// 		for i := range incoming {
-// 			incoming[i] = npair{i, 2}
-// 			outgoing[i] = npair{i, 2}
-// 		}
-//
-// 		// assign until everything is used up
-// 		for inLen > 0 {
-// 			i := cs.rnd.Intn(inLen)
-// 			// fmt.Printf("Picked %v of %v\n", i, numvnodes)
-// 			incoming[i].remaining--
-// 			from := incoming[i].val
-// 			lr := incoming[i].remaining
-// 			if incoming[i].remaining == 0 {
-// 				incoming[i] = incoming[inLen-1]
-// 				inLen--
-// 			}
-//
-// 			j := cs.rnd.Intn(outLen)
-// 			outgoing[j].remaining--
-// 			to := outgoing[j].val
-// 			if outgoing[j].remaining == 0 {
-// 				outgoing[i] = outgoing[outLen-1]
-// 				outLen--
-// 			}
-//
-// 			switch lr {
-// 			case 0:
-// 				cs.Left[r][from] = to
-// 			case 1:
-// 				cs.Right[r][from] = to
-// 			}
-// 		}
-// 	}
-// 	// fmt.Printf("Left: %v\n", cs.Left)
-// 	// fmt.Printf("Right: %v\n", cs.Right)
-// 	return cs
-// }
-//
-// func (id Butterfly) MergeGamal(apairs *Elgamal, bpairs Elgamal) *Elgamal {
-// 	return defaultMergeGamal(apairs, bpairs)
-// }
+import (
+	"fmt"
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/proof"
+	"github.com/dedis/crypto/shuffle"
+	"math/rand"
+)
+
+// List of nodes for onion encryption on both sides
+type groupJump struct {
+	left  []int
+	right []int
+}
+
+// Where to forward after each round
+type roundInstr struct {
+	nextNeff  []int              // map from round to next node (or -1)
+	nextGroup map[int]*groupJump // map from round to groupJump (or nil)
+}
+
+// Butterfly network of neff subgroups
+type Butterfly struct {
+	directions []roundInstr // map from node to roundInstr
+	rounds     [][]int      // map from node to rounds responsible
+	startGroup [][]int      // map from (client % numGroups) to starting group
+	numGroups  int          // number of groups in each level
+}
+
+func (s Butterfly) ActiveRounds(node int, inf *Info) []int {
+	return s.rounds[node]
+}
+
+func (s Butterfly) Setup(msg abstract.Point, client int, inf *Info) (Elgamal, abstract.Point, int) {
+	g := client % s.numGroups
+	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, s.startGroup[g])
+	elg := Elgamal{X, Y}
+	return elg, H, s.startGroup[g][0]
+}
+
+func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
+	round int, inf *Info, H abstract.Point) RouteInstr {
+
+	// Shuffle it and decrypt it
+	rnd := inf.Suite.Cipher(nil)
+	xx, yy, prover :=
+		shuffle.Shuffle(inf.Suite, nil, H, pairs.X, pairs.Y, rnd)
+	prf, err := proof.HashProve(inf.Suite, "PairShuffle", rnd, prover)
+	if err != nil {
+		fmt.Printf("Error creating proof: %s\n", err.Error())
+	}
+	pairs.X = xx
+	pairs.Y = yy
+	pairs, H = decryptPairs(pairs, inf, node, H)
+
+	// Send it on its way
+	instr := RouteInstr{Pairs: pairs, H: H, Proof: prf}
+	ri := s.directions[node]
+	if ri.nextNeff[round] >= 0 {
+		instr.To = []int{ri.nextNeff[round]}
+	} else if ri.nextGroup[round] != nil {
+		gj := ri.nextGroup[round]
+		instr.To = []int{gj.left[0], gj.right[0]}
+
+		// Add more onion encryption
+		pairs.X, pairs.Y, instr.H = onionEncrypt(pairs.Y, inf, gj.left)
+		instr.Pairs = pairs
+	}
+	return instr
+}
+
+// Constructs a Butterfly network
+func NewButterfly(inf *Info, seed int64) *Butterfly {
+
+	// Initiailization
+	rand.Seed(seed)
+	b := new(Butterfly)
+	b.numGroups = (inf.NumClients / inf.MsgsPerGroup)
+	neffLen := inf.NumNodes / b.numGroups
+	b.directions = make([]roundInstr, inf.NumNodes)
+	for n := range b.directions {
+		b.directions[n] = roundInstr{
+			nextNeff:  make([]int, inf.NumRounds),
+			nextGroup: make(map[int]*groupJump),
+		}
+	}
+	b.rounds = make([][]int, inf.NumNodes)
+	for n := range b.rounds {
+		b.rounds[n] = make([]int, 0)
+	}
+
+	// Establish the butterfly connections
+	var oldEnders []int
+	for level := 0; level < inf.NumRounds; level++ {
+		groups := chunks(rand.Perm(inf.NumNodes), neffLen)
+		if level == 0 {
+			b.startGroup = groups
+		} else {
+			p := rand.Perm(b.numGroups)
+			for i, e := range oldEnders {
+				b.directions[e].nextNeff[(level+1)*neffLen-1] = -1
+				b.directions[e].nextGroup[(level+1)*neffLen-1] = &groupJump{
+					left:  groups[i],
+					right: groups[p[i]],
+				}
+			}
+		}
+		for _, g := range groups {
+			for i := 0; i < len(g)-1; i++ {
+				b.directions[g[i]].nextNeff[level*neffLen+i] = g[i+1]
+			}
+		}
+	}
+	return b
+}

@@ -9,22 +9,39 @@ import (
 )
 
 type SubsetShuffle struct {
-	Directions []int
+	directions []int // map from node to next node (-1 means end)
+	rounds     []int // map from node to round responsibility (or -1)
+	flow       []int // path through the nodes
+	start      int   //starting node
 }
 
 func NewSubsetShuffle(seed int64, size int, total int) *SubsetShuffle {
 	s := new(SubsetShuffle)
-	s.Directions = make([]int, size)
+	s.directions = make([]int, total)
+	s.rounds = make([]int, total)
+	for r := range s.rounds {
+		s.rounds[r] = -1
+	}
 	rand.Seed(seed)
-	p := deal(total, size)
-	for i := range p {
+	s.flow = deal(total, size)
+	s.start = s.flow[0]
+	for i, ip := range s.flow {
+		s.rounds[ip] = i
 		if i < size-1 {
-			s.Directions[p[i]] = p[i+1]
+			s.directions[ip] = s.flow[i+1]
 		} else {
-			s.Directions[p[i]] = -1
+			s.directions[ip] = -1
 		}
 	}
 	return s
+}
+
+func (s SubsetShuffle) ActiveRounds(node int, inf *Info) []int {
+	if s.rounds[node] >= 0 {
+		return []int{s.rounds[node]}
+	} else {
+		return nil
+	}
 }
 
 func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
@@ -41,15 +58,18 @@ func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
 	pairs, H = decryptPairs(pairs, inf, node, H)
 	instr := RouteInstr{Pairs: pairs, H: H, Proof: prf}
 
-	p := s.Directions[node]
+	p := s.directions[node]
 	if p > 0 {
 		instr.To = []int{p}
 	}
 	return instr
 }
 
-func (s SubsetShuffle) InitialNode(client int, inf *Info) int {
-	return 0
+func (s SubsetShuffle) Setup(msg abstract.Point, client int,
+	inf *Info) (Elgamal, abstract.Point, int) {
+	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, s.flow)
+	elg := Elgamal{X, Y}
+	return elg, H, s.start
 }
 
 func (s SubsetShuffle) VerifyShuffle(newPairs, oldPairs Elgamal,

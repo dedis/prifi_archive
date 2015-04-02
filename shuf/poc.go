@@ -19,8 +19,15 @@ func (id IdShuffle) ShuffleStep(pairs Elgamal, node int,
 	return instr
 }
 
-func (id IdShuffle) InitialNode(client int, inf *Info) int {
-	return 0
+func (id IdShuffle) Setup(msg abstract.Point, client int,
+	inf *Info) (Elgamal, abstract.Point, int) {
+	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
+	elg := Elgamal{X, Y}
+	return elg, H, 0
+}
+
+func (id IdShuffle) ActiveRounds(node int, inf *Info) []int {
+	return []int{node}
 }
 
 func (id IdShuffle) VerifyShuffle(newPairs, oldPairs Elgamal, h abstract.Point,
@@ -33,8 +40,11 @@ type DumbShuffle struct {
 	Seed int64
 }
 
-func (d DumbShuffle) InitialNode(client int, inf *Info) int {
-	return 0
+func (d DumbShuffle) Setup(msg abstract.Point, client int,
+	inf *Info) (Elgamal, abstract.Point, int) {
+	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
+	elg := Elgamal{X, Y}
+	return elg, H, 0
 }
 
 func (d DumbShuffle) ShuffleStep(pairs Elgamal, node int,
@@ -56,7 +66,7 @@ func (d DumbShuffle) ShuffleStep(pairs Elgamal, node int,
 	// Direct it to the next in line
 	instr := RouteInstr{Pairs: pairs}
 	next := node + 1
-	if next >= inf.NumNodes {
+	if next < inf.NumNodes {
 		instr.To = []int{next}
 	}
 	return instr
@@ -65,4 +75,8 @@ func (d DumbShuffle) ShuffleStep(pairs Elgamal, node int,
 func (d DumbShuffle) VerifyShuffle(newPairs, oldPairs Elgamal,
 	h abstract.Point, inf *Info, prf []byte) error {
 	return nil
+}
+
+func (d DumbShuffle) ActiveRounds(node int, inf *Info) []int {
+	return []int{node}
 }

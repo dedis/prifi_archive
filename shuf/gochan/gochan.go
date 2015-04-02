@@ -22,8 +22,7 @@ type proofmsg struct {
 	h        abstract.Point
 }
 
-func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal,
-	h abstract.Point, wg *sync.WaitGroup) {
+func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 
 	// Fake internet
 	chans := make([]chan msg, inf.NumNodes)
@@ -58,10 +57,10 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal,
 
 		// Collection step
 		go func(i int) {
-			for round := 0; ; round++ {
+			for _, round := range s.ActiveRounds(i, inf) {
 				var xs, ys []abstract.Point
 				var H abstract.Point
-				for len(xs) < inf.MsgsPerNode {
+				for len(xs) < inf.MsgsPerGroup {
 					cm := <-chans[i]
 					if cm.round == round {
 						if xs == nil {
@@ -117,11 +116,11 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, pairs []shuf.Elgamal,
 	}
 
 	// All clients send their messages
-	for i := range pairs {
+	for i := range msgs {
 		go func(i int) {
 			ack := false
-			sendTo := s.InitialNode(i, inf)
-			m := msg{pairs[i], 0, h, &ack}
+			pairs, H, sendTo := s.Setup(msgs[i], i, inf)
+			m := msg{pairs, 0, H, &ack}
 			for !ack {
 				chans[sendTo] <- m
 				time.Sleep(inf.ResendTime)

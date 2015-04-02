@@ -24,35 +24,40 @@ type RouteInstr struct {
 type Shuffle interface {
 	ShuffleStep(pairs Elgamal,
 		node int, round int, inf *Info, H abstract.Point) RouteInstr
-	InitialNode(client int, inf *Info) int
+	Setup(msg abstract.Point, client int, inf *Info) (Elgamal, abstract.Point, int)
+	ActiveRounds(node int, inf *Info) []int
 	VerifyShuffle(newPairs, oldPairs Elgamal, H abstract.Point, inf *Info, prf []byte) error
 }
 
 // Information collectively aggreed upon beforehand
 type Info struct {
-	Suite       abstract.Suite
-	PrivKey     func(int) abstract.Secret // restricted domain when networked
-	PubKey      []abstract.Point
-	NumNodes    int
-	NumClients  int
-	MsgSize     int
-	NumRounds   int
-	ResendTime  time.Duration
-	MsgsPerNode int
+	Suite        abstract.Suite
+	PrivKey      func(int) abstract.Secret // restricted domain when networked
+	PubKey       []abstract.Point
+	NumNodes     int
+	NumClients   int
+	MsgSize      int
+	NumRounds    int
+	ResendTime   time.Duration
+	MsgsPerGroup int
 }
 
 // Encrypt a message that will follow the path given by 'nodes'
-func onionEncrypt(msg abstract.Point, inf *Info,
-	nodes []int) (X, Y, H abstract.Point) {
+func onionEncrypt(msgs []abstract.Point, inf *Info,
+	nodes []int) (X, Y []abstract.Point, H abstract.Point) {
 	rnd := inf.Suite.Cipher(abstract.RandomKey)
+	X = make([]abstract.Point, len(msgs))
+	Y = make([]abstract.Point, len(msgs))
 	r := inf.Suite.Secret().Pick(rnd)
 	H = inf.Suite.Point().Null()
 	for i := len(nodes) - 1; i >= 0; i-- {
 		H = inf.Suite.Point().Add(inf.PubKey[nodes[i]], H)
 	}
-	Y = inf.Suite.Point().Mul(H, r)
-	Y = inf.Suite.Point().Add(Y, msg)
-	X = inf.Suite.Point().Mul(nil, r)
+	for m := range msgs {
+		Y[m] = inf.Suite.Point().Mul(H, r)
+		Y[m] = inf.Suite.Point().Add(Y[m], msgs[m])
+		X[m] = inf.Suite.Point().Mul(nil, r)
+	}
 	return X, Y, H
 }
 
@@ -88,6 +93,26 @@ func deal(total, size int) []int {
 			hash[i] = &top
 		}
 		idx++
+	}
+	return result
+}
+
+// Create a range slice
+func xrange(extent int) []int {
+	result := make([]int, extent)
+	for i := range result {
+		result[i] = i
+	}
+	return result
+}
+
+func chunks(in []int, size int) [][]int {
+	result := make([][]int, len(in)/size)
+	for c := range result {
+		result[c] = make([]int, size)
+		for i := 0; i < size; i++ {
+			result[c][i] = in[c*size+i]
+		}
 	}
 	return result
 }

@@ -24,6 +24,7 @@ func (n NeffShuffle) ShuffleStep(pairs Elgamal,
 	pairs.Y = yy
 	pairs, H = decryptPairs(pairs, inf, node, H)
 
+	// Send it on its way
 	instr := RouteInstr{Pairs: pairs, H: H, Proof: prf}
 	next := node + 1
 	if next < inf.NumNodes {
@@ -32,12 +33,19 @@ func (n NeffShuffle) ShuffleStep(pairs Elgamal,
 	return instr
 }
 
-func (n NeffShuffle) InitialNode(client int, inf *Info) int {
-	return 0
+func (n NeffShuffle) Setup(msg abstract.Point, client int,
+	inf *Info) (Elgamal, abstract.Point, int) {
+	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
+	elg := Elgamal{X, Y}
+	return elg, H, 0
 }
 
 func (n NeffShuffle) VerifyShuffle(newPairs, oldPairs Elgamal,
 	H abstract.Point, inf *Info, prf []byte) error {
 	verifier := shuffle.Verifier(inf.Suite, nil, H, oldPairs.X, oldPairs.Y, newPairs.X, newPairs.Y)
 	return proof.HashVerify(inf.Suite, "PairShuffle", verifier, prf)
+}
+
+func (n NeffShuffle) ActiveRounds(node int, inf *Info) []int {
+	return []int{node}
 }
