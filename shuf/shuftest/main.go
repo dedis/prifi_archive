@@ -42,8 +42,8 @@ func main() {
 
 	// s := shuf.IdShuffle{}
 	// s := shuf.DumbShuffle{2}
-	s := shuf.NewSubsetShuffle(2, 1, 1)
-	// s := shuf.NewButterfly(&defaultOpts, 2)
+	// s := shuf.NewSubsetShuffle(2, 1, 1)
+	s := shuf.NewButterfly(&defaultOpts, 2)
 	// s := (*shuf.ConflictSwap)(shuf.NewButterfly(&defaultOpts, 23457))
 	// s := shuf.NeffShuffle{}
 

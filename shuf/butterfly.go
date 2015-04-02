@@ -39,6 +39,12 @@ func (s Butterfly) Setup(msg abstract.Point, client int, inf *Info) (Elgamal, ab
 	return elg, H, s.startGroup[g][0]
 }
 
+func (s Butterfly) VerifyShuffle(newPairs, oldPairs Elgamal,
+	H abstract.Point, inf *Info, prf []byte) error {
+	verifier := shuffle.Verifier(inf.Suite, nil, H, oldPairs.X, oldPairs.Y, newPairs.X, newPairs.Y)
+	return proof.HashVerify(inf.Suite, "PairShuffle", verifier, prf)
+}
+
 func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 	round int, inf *Info, H abstract.Point) RouteInstr {
 
@@ -91,26 +97,31 @@ func NewButterfly(inf *Info, seed int64) *Butterfly {
 	}
 
 	// Establish the butterfly connections
-	var oldEnders []int
-	for level := 0; level < inf.NumRounds; level++ {
+	oldEnders := make([]int, b.numGroups)
+	for level := 0; level < inf.NumRounds/neffLen; level++ {
 		groups := chunks(rand.Perm(inf.NumNodes), neffLen)
 		if level == 0 {
 			b.startGroup = groups
 		} else {
 			p := rand.Perm(b.numGroups)
 			for i, e := range oldEnders {
-				b.directions[e].nextNeff[(level+1)*neffLen-1] = -1
 				b.directions[e].nextGroup[(level+1)*neffLen-1] = &groupJump{
 					left:  groups[i],
 					right: groups[p[i]],
 				}
 			}
 		}
-		for _, g := range groups {
+		for gi, g := range groups {
 			for i := 0; i < len(g)-1; i++ {
+				b.rounds[g[i]] = append(b.rounds[g[i]], level*neffLen+i)
 				b.directions[g[i]].nextNeff[level*neffLen+i] = g[i+1]
 			}
+			lst := g[len(g)-1]
+			b.rounds[lst] = append(b.rounds[lst], (level+1)*neffLen-1)
+			b.directions[lst].nextNeff[(level+1)*neffLen-1] = -1
+			oldEnders[gi] = g[len(g)-1]
 		}
 	}
+	// fmt.Printf("Butterfly: %v\n", b)
 	return b
 }
