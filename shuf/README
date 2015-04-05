@@ -1,0 +1,120 @@
+=====================================
+|      IMPLIMENTED SHUFFLES         |
+=====================================
+
+This folder defines a number of approaches to cryptographic shuffles, either to
+be used during the initialization phase of Dissent-style protocols or as an
+indepdendant communication mechanism. 
+
+
+NEFF SHUFFLES
+=============
+
+The files neff.go and subset.go impliment iterated Neff shuffles (similar to
+the one used in the initialization phase of Dissent v2). Clients onion encrypt
+their plaintext messages as El Gamal pairs. All clients send their pairs to a
+designated starting node. Each node in sequence performs a Neff shuffle and
+strips away a layer of encryption on all pairs, distributing the shuffle proof
+to all other nodes.  If any node finds a discrepency in the proof, it forwards
+the proof to all clients, warning them of the shuffle's failure. In neff.go,
+all nodes are used in the shuffle, which in subset.go, a random subset is
+picked, based on a collectively established key; collective uniform random is a
+separate problem we ignore for the time being.
+
+
+BUTTERFLY SHUFFLE
+=================
+
+The file butterfly.go implements a butterfly network of Neff-shuffle subgroups.
+Subgroups are established randomly, based on a unform, shared, collectively
+generated seed. Clients are assigned initial shuffle groups. Each client onion
+encrypts its plaintext for the initial shuffle group it is assigned. Once the
+subgroup's Neff shuffle has completed, the last node in the shuffle subgroup
+divides the shuffled messages in two equal parts, giving one half two each
+child subgroup in the butterfly network. These messages are onion encrypted for
+the next subgroup before they are sent. 
+
+
+CONFLICT SHUFFLE
+================
+
+The file conflict.go implements a special form of the Butterfly shuffle. It is
+designed for sitautions in which a large number of client messages are the
+identity element, as would be the case in group messaging applications. Once
+the last node in a shuffler subgroup has performed its Neff shuffle, it divides
+the shuffled pairs in two lists, like in the normal Butterfly shuffle.  But
+rather than giving one list of pairs to each child, it gives each list to a
+random child determined by a coin flip.  If both list of pairs are assigned to
+the same child, the lists elements are added together (assuming an additive
+group). Although this may result in corrupted messages, it allows for much more
+thorough mixing than would be possible with conventional the Butterfly shuffle. 
+
+
+=======================================
+| PROTOCOLS AND COMMUNICATION METHODS |
+=======================================
+
+
+CONFIG FILES
+============
+
+All testing commands require a JSON configuration file with the following fields:
+	NumNodes     int
+	NumClients   int
+	NumRounds    int
+  ResendTime   seconds
+  MsgsPerGroup int
+
+In Butterfly and Conflict shuffles, NumRounds refers to the total number of
+Neff shuffle steps performed by all shuffle groups, plus the number of
+transfers between shuffle groups. MsgsPerGroup refers to the number of client
+pairs shuffled by each shuffle-group. 
+
+
+CHANNEL SHUFFLE
+===============
+
+The files in the gochan subdirectory allow the shuffle techniques above to be
+run on a single machine, using Go's lightweight channels. Tests may be invoked
+by running gochan [configFile]. To run the tests on multiple OS threads, supply
+the usual go paramter -N.
+
+
+NETWORK SHUFFLE
+===============
+
+The files in the netchan subdirectory allow the shuffle techniques above to be
+run on a networked cluster of machines. On the client side, tets may be invoked
+by running client [configFile] [nodeURIs] [nodePubKeys], where nodeURIs is a
+newline separated file of nodes participating in the shuffle, and nodePubKeys
+is a newline separated file containing their public keys. On the server side,
+tests may be invoked by running server [configFile] [nodeURIs] [clientURIs]
+[privKey], where clientURIs is a newline separated file containing the URIs of
+each client participating in the shuffle, and privKey is a file containing that
+node's private key. To simplify the deployment of client and server tests, the
+script netTest.sh is provided. Invoke it as netTest.sh [configFile] [nodeURIs].
+
+
+PROTOCOL
+========
+
+The network shuffle works over TCP. All nodes can send one of two message types:
+
+- PAIR MESSAGE:
+send a 0 (the pair message indicator- 1 byte)
+send the round int (4 bytes, big endian)
+wait for a 1 byte from the sender
+send the number of pairs (4 bytes, big endian)
+send all the Xs
+send all the Ys
+send H
+
+- PROOF MESSAGE
+send a 1 (the proof message indicator- 1 byte)
+send the proof itself
+send the number of pairs
+send the Xs
+send the Ys
+send the old Xs
+send the old Ys
+send H

@@ -40,6 +40,7 @@ type Info struct {
 	NumRounds    int
 	ResendTime   time.Duration
 	MsgsPerGroup int
+	ProofSize    int
 }
 
 // Encrypt a message that will follow the path given by 'nodes'
