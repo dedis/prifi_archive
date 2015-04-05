@@ -43,7 +43,7 @@ type Info struct {
 }
 
 // Encrypt a message that will follow the path given by 'nodes'
-func onionEncrypt(msgs []abstract.Point, inf *Info,
+func OnionEncrypt(msgs []abstract.Point, inf *Info,
 	nodes []int) (X, Y []abstract.Point, H abstract.Point) {
 	rnd := inf.Suite.Cipher(abstract.RandomKey)
 	X = make([]abstract.Point, len(msgs))

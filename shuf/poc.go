@@ -21,7 +21,7 @@ func (id IdShuffle) ShuffleStep(pairs Elgamal, node int,
 
 func (id IdShuffle) Setup(msg abstract.Point, client int,
 	inf *Info) (Elgamal, abstract.Point, int) {
-	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
+	X, Y, H := OnionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
 	elg := Elgamal{X, Y}
 	return elg, H, 0
 }
@@ -42,7 +42,7 @@ type DumbShuffle struct {
 
 func (d DumbShuffle) Setup(msg abstract.Point, client int,
 	inf *Info) (Elgamal, abstract.Point, int) {
-	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
+	X, Y, H := OnionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
 	elg := Elgamal{X, Y}
 	return elg, H, 0
 }

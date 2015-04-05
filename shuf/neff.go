@@ -35,7 +35,7 @@ func (n NeffShuffle) ShuffleStep(pairs Elgamal,
 
 func (n NeffShuffle) Setup(msg abstract.Point, client int,
 	inf *Info) (Elgamal, abstract.Point, int) {
-	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
+	X, Y, H := OnionEncrypt([]abstract.Point{msg}, inf, xrange(inf.NumNodes))
 	elg := Elgamal{X, Y}
 	return elg, H, 0
 }

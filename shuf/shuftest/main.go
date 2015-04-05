@@ -35,7 +35,7 @@ func main() {
 		PubKey:       []abstract.Point{H},
 		NumNodes:     1,
 		NumClients:   4,
-		NumRounds:    1,
+		NumRounds:    2,
 		ResendTime:   time.Second / 3,
 		MsgSize:      suite.Point().MarshalSize(),
 		MsgsPerGroup: 4}

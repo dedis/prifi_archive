@@ -1,14 +1,16 @@
 package shuf
 
 // import (
+// 	"fmt"
 // 	"github.com/dedis/crypto/abstract"
+// 	"github.com/dedis/crypto/proof"
+// 	"github.com/dedis/crypto/shuffle"
+// 	"math/rand"
 // )
 //
 // // Potentially conflicting shuffle
 // type ConflictSwap Butterfly
 //
-// func (s ConflictSwap) ShuffleStep(pairs Elgamal, node NodeId,
-// 	round int, inf *Info) []RouteInstr {
 // 	vnode := node.Virtual
 //
 // 	if round >= len(s.Left) {

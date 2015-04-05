@@ -67,7 +67,7 @@ func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
 
 func (s SubsetShuffle) Setup(msg abstract.Point, client int,
 	inf *Info) (Elgamal, abstract.Point, int) {
-	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, s.flow)
+	X, Y, H := OnionEncrypt([]abstract.Point{msg}, inf, s.flow)
 	elg := Elgamal{X, Y}
 	return elg, H, s.start
 }

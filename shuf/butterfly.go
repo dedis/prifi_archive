@@ -34,7 +34,7 @@ func (s Butterfly) ActiveRounds(node int, inf *Info) []int {
 
 func (s Butterfly) Setup(msg abstract.Point, client int, inf *Info) (Elgamal, abstract.Point, int) {
 	g := client % s.numGroups
-	X, Y, H := onionEncrypt([]abstract.Point{msg}, inf, s.startGroup[g])
+	X, Y, H := OnionEncrypt([]abstract.Point{msg}, inf, s.startGroup[g])
 	elg := Elgamal{X, Y}
 	return elg, H, s.startGroup[g][0]
 }
@@ -70,7 +70,7 @@ func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 		instr.To = []int{gj.left[0], gj.right[0]}
 
 		// Add more onion encryption
-		pairs.X, pairs.Y, instr.H = onionEncrypt(pairs.Y, inf, gj.left)
+		pairs.X, pairs.Y, instr.H = OnionEncrypt(pairs.Y, inf, gj.left)
 		instr.Pairs = pairs
 	}
 	return instr
@@ -122,6 +122,5 @@ func NewButterfly(inf *Info, seed int64) *Butterfly {
 			oldEnders[gi] = g[len(g)-1]
 		}
 	}
-	// fmt.Printf("Butterfly: %v\n", b)
 	return b
 }
