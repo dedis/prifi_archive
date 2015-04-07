@@ -174,12 +174,14 @@ func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 	}
 }
 
-func TestTakeOutPolicyBasic(t *testing.T) {
+// Verifies that certifyPromise can properly communicate with other servers.
+func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 
 	// Create a new policy module and manually create a secret.
 	policy:= new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
 	newPromise := promise.Promise{}
-	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t, policy.r, insurerListT)
+	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t,
+		policy.r, insurerListT)
 	state := new(promise.State).Init(newPromise)
 	policy.promises[newPromise.Id()] = state
 
@@ -187,20 +189,109 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 	for i := 0; i < numServers; i++ {
 		go insurersBasic(t, serverKeys[i], connectionManagers[i])
 	}
-
 	
 	err := policy.certifyPromise(state)
-
 	if err != nil {
 		t.Error("The promise failed to be certified: ", err)
 	}
-
 	finalState := policy.promises[newPromise.Id()]
 	if err := finalState.PromiseCertified(); err != nil {
 		t.Error("The promise should now be certified:  ", err)
 	}
 }
 
+
+// Verifies that a sever can properly take out a policy.
+func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
+
+	// Start up the other insurers.
+	for i := 0; i < numServers; i++ {
+		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+	}
+	
+	policy:= new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	err := policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
+	if err != nil {
+		t.Error("The promise failed to be certified: ", err)
+	}
+	finalState := policy.promises[secretKeyT.Public.String()]
+	if err := finalState.PromiseCertified(); err != nil {
+		t.Error("The promise should now be certified:  ", err)
+	}
+
+	// Verify that if a promise is already certified that it is not
+	// overwritten.
+	err = policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
+	if err != nil {
+		t.Error("No error should have been raised: ", err)
+	}
+	if finalState != policy.promises[secretKeyT.Public.String()] {
+		t.Error("No new state should have been created.")
+	}
+	if err := finalState.PromiseCertified(); err != nil {
+		t.Error("The promise should now be certified:  ", err)
+	}
+	
+
+	// Verify that a promise that is not yet certified is not overwritten.
+	// The code should attempt to have the promise verified.
+	policy = new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t,
+		policy.r, insurerListT)
+	state := new(promise.State).Init(newPromise)
+	policy.promises[newPromise.Id()] = state
+
+	// Start up the other insurers.
+	for i := 0; i < numServers; i++ {
+		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+	}
+	
+	err = policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
+	if err != nil {
+		t.Error("The promise failed to be certified: ", err)
+	}
+	if state != policy.promises[secretKeyT.Public.String()] {
+		t.Error("No new state should have been created.")
+	}
+	if err := state.PromiseCertified(); err != nil {
+		t.Error("The promise should now be certified:  ", err)
+	}
+	
+	
+	// Verify that the policy is properly created when a good function is
+	// provided.
+	called := false
+	
+	goodFunc := func(serverList []abstract.Point, n int) []abstract.Point {
+		called = true
+		return serverList
+	}
+	// Start up the other insurers.
+	for i := 0; i < numServers; i++ {
+		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+	}
+	
+	policy = new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	err    = policy.TakeOutPolicy(secretKeyT, insurerListT, goodFunc)
+	if !called {
+		t.Error("The method should have used the provided method")
+	}
+	
+	
+	// Error Handling
+	badFunc := func(serverList []abstract.Point, n int) []abstract.Point {
+		return serverList[:n-1]
+	}
+	
+	// Verify that equal panics if the messages are uninitialized
+	test := func() {
+		defer deferTest(t, "TakeOutPolicy should have paniced")
+		policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+		policy.TakeOutPolicy(secretKeyT, insurerListT, badFunc)
+	}
+	test()
+}
 
 /*
 
