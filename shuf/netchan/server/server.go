@@ -1,7 +1,5 @@
 package main
 
-// server id [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [privKey]
-// client id [configFile] [nodeURIs] [nodePubKeys],
 import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/edwards/ed25519"
@@ -15,26 +13,12 @@ import (
 	"bufio"
 )
 
-func check(e error) {
-    if e != nil {
-        panic(e.Error())
-    }
-}
-
-type cFile struct {
-	NumNodes int
-	NumClients int
-	NumRounds int
-	ResendTime int
-	Port string
-	Shuffle string
-}
-
+// server id [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [privKey]
 func main() {
 
 	// Parse the args
 	id, cerr := strconv.Atoi(os.Args[1])
-	check(cerr)
+	netchan.Check(cerr)
   configFile := os.Args[2]
   nodesFile := os.Args[3]
   clientsFile := os.Args[4]
@@ -43,17 +27,17 @@ func main() {
 
   // Read the config
   f, err := os.Open(configFile)
-  check(err)
+  netchan.Check(err)
 	dec := json.NewDecoder(f)
-	var c cFile
+	var c netchan.CFile
 	err = dec.Decode(&c)
 	f.Close()
-	check(err)
+	netchan.Check(err)
 
 	// Create the key functions
 	suite := ed25519.NewAES128SHA256Ed25519(true)
 	f, err = os.Open(privKeyFile)
-	check(err)
+	netchan.Check(err)
 	h := suite.Secret()
 	h.UnmarshalFrom(f)
 	f.Close()
@@ -85,7 +69,7 @@ func main() {
 	// Read the clients file
 	clients := make([]string, c.NumClients)
 	f, err = os.Open(clientsFile)
-	check(err)
+	netchan.Check(err)
 	r := bufio.NewReader(f)
 	for i := range clients {
 		l, _ := r.ReadString('\n')
@@ -95,7 +79,7 @@ func main() {
 	// Read the nodes file
 	nodes := make([]string, c.NumNodes)
 	f, err = os.Open(nodesFile)
-	check(err)
+	netchan.Check(err)
 	r = bufio.NewReader(f)
 	for i := range nodes {
 		l, _ := r.ReadString('\n')

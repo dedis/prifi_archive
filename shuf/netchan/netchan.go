@@ -29,10 +29,19 @@ type proofmsg struct {
 	h        abstract.Point
 }
 
-func check(e error) {
+func Check(e error) {
 	if e != nil {
 		panic(e.Error())
 	}
+}
+
+type CFile struct {
+	NumNodes int
+	NumClients int
+	NumRounds int
+	ResendTime int
+	Port string
+	Shuffle string
 }
 
 // Read a msg from the connection and feed it to the collector
@@ -250,7 +259,7 @@ func (n Node) StartClient(nodes []string, s string, port string) {
 
 	// Receive messages from everybody
 	ln, err := net.Listen("tcp", port)
-	check(err)
+	Check(err)
 	setter := make(chan msg, 2)
 	round := make(chan int, 1)
 	round <- n.Inf.NumRounds
@@ -265,7 +274,7 @@ func (n Node) StartClient(nodes []string, s string, port string) {
 
 func (n Node) StartServer(clients []string, nodes []string, port string) {
 	ln, err := net.Listen("tcp", port)
-	check(err)
+	Check(err)
 	setter := make(chan msg, 2)
 	round := make(chan int, 1)
 	round <- 0
