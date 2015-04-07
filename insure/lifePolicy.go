@@ -55,7 +55,7 @@ type LifePolicyModule struct {
 	// the form:
 	//
 	// promised_public_key_string => state_of_promise
-	promises map[string]*promise.State
+	promises map[string] *promise.State
 
 	// This hash contains promises that originated from other servers.
 	// Promises that the server is insuring as well as promises from
@@ -87,7 +87,7 @@ func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.Con
 	lp.r               = r
 	lp.n               = n
 	lp.cman            = cman
-	lp.promises        = make(map[string]*promise.State)
+	lp.promises        = make(map[string] *promise.State)
 	lp.serverPromises  = make(map[string](map[string]*promise.State))
 	return lp
 }
@@ -111,46 +111,72 @@ func selectInsurersBasic(serverList []abstract.Point, n int) []abstract.Point {
 	return serverList[:n]
 }
 
-/* This method is responsible for "taking out" the insurance policy. The
- * function takes the server's private key, divides it up into
- * shares using Shamir Secret Sharing, distribute these shares to trustees,
- * and then provides a "receipt list" of digital signatures proving that
- * the server has indeed selected insurers.
+/* This method is responsible for taking out a new life policy. It constructs
+ * a new promise, sends the promise to its insurers, and then insures that the
+ * promise is certified.
  *
  * Arguments:
- *   keyPair         = the public/private key of the server
- *   serverList      = a list of the public keys of possible insurers
- *   selectInsurers  = a function for selecting insurers
- *   g               = the group that the private shares should be made from
- *   t               = the minimum number of shares to reconstruct the secret
- *   n               = the total shares to be distributed
+ *   secretPair      = the public/private key of the secret to promise
+ *   serverList      = a list of public keys of possible insurers
+ *   selectInsurers  = a function for selecting insurers from the serverList,
+ *                     or nil to use the default selection method
  *
+ * Returns:
+ *   nil if successful, an eror otherwise.
  *
- * Note: If selectInsurers is null, the policy will resort to a default
- * selection function.
+ * Note:
+ *  selectInsurers should return a list exactly of the size specified, otherwise
+ *  this function will panic.
  */
-
-func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair,
-        serverList []abstract.Point,
+func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, serverList []abstract.Point,
 	selectInsurers func([]abstract.Point, int) []abstract.Point) error {
 
-	// Initialize the policy.
+	// If the promise has already been created, do not create a new one but
+	// use the existing one.
+	if state, ok := lp.promises[secretPair.Public.String()]; ok {
+	
+		// If the promise is not yet certified, attempt to get its
+		// certification.
+		if state.PromiseCertified() != nil {
+			return lp.certifyPromise(state)
+		}
 
-	// If we have no selectInsurers function, use the basic algorithm.
-	// TODO if selectInsurers is malicious, panic.
+		// Otherwise, return success
+		return nil
+	}
+
+	// If a promise doesn't already exist, create a new Promise
 	if selectInsurers == nil {
 		selectInsurers = selectInsurersBasic
 	}
 	insurersList := selectInsurers(serverList, lp.n)
+	if len(insurersList) != lp.n {
+		panic("InsurersList too small")
+	}
 
-	newPromise   := promise.Promise{}
+	newPromise := promise.Promise{}
 	newPromise.ConstructPromise(secretPair, lp.keyPair, lp.t, lp.r, insurersList)
 	state := new(promise.State).Init(newPromise)
 	lp.promises[newPromise.Id()] = state
-	return lp.getPromiseCertification(state, insurersList)
+	return lp.certifyPromise(state)
 }
 
-func (lp *LifePolicyModule) getPromiseCertification(state *promise.State, insurersList []abstract.Point) error {
+/******************************** Request Method ******************************/
+// These are methods that are send data to other nodes.
+
+
+/* This method is responsible for certifying a promise. It sends requests out
+ * to the insurers and then waits for the promise to be certified.
+ *
+ * Arguments:
+ *   state  = the promise.State containing the promise to be certified
+ *
+ * Returns:
+ *   nil if the promise is certified, an error otherwise
+ */
+func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
+
+	insurersList := state.Promise.Insurers()
 
 	// Send a request off to each server
 	for i := 0; i < lp.n; i++ {
@@ -159,8 +185,10 @@ func (lp *LifePolicyModule) getPromiseCertification(state *promise.State, insure
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
 
-	// TODO: Add a timeout such that this process will end after a certain
+	// TODO: Add a timeout so that this process will end after a certain
 	// amount of time.
+	
+	// Wait for responses
 	for state.PromiseCertified() != nil {
 		for i := 0; i < lp.n; i++ {	
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
@@ -335,8 +363,7 @@ func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, 
 		return nil
 	}
 
-	insurers := state.Promise.Insurers()
-	return lp.getPromiseCertification(state, insurers)
+	return lp.certifyPromise(state)
 }
 
 func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Point, msg *PromiseShareMessage) error {
@@ -347,10 +374,9 @@ func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Poin
 			// A promise must be certified before a share can be revealed.
 			// get the certification if so.
 			
-			// TODO if you add a timelimit to getPromiseCertification
+			// TODO if you add a timelimit to certifyPromise
 			// make sure that you check it here before continuing.
-			insurers := state.Promise.Insurers()
-			lp.getPromiseCertification(state, insurers)
+			lp.certifyPromise(state)
 		}
 		// TODO change RevealShare to do standard checking and to return
 		// an error if it finds one.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
+	"github.com/dedis/crypto/poly/promise"
 	"github.com/dedis/crypto/random"
 
 	"github.com/dedis/prifi/connMan"
@@ -154,10 +155,8 @@ func TestSelectBasicInsurers(t * testing.T) {
 
 
 
-
-/*
-// This function is the code run by the insurers. The server listens for a
-// CertifyPromiseMessage, sends a response, and then exits.
+// This is a helper method to be run by gochan's simulating insurers.
+// The server listens for a CertifyPromiseMessage, sends a response, and then exits.
 func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 
 	policy := new(LifePolicyModule).Init(k,lpt,lpr,lpn, cm)
@@ -170,15 +169,40 @@ func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 
 		// If a CertifyPromiseMessage, exit
 		if msgType == CertifyPromise && ok == nil {
-			cpmMsg  := msg.getCPM()
-			state := policy.serverPromises[keyPairT.Public.String()][cpmMsg.Promise.Id()]
-			if !cpmMsg.Promise.Equal(&state.Promise) {
-				panic("Promise not stored.")
-			}
 			return
 		}
 	}
 }
+
+func TestTakeOutPolicyBasic(t *testing.T) {
+
+	// Create a new policy module and manually create a secret.
+	policy:= new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t, policy.r, insurerListT)
+	state := new(promise.State).Init(newPromise)
+	policy.promises[newPromise.Id()] = state
+
+	// Start up the other insurers.
+	for i := 0; i < numServers; i++ {
+		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+	}
+
+	
+	err := policy.certifyPromise(state)
+
+	if err != nil {
+		t.Error("The promise failed to be certified: ", err)
+	}
+
+	finalState := policy.promises[newPromise.Id()]
+	if err := finalState.PromiseCertified(); err != nil {
+		t.Error("The promise should now be certified:  ", err)
+	}
+}
+
+
+/*
 
 func TestTakeOutPolicyBasic(t *testing.T) {
 
