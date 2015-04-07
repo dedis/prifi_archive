@@ -199,10 +199,19 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 	return nil
 }
 
-func (lp *LifePolicyModule) SendClientPolicy(clientLongPubKey, secretPubKey abstract.Point) error {
-	if state, assigned := lp.promises[secretPubKey.String()]; assigned {
+/* This method sends a promise to another server.
+ *
+ * Arguments:
+ *   clientLongPubKey  = the long term public key of the client to send the promise to
+ *   secretKey         = the public key of the promised secret to send
+ *
+ * Returns:
+ *   nil if the message is sent, an error otherwise.
+ */
+func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Point) error {
+	if state, assigned := lp.promises[secretKey.String()]; assigned {
 		policyMsg := new(PolicyMessage).createPTCMessage(&state.Promise)
-		lp.cman.Put(clientLongPubKey, policyMsg)	
+		lp.cman.Put(clientKey, policyMsg)	
 		return nil
 	}
 	return errors.New("Promise does not exist")
@@ -247,6 +256,12 @@ func (lp *LifePolicyModule) ReconstructSecret(longTermKey,secretPubKey abstract.
 	}
 	return state.PriShares.Secret()
 }
+
+
+
+/******************************** Receive Method ******************************/
+// These are methods responsible for handling mesges that come into the system.
+
 
 /* This function handles policy messages received. This function will handle
  * updating the life policy appropriately. Simply give it the policy message

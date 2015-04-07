@@ -89,6 +89,16 @@ func setupConn() bool {
 	return true
 }
 
+func produceNewServerPolicyWithPromise() (*LifePolicyModule,* promise.State) {
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t,
+		policy.r, insurerListT)
+	state := new(promise.State).Init(newPromise)
+	policy.promises[newPromise.Id()] = state
+	return policy, state
+}
+
 // Tests that check whether a method panics can use this funcition
 func deferTest(t *testing.T, message string) {
 	if r := recover(); r == nil {
@@ -178,12 +188,7 @@ func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 
 	// Create a new policy module and manually create a secret.
-	policy:= new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
-	newPromise := promise.Promise{}
-	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t,
-		policy.r, insurerListT)
-	state := new(promise.State).Init(newPromise)
-	policy.promises[newPromise.Id()] = state
+	policy, state := produceNewServerPolicyWithPromise()
 
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
@@ -194,7 +199,7 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 	if err != nil {
 		t.Error("The promise failed to be certified: ", err)
 	}
-	finalState := policy.promises[newPromise.Id()]
+	finalState := policy.promises[secretKeyT.Public.String()]
 	if err := finalState.PromiseCertified(); err != nil {
 		t.Error("The promise should now be certified:  ", err)
 	}
@@ -235,12 +240,7 @@ func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 
 	// Verify that a promise that is not yet certified is not overwritten.
 	// The code should attempt to have the promise verified.
-	policy = new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
-	newPromise := promise.Promise{}
-	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t,
-		policy.r, insurerListT)
-	state := new(promise.State).Init(newPromise)
-	policy.promises[newPromise.Id()] = state
+	policy, state := produceNewServerPolicyWithPromise()
 
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
@@ -291,6 +291,37 @@ func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 		policy.TakeOutPolicy(secretKeyT, insurerListT, badFunc)
 	}
 	test()
+}
+
+
+// This is a helper method to be run by gochan's simulating insurers.
+// The server listens for a CertifyPromiseMessage, sends a response, and then exits.
+func receivePromiseBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager, promise promise.Promise) {
+
+	for true {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
+		cm.Get(keyPairT.Public, msg)
+		
+		if msg.Type == PromiseToClient {
+			if !promise.Equal(msg.getPTCM()) {
+				panic("Promise sent is not what was expected.")
+			}
+			return
+		}
+	}
+}
+
+// Verifies that a sever can properly take out a policy.
+func TestLifePolicyModuleSendPromiseToClient(t *testing.T) {
+
+	// Start up the other insurer.
+	policy, state := produceNewServerPolicyWithPromise()
+
+	i := 0
+	go receivePromiseBasic(t, serverKeys[i], connectionManagers[i], state.Promise)
+	
+	// Send the promise off
+	policy.SendPromiseToClient(serverKeys[i].Public, secretKeyT.Public)
 }
 
 /*
