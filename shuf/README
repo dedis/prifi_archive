@@ -86,9 +86,9 @@ NETWORK SHUFFLE
 The files in the netchan subdirectory allow the shuffle techniques above to be
 run on a networked cluster of machines. Tests may be invoked as follows:
 
-client [configFile] [nodeURIs] [nodePubKeys]
-server [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [privKey]
-genKey [configFile] [nodeNum]
+client [id] [configFile] [nodeURIs] [nodePubKeys] [message]
+server [id] [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [privKey]
+genKey [id] [configFile]
 
 At a higher level, we provide scripts, which require login access to all nodes
 and clients without a password.
