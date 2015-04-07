@@ -84,15 +84,25 @@ NETWORK SHUFFLE
 ===============
 
 The files in the netchan subdirectory allow the shuffle techniques above to be
-run on a networked cluster of machines. On the client side, tets may be invoked
-by running client [configFile] [nodeURIs] [nodePubKeys], where nodeURIs is a
-newline separated file of nodes participating in the shuffle, and nodePubKeys
-is a newline separated file containing their public keys. On the server side,
-tests may be invoked by running server [configFile] [nodeURIs] [clientURIs]
-[privKey], where clientURIs is a newline separated file containing the URIs of
-each client participating in the shuffle, and privKey is a file containing that
-node's private key. To simplify the deployment of client and server tests, the
-script netTest.sh is provided. Invoke it as netTest.sh [configFile] [nodeURIs].
+run on a networked cluster of machines. Tests may be invoked as follows:
+
+client [configFile] [nodeURIs] [nodePubKeys]
+server [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [privKey]
+genKey [configFile] [nodeNum]
+
+At a higher level, we provide scripts, which require login access to all nodes
+and clients without a password.
+
+netDist.sh [configFile] [clientURIs] [nodeURIs]
+netTest.sh [configFile] [clientURIs] [nodeURIs]
+
+nodeURIs and clientURIs are newline separated files of URIs participating in
+the shuffle.
+
+nodePubKeys is a directory of public keys: if nodePubKeys was 'pubKeys' and
+there was one node, that node's public key would be found in 'pubKeys/1'.
+
+privKey is a file containing the given node's private key. 
 
 
 PROTOCOL
