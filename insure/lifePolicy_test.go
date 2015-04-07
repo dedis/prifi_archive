@@ -1,7 +1,7 @@
 package insure
 
 import (
-	"sync"
+	//"sync"
 	"testing"
 
 	"github.com/dedis/crypto/abstract"
@@ -16,8 +16,8 @@ var goDir = coconet.NewGoDirectory()
 
 // Variables for the server to take out the policy.
 var secretKeyT = produceKeyPairT()
-var keyPairT = produceKeyPairT()
-var goConn = produceChanConn(keyPairT)
+var keyPairT   = produceKeyPairT()
+var goConn     = produceChanConn(keyPairT)
 
 // Alter this to easily scale the number of servers to test with. This
 // represents the number of other servers waiting to approve policies.
@@ -88,6 +88,42 @@ func setupConn() bool {
 	return true
 }
 
+// Insures a LifePolicyModule can be properly initialized.
+func TestLifePolicyModuleInit(t * testing.T) {
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn)
+	if policy.keyPair != keyPairT {
+		t.Error("keypair not properly set")
+	}
+	if policy.serverId != keyPairT.Public.String() {
+		t.Error("serverId not properly set")
+	}
+	if policy.t != lpt {
+		t.Error("t not properly set")
+	}
+	if policy.r != lpr {
+		t.Error("r not properly set")
+	}
+	if policy.n != lpn {
+		t.Error("n not properly set")
+	}
+	if policy.n != lpn {
+		t.Error("n not properly set")
+	}
+	if policy.cman != goConn {
+		t.Error("ConnectionManager not properly set")
+	}
+	if policy.promises == nil {
+		t.Error("promises map not properly set")
+	}
+
+	if policy.serverPromises == nil {
+		t.Error("serverPromises map not properly set")
+	}
+}
+
+
+
+/*
 // This function is the code run by the insurers. The server listens for a
 // CertifyPromiseMessage, sends a response, and then exits.
 func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
@@ -117,7 +153,7 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 	// ERROR CHECKING
 
 	// Invalid n
-/*	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
+/ *	_, ok1 := new(LifePolicy).Init(keyPairT, goConn).TakeOutPolicy(
 		insurerListT, nil, INSURE_GROUP, TSHARES, 0)
 
 	if ok1 {
@@ -144,7 +180,7 @@ func TestTakeOutPolicyBasic(t *testing.T) {
 
 	if ok3 {
 		t.Fatal("Policy should fail not enough servers are given.")
-	}*/
+	}* /
 
 	// Success Cases
 
@@ -230,7 +266,7 @@ func TestTakeOutPolicyIntermediate(t *testing.T) {
 // This function is the code run by the insurers. The server listens for a
 // CertifyPromiseMessage, sends a response, and then exits.
 func serversAdvanced(t *testing.T, start, middle, end *sync.WaitGroup,
-	secret,key *config.KeyPair, secretKeys []*config.KeyPair, cm connMan.ConnManager) {
+	secret,key *config.KeyPair, secretKeys []*config.KeyPair, cm connMan.ConnManager) *LifePolicyModule{
 
 	defer end.Done()
 
@@ -265,6 +301,7 @@ func serversAdvanced(t *testing.T, start, middle, end *sync.WaitGroup,
 			panic("Promise expected to be certified")
 		}
 	}
+	return policy
 }
 
 // This is builds upon the intermediate test. After every server takes out
@@ -287,3 +324,55 @@ func TestTakeOutPolicyAdvanced(t *testing.T) {
 	start.Done()
 	end.Wait()
 }
+
+
+// This function is the code run by the insurers. The server listens for a
+// CertifyPromiseMessage, sends a response, and then exits.
+func serversReconstruct(t *testing.T, start, middle, end *sync.WaitGroup,
+	secret,key *config.KeyPair, secretKeys []*config.KeyPair, cm connMan.ConnManager) {
+
+	defer end.Done()
+
+	policy := serversIntermediate(t, middle, start, secret, key, cm)
+	
+	middle.Done()
+	middle.Wait()
+	
+	// The insurer list should not include the server itself.
+	// Don't reconstruct ones own key.
+	if !insurerListT[3].Equal(key.Public) {
+	   for repeat :=0; repeat < 1000; repeat++ {
+		for i := 0; i < numServers; i++ {	
+			msg := new(PolicyMessage).UnmarshalInit(policy.t,policy.r,policy.n, policy.keyPair.Suite)
+			policy.cman.Get(insurerListT[i], msg)
+			policy.handlePolicyMessage(insurerListT[i], msg)
+		}
+	   }
+	   return
+	}
+	recoveredSecret := policy.ReconstructSecret(insurerListT[0], secretKeys[0].Public)
+	if !recoveredSecret.Equal(secretKeys[0].Secret) {
+		panic("Secret failed to be reconstructed")
+	}
+}
+
+// This is builds upon the intermediate test. After every server takes out
+// a policy, it then sends the policy to everyone else. Everyone else then checks
+// with the insurers to make sure the promise is certified and then accepts it as
+// certified
+func TestSecretReconstruction(t *testing.T) {
+
+	start := new(sync.WaitGroup)
+	start.Add(1)
+	middle := new(sync.WaitGroup)
+	middle.Add(numServers*2)
+	end := new(sync.WaitGroup)
+	end.Add(numServers)
+	// Start up the other insurers.
+	for i := 0; i < numServers; i++ {
+		go serversReconstruct(t, start, middle, end, secretKeys[i], serverKeys[i], 
+			secretKeys, connectionManagers[i]) 
+	}
+	start.Done()
+	end.Wait()
+}*/

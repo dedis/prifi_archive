@@ -1,8 +1,21 @@
+/* This file implements the networking code for the life insurance protocol.
+ * Building upon the promise.Promise cryptographic primative, this code provides
+ * a simple interface for servers to set up and manage life insurance policies
+ * for themselves and other servers.
+ *
+ * In particular, the file allows servers to:
+ *
+ *   - Create new promises from private keys
+ *   - Send promises to insurers to have them certified
+ *   - Send promises to clients
+ *   - Manage promises from other servers
+ *   - Reconstruct promised secrets when necessary
+ */
 package insure
 
 import (
 	"errors"
-
+	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly/promise"
@@ -10,55 +23,62 @@ import (
 	"github.com/dedis/prifi/connMan"
 )
 
-/* This file provides an implementation of the life insurance policy. Coco
- * servers will each carry their own policies and will be required to take one
- * out before participating in the system. At any point, they should be ready to
- * prove that they carry a valid policy. For a detailed summary of the insurance
- * policy protocol, please see doc.go
+/* The LifePolicyModule is responsible for handling all life insurance logic.
+ * In particular, it can
  *
- * To create a policy:
- * newPolicy, ok := new(LifePolicyModule).Init(KeyPairOfServer, ConnectionManager).TakeOutPolicy(
- *		ListOfInsurrers, OptionalMethodOfChoosingInsurers, GroupForPrivateShares,
- *		MinimumNumberOfPrivateSharesNeededForReconstruction, TotalNumberOfShares)
- *
- * For safety measures, the function returns nil if the policy fails to be
- * created along with an updated status in ok.
+ *   - Create new promises
+ *   - Handle promise certification
+ *   - Send/receive messages over the network.
  */
 
 type LifePolicyModule struct {
-	// The long term key pair of the server
+
+	// The long-term key pair of the server
 	keyPair *config.KeyPair
 	
+	// The id of the server (a string version of its long term public key).
+	// This is used primarily to simplify code.
 	serverId string
 	
-	t int
-	
-	r int
-	
-	n int
+	// t, r, and n are parameters used to construct promise.Promise's. These
+	// parameters will be used for all promises constructed. Other servers
+	// wishing to send promises to this module should use the same values for
+	// these parameters.
+	//
+	// Refer to the crypto promise.Promise documentation for more information
+	// about how they are used.
+	//
+	// TODO Make sure the system behaves properly if these values differ.
+	t, r, n int
 
-	// A hash of promises this server has made.
-	// promise_id => State
+	// This hash contains promises the server has created. The hash is of
+	// the form:
+	//
+	// promised_public_key_string => state_of_promise
 	promises map[string]*promise.State
 
-	// A hash of promises sent to this server from others servers.
-	// Promises that this server is insuring and promises received from
-	// other servers are stored here.
-	// PromiserLongTermKey => PromiserShortTermKey => State
+	// This hash contains promises that originated from other servers.
+	// Promises that the server is insuring as well as promises from
+	// servers who are performing work for this server are kept here.
+	//
+	// The hash is of the form:
+	//
+	// string_of_long_term_key_of_other_server
+	//    => promised_public_key_string
+	//       => state_of_promise
 	serverPromises map[string](map[string]*promise.State)
 
-	// The connection manager to use for networking
+	// The connection manager used for sending/receiving messages over the network
 	cman connMan.ConnManager
 }
 
-/* This method initializes a policy. This function should be called first before
- * using the policy in any manner. After being initialize, the policy will be
- * able to insure other clients. However, it will not provide a policy for the
- * server who owns it until TakeOutPolicy has been called.
+/* Initializes a new LifePolicyModule object.
  *
  * Arguments:
- *   kp       = the public/private key of the owner server
- *   cmann    = the connection manager to handle requests.
+ *   kp       = the long term public/private key of the server
+ *   t, r, n  = configuration parameters for promises. See crypto's promise.Promise
+ *              for more details
+ *   cmann    = the connection manager for sending/receiving messages.
  */
 func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.ConnManager) *LifePolicyModule {
 	lp.keyPair         = kp
@@ -160,7 +180,7 @@ func (lp *LifePolicyModule) SendClientPolicy(clientLongPubKey, secretPubKey abst
 	return errors.New("Promise does not exist")
 }
 
-func (lp *LifePolicyModule) ReconstructSecret(longTermKey,secretPubKey abstract.Point) error {
+func (lp *LifePolicyModule) ReconstructSecret(longTermKey,secretPubKey abstract.Point) abstract.Secret {
 
 	state        := lp.serverPromises[longTermKey.String()][secretPubKey.String()]
 	insurersList := state.Promise.Insurers()
@@ -197,7 +217,7 @@ func (lp *LifePolicyModule) ReconstructSecret(longTermKey,secretPubKey abstract.
 			}
 		}
 	}
-	return nil
+	return state.PriShares.Secret()
 }
 
 /* This function handles policy messages received. This function will handle
@@ -350,6 +370,8 @@ func (lp *LifePolicyModule) handleRevealShareResponseMessage(msg *PromiseShareMe
 			return err
 		}
 		state.PriShares.SetShare(msg.ShareIndex, msg.Share)
+		fmt.Println("SHARE REVEALED")
+		return nil
 	}
 	return errors.New("This server does not know of the specified promise.")
 }
