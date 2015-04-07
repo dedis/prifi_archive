@@ -92,22 +92,22 @@ func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.Con
 	return lp
 }
 
-/* This function selects a set of servers to serve as insurers. This is an
- * extremely rudimentary version that selects the first n servers from the list.
+/* This private method selects n insurers from a larger list of insurers. This
+ * is the default method used for selected the insurers to use for constructing
+ * a promise.
  *
  * Arguments:
  *    serverList = the list of servers to choose from
  *    n          = the number of servers to choose
  *
  * Returns:
- *   The list of servers to server as insurers
+ *   The list of servers to serve as insurers
+ *
+ * Note:
+ *   The function simply returns the first n servers.
  */
 
 func selectInsurersBasic(serverList []abstract.Point, n int) []abstract.Point {
-	if n < len(serverList) {
-		panic("Not enough insurer keys given")
-	}
-
 	return serverList[:n]
 }
 

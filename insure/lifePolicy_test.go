@@ -88,6 +88,13 @@ func setupConn() bool {
 	return true
 }
 
+// Tests that check whether a method panics can use this funcition
+func deferTest(t *testing.T, message string) {
+	if r := recover(); r == nil {
+		t.Error(message)
+	}
+}
+
 // Insures a LifePolicyModule can be properly initialized.
 func TestLifePolicyModuleInit(t * testing.T) {
 	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn)
@@ -120,6 +127,31 @@ func TestLifePolicyModuleInit(t * testing.T) {
 		t.Error("serverPromises map not properly set")
 	}
 }
+
+// Insures that SelectBasicInsurer can properly select a list of insurers.
+func TestSelectBasicInsurers(t * testing.T) {
+	
+	result := selectInsurersBasic(insurerListT, numServers)
+	if len(result) != numServers {
+		t.Fatal("List returned is the wrong size.")
+	}
+	for i := 0; i < numServers; i++ {
+		if !result[i].Equal(insurerListT[i]) {
+			t.Fatal("List returned contains unexpected elements.")
+		}
+	}
+
+	result = selectInsurersBasic(insurerListT, numServers-1)
+	if len(result) != numServers-1 {
+		t.Fatal("List returned is the wrong size.")
+	}
+	for i := 0; i < numServers-1; i++ {
+		if !result[i].Equal(insurerListT[i]) {
+			t.Fatal("List returned contains unexpected elements.")
+		}
+	}
+}
+
 
 
 
