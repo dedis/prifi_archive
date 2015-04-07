@@ -76,8 +76,8 @@ CHANNEL SHUFFLE
 
 The files in the gochan subdirectory allow the shuffle techniques above to be
 run on a single machine, using Go's lightweight channels. Tests may be invoked
-by running gochan [configFile]. To run the tests on multiple OS threads, supply
-the usual go paramter -N.
+by running gochan [configFile]. To run the tests on multiple OS threads, set the
+GOMAXPROCS environment varaible to the number of OS threads you want to use.
 
 
 NETWORK SHUFFLE
