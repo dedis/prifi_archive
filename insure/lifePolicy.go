@@ -293,9 +293,37 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
 	return Error, errors.New("Invald message type")
 }
 
-/* This method handles CertifyPromiseMessages. If another node requests to be insured,
- * verify that the share it sent is valid. If so, insure it and send a confirmation
- * message back.
+
+/* This internal helper method properly adds a new promise to the serverPromises
+ * hash. If the promise already exists in the hash, the function does nothing.
+ *
+ * Arguments:
+ *   prom = the promise to add
+ *
+ * Postconditions:
+ *   The promise has been added to:
+ *
+ *      serverPromises[long_term_id_of_promiser][id_of_promise]
+ *
+ *   The method also creates and assigns a hash to
+ *
+ *      serverPromises[long_term_id_of_promiser]
+ *
+ *   if one does not already exist.
+ */
+func (lp *LifePolicyModule) addServerPromise(prom promise.Promise) {
+	promiserId := prom.PromiserId()
+	id         := prom.Id()
+	if _, assigned := lp.serverPromises[promiserId]; !assigned{
+		lp.serverPromises[promiserId] = make(map[string]*promise.State)
+	}
+	if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
+		state := new(promise.State).Init(prom)
+		lp.serverPromises[promiserId][id] = state
+	}
+}
+
+/* This method handles CertifyPromiseMessages. I
  *
  * Arguments:
  *   msg = the message requesting insurance
@@ -307,21 +335,28 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
  * a promise that already exists.
  */
 func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, msg *CertifyPromiseMessage) error {
-	promiserId := msg.Promise.PromiserId()
-	id         := msg.Promise.Id()
-	if _, assigned := lp.serverPromises[promiserId]; !assigned{
-		lp.serverPromises[promiserId] = make(map[string]*promise.State)
+
+	// Both promisers and clients will send CertifyPromiseMessages to insurers.
+	// An insurer only wants to add the promise to the serverPromise hash if
+	// the server sending the message is the one who created the promise.
+	// Otherwise, malicious servers could register promises in other's names.
+	if pubKey.String() == msg.Promise.PromiserId() {
+		lp.addServerPromise(msg.Promise)
 	}
-	if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
-		state := new(promise.State).Init(msg.Promise)
-		lp.serverPromises[promiserId][id] = state
+
+	// Retrieve the promise, produce a response, and send the reply to the
+	// server who sent the message.
+	state, assigned := lp.serverPromises[msg.Promise.PromiserId()][msg.Promise.Id()]
+	if !assigned {
+		return errors.New("No such promise exists.")
 	}
-	state := lp.serverPromises[promiserId][id]
+	
 	response, err := state.Promise.ProduceResponse(msg.ShareIndex, lp.keyPair)
 	if err != nil {
 		return err
 	}
-	replyMsg := new(PromiseResponseMessage).createMessage(msg.ShareIndex, state.Promise, response)
+	replyMsg := new(PromiseResponseMessage).createMessage(msg.ShareIndex,
+		state.Promise, response)
 	lp.cman.Put(pubKey, new(PolicyMessage).createPRMessage(replyMsg))
 	return nil
 }
@@ -348,7 +383,6 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 		return nil
 	}
 
-	panic("DEATH AND DOOM")
 	return errors.New("Promise specified does not exist.")
 }
 
@@ -374,7 +408,6 @@ func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, 
 
 	// If this promise is already considered valid, ignore it.
 	if state.PromiseCertified() == nil {
-		panic("Should not happen in tests")
 		return nil
 	}
 
@@ -411,7 +444,6 @@ func (lp *LifePolicyModule) handleRevealShareResponseMessage(msg *PromiseShareMe
 			return err
 		}
 		state.PriShares.SetShare(msg.ShareIndex, msg.Share)
-		fmt.Println("SHARE REVEALED")
 		return nil
 	}
 	return errors.New("This server does not know of the specified promise.")

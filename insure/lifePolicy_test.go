@@ -2,6 +2,7 @@ package insure
 
 import (
 	//"sync"
+	"reflect"
 	"testing"
 
 	"github.com/dedis/crypto/abstract"
@@ -17,6 +18,7 @@ var goDir = coconet.NewGoDirectory()
 
 // Variables for the server to take out the policy.
 var secretKeyT = produceKeyPairT()
+var secretKeyT2 = produceKeyPairT()
 var keyPairT   = produceKeyPairT()
 var goConn     = produceChanConn(keyPairT)
 
@@ -322,8 +324,76 @@ func TestLifePolicyModuleSendPromiseToClient(t *testing.T) {
 	go receivePromiseBasic(t, serverKeys[i], connectionManagers[i], state.Promise)
 	
 	// Send the promise off
-	policy.SendPromiseToClient(serverKeys[i].Public, secretKeyT.Public)
+	err := policy.SendPromiseToClient(serverKeys[i].Public, secretKeyT.Public)
+	if err != nil {
+		t.Error("The promise should have been sent.")
+	}
+
+	err = policy.SendPromiseToClient(serverKeys[i].Public, keyPairT.Public)
+	if err == nil {
+		t.Error("The promise does not exist. An eror should have been ")
+	}
+
 }
+
+// Verifies that a promise can be properly added to the serverPromise hash
+func TestLifePolicyModuleAddServerPromise(t *testing.T) {
+	i := 0
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT,serverKeys[i], lpt, lpr, insurerListT)
+	
+	// When adding the first promise for a server, make sure a hash for that
+	// server is created and the promise is added to that hash.
+	policy.addServerPromise(newPromise)
+	serverHash, ok := policy.serverPromises[newPromise.PromiserId()]
+	
+	if !ok {
+		t.Fatal("New server failed to be added to severPromises hash.")
+	}
+	
+	promiseState, ok := policy.serverPromises[newPromise.PromiserId()][newPromise.Id()]
+	if !ok {
+		t.Fatal("Promise failed to be added to the hash.")
+	}
+	
+	if !promiseState.Promise.Equal(&newPromise) {
+		t.Error("Stored Promise does not equal promise entered.")
+	}
+	
+	
+	// Adding the same promise should not result in any changes.
+	policy.addServerPromise(newPromise)
+	
+	temp := policy.serverPromises[newPromise.PromiserId()]
+	if reflect.ValueOf(serverHash).Pointer() != reflect.ValueOf(temp).Pointer() {
+		t.Fatal("Server hash should not have changed.")
+	}
+	if promiseState != policy.serverPromises[newPromise.PromiserId()][newPromise.Id()] {
+		t.Fatal("Promise state should not have changed.")
+	}
+	
+	// Adding a new promise to an existing server should only add the new key.
+	newPromise = promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT2,serverKeys[i], lpt, lpr, insurerListT)
+	
+	policy.addServerPromise(newPromise)
+	
+	temp = policy.serverPromises[newPromise.PromiserId()]
+	if reflect.ValueOf(serverHash).Pointer() != reflect.ValueOf(temp).Pointer() {
+		t.Fatal("Server hash should not have changed.")
+	}
+
+	promiseState, ok = policy.serverPromises[newPromise.PromiserId()][newPromise.Id()]
+	if !ok {
+		t.Fatal("Promise failed to be added to the hash.")
+	}
+	
+	if !promiseState.Promise.Equal(&newPromise) {
+		t.Error("Stored Promise does not equal promise entered.")
+	}
+}
+
 
 /*
 
