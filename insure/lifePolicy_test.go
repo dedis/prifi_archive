@@ -174,11 +174,10 @@ func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(keyPairT.Public, msg)
-		
-		certMsg := msg.getCPM()
 
 		// If a CertifyPromiseMessage, exit
 		if msg.Type == CertifyPromise {
+			certMsg := msg.getCPM()
 			response, _ := certMsg.Promise.ProduceResponse(certMsg.ShareIndex, k)
 			replyMsg := new(PromiseResponseMessage).createMessage(certMsg.ShareIndex, certMsg.Promise, response)
 			cm.Put(keyPairT.Public, new(PolicyMessage).createPRMessage(replyMsg))
@@ -333,7 +332,6 @@ func TestLifePolicyModuleSendPromiseToClient(t *testing.T) {
 	if err == nil {
 		t.Error("The promise does not exist. An eror should have been ")
 	}
-
 }
 
 // Verifies that a promise can be properly added to the serverPromise hash
@@ -394,6 +392,99 @@ func TestLifePolicyModuleAddServerPromise(t *testing.T) {
 	}
 }
 
+// This is a helper method that is used to send CertifyPromiseMessages to an
+// insurer
+func sendCertifyMessagesBasic(t *testing.T, insurerI int, promiserCm, clientCm connMan.ConnManager) {
+
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT, keyPairT, lpt,lpr, insurerListT)
+	requestMsg := new(CertifyPromiseMessage).createMessage(insurerI, newPromise)
+	policyMsg  := new(PolicyMessage).createCPMessage(requestMsg)
+	
+	// As a client, first request a promise that has not been added yet.
+	clientCm.Put(serverKeys[insurerI].Public, policyMsg)
+	
+	// As a promiser, request a promise that has not been added yet.
+	promiserCm.Put(serverKeys[insurerI].Public, policyMsg)
+	
+	// As a client, request the promise added.
+	clientCm.Put(serverKeys[insurerI].Public, policyMsg)
+	
+	
+	// Verify the server sent a response to the promiser.
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	promiserCm.Get(serverKeys[insurerI].Public, msg)
+	if msg.Type != PromiseResponse {
+		panic("A valid certifyPromise message should have been sent.")
+	}
+	
+	// Verify that the second client request produced a response.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	clientCm.Get(serverKeys[insurerI].Public, msg)
+	if msg.Type != PromiseResponse {
+		panic("A valid certifyPromise message should have been sent.")
+	}
+}
+
+// Verifies that an insurer can handle CertifyPromiseMessages from promisers and clients
+func TestLifePolicyModuleHandleCertifyPromiseMessage(t *testing.T) {
+
+	clientI  := 1
+	insurerI := 2 
+	policy := new(LifePolicyModule).Init(serverKeys[insurerI], lpt,lpr,lpn, connectionManagers[insurerI]) 
+	go sendCertifyMessagesBasic(t, insurerI, goConn, connectionManagers[clientI])
+
+	// The first message to be received will be from a client. This will
+	// be before the promise has actually been sen by the promiser.
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(serverKeys[clientI].Public, msg)
+	if msg.Type != CertifyPromise {
+		t.Error("CertifyPromise Message expected")
+	}
+	certMsg := msg.getCPM()
+	err := policy.handleCertifyPromiseMessage(serverKeys[clientI].Public, certMsg)
+
+	if err == nil {
+		t.Error("Promise doesn't exist and an error should have been produced.")
+	}
+	if _, assigned := policy.serverPromises[certMsg.Promise.PromiserId()]; assigned{
+		t.Error("A client should not be able to add promises for others.")
+	}
+	
+
+	// The second message will be from the promiser. The promiser is adding
+	// the promise to the insurer.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(keyPairT.Public, msg)
+	if msg.Type != CertifyPromise {
+		t.Fatal("CertifyPromise Message expected")
+	}
+	certMsg = msg.getCPM()
+	err = policy.handleCertifyPromiseMessage(keyPairT.Public, certMsg)
+
+	if err != nil {
+		t.Error("Message should have been sent successfully.", err)
+	}
+
+	_, assigned := policy.serverPromises[certMsg.Promise.PromiserId()][certMsg.Promise.Id()]
+	if !assigned{
+		t.Error("Message should have been assigned.")
+	}
+
+	// The final message will be from a client attempting to receive a
+	// response after the promise has been added.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(serverKeys[clientI].Public, msg)
+	if msg.Type != CertifyPromise {
+		t.Fatal("CertifyPromise Message expected")
+	}
+	certMsg = msg.getCPM()
+	err = policy.handleCertifyPromiseMessage(serverKeys[clientI].Public, certMsg)
+
+	if err != nil {
+		t.Error("Response should have been sent successfully.", err)
+	}
+}
 
 /*
 

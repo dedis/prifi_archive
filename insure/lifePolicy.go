@@ -15,7 +15,6 @@ package insure
 
 import (
 	"errors"
-	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly/promise"
@@ -323,21 +322,25 @@ func (lp *LifePolicyModule) addServerPromise(prom promise.Promise) {
 	}
 }
 
-/* This method handles CertifyPromiseMessages. I
+/* This method handles CertifyPromiseMessages. Insurers use this method to
+ * respond to both clients and promisers.
+ *
+ *    promisers = the method adds the promise to its serverPromises hash and
+ *                returns a response
+ *
+ *    clients   = the method returns a response if the specified promise exists.
  *
  * Arguments:
- *   msg = the message requesting insurance
+ *   pubKey = the public key of the requestor
+ *   msg    = the CertifyPromiseMessage
  *
  * Returns:
- *	the error status (possibly nil)
- *
- * TODO Add an option to differentiate between taking out a promise and certifying
- * a promise that already exists.
+ *	nil if a response is successfully sent, an error otherwise.
  */
 func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, msg *CertifyPromiseMessage) error {
 
 	// Both promisers and clients will send CertifyPromiseMessages to insurers.
-	// An insurer only wants to add the promise to the serverPromise hash if
+	// An insurer only wants to add the promise to the serverPromises hash if
 	// the server sending the message is the one who created the promise.
 	// Otherwise, malicious servers could register promises in other's names.
 	if pubKey.String() == msg.Promise.PromiserId() {
