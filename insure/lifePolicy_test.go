@@ -169,16 +169,17 @@ func TestSelectBasicInsurers(t * testing.T) {
 // The server listens for a CertifyPromiseMessage, sends a response, and then exits.
 func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 
-	policy := new(LifePolicyModule).Init(k,lpt,lpr,lpn, cm)
-
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(keyPairT.Public, msg)
-
-		msgType, ok := policy.handlePolicyMessage(keyPairT.Public, msg)
+		
+		certMsg := msg.getCPM()
 
 		// If a CertifyPromiseMessage, exit
-		if msgType == CertifyPromise && ok == nil {
+		if msg.Type == CertifyPromise {
+			response, _ := certMsg.Promise.ProduceResponse(certMsg.ShareIndex, k)
+			replyMsg := new(PromiseResponseMessage).createMessage(certMsg.ShareIndex, certMsg.Promise, response)
+			cm.Put(keyPairT.Public, new(PolicyMessage).createPRMessage(replyMsg))
 			return
 		}
 	}
