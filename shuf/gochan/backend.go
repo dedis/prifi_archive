@@ -1,4 +1,4 @@
-package gochan
+package main
 
 import (
 	"fmt"
