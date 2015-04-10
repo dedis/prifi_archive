@@ -129,7 +129,8 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
 	nodes[0].LogTest = []byte("Hello World")
-	return nodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 1})
+	// return nodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 1})
+	return nodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: nodes[0].LogTest, Round: 1})
 }
 
 // Configuration file data/exconf.json
@@ -265,7 +266,7 @@ func TestMultipleRounds(t *testing.T) {
 	// via a simple annoucement
 	for i := 1; i <= N; i++ {
 		hc.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
-		err = hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+		err = hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 		if err != nil {
 			t.Error(err)
 		}

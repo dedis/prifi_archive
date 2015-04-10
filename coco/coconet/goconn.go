@@ -85,11 +85,11 @@ func NewGoConn(dir *GoDirectory, from, to string) (*GoConn, error) {
 	}
 	dir.nameToPeer[fromto] = gc
 	if _, ok := dir.channel[fromto]; !ok {
-		dir.channel[fromto] = make(chan []byte, 1)
+		dir.channel[fromto] = make(chan []byte, 100)
 		dir.closed[fromto] = false
 	}
 	if _, ok := dir.channel[tofrom]; !ok {
-		dir.channel[tofrom] = make(chan []byte, 1)
+		dir.channel[tofrom] = make(chan []byte, 100)
 		dir.closed[tofrom] = false
 	}
 	return gc, nil
@@ -172,6 +172,7 @@ retry:
 			log.Println("detected closed channel: putting:", fromto, ok)
 			return ErrClosed
 		}
+		log.Println("retry")
 		goto retry
 	}
 	return nil

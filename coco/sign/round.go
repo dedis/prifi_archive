@@ -16,6 +16,9 @@ type Round struct {
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
 
+	Commits   []*SigningMessage
+	Responses []*SigningMessage
+
 	// own big merkle subtree
 	MTRoot     hashid.HashId   // mt root for subtree, passed upwards
 	Leaves     []hashid.HashId // leaves used to build the merkle subtre
@@ -48,6 +51,8 @@ type Round struct {
 
 func NewRound() *Round {
 	round := &Round{}
+	round.Commits = make([]*SigningMessage, 0)
+	round.Responses = make([]*SigningMessage, 0)
 	round.ExceptionList = make([]abstract.Point, 0)
 	round.CountedVotes = &CountedVotes{}
 	round.CountedVotes.Votes = make([]*VoteResponse, 0)

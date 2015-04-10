@@ -37,10 +37,9 @@ type TCPHost struct {
 	pool *sync.Pool
 
 	// channels to send on Get() and update
-	msglock sync.Mutex
 	msgchan chan NetworkMessg
-	errchan chan error
-	suite   abstract.Suite
+
+	suite abstract.Suite
 
 	// 1 if closed, 0 if not closed
 	closed int64
@@ -50,10 +49,8 @@ type TCPHost struct {
 func NewTCPHost(hostname string) *TCPHost {
 	h := &TCPHost{name: hostname,
 		views:        NewViews(),
-		msglock:      sync.Mutex{},
 		msgchan:      make(chan NetworkMessg, 1),
-		PendingPeers: make(map[string]bool),
-		errchan:      make(chan error, 1)}
+		PendingPeers: make(map[string]bool)}
 	h.peers = make(map[string]Conn)
 	h.Ready = make(map[string]bool)
 	return h
@@ -170,10 +167,7 @@ func (h *TCPHost) Listen() error {
 					data := h.pool.Get().(BinaryUnmarshaler)
 					err := tp.Get(data)
 
-					h.msglock.Lock()
-					h.msgchan <- NetworkMessg{Data: data, From: tp.Name()}
-					h.errchan <- err
-					h.msglock.Unlock()
+					h.msgchan <- NetworkMessg{Data: data, From: tp.Name(), Err: err}
 				}
 			}()
 		}
@@ -241,10 +235,7 @@ func (h *TCPHost) ConnectTo(parent string) error {
 			data := h.pool.Get().(BinaryUnmarshaler)
 			err := tp.Get(data)
 
-			h.msglock.Lock()
-			h.msgchan <- NetworkMessg{Data: data, From: tp.Name()}
-			h.errchan <- err
-			h.msglock.Unlock()
+			h.msgchan <- NetworkMessg{Data: data, From: tp.Name(), Err: err}
 		}
 	}()
 
@@ -587,8 +578,8 @@ func (h *TCPHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler)
 //
 // TODO: each of these goroutines could be spawned when we initally connect to
 // them instead.
-func (h *TCPHost) Get() (chan NetworkMessg, chan error) {
-	return h.msgchan, h.errchan
+func (h *TCPHost) Get() chan NetworkMessg {
+	return h.msgchan
 }
 
 // Pool is the underlying pool of BinaryUnmarshallers to use when getting.

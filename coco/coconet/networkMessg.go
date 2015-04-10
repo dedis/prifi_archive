@@ -7,6 +7,7 @@ import (
 type NetworkMessg struct {
 	Data BinaryUnmarshaler // data
 	From string            // name of server data came from
+	Err  error
 }
 
 func (nm *NetworkMessg) MarshalBinary() ([]byte, error) {

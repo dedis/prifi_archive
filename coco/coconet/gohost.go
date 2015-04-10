@@ -49,9 +49,7 @@ type GoHost struct {
 
 	pool *sync.Pool
 
-	msglock sync.Mutex
 	msgchan chan NetworkMessg
-	errchan chan error
 
 	closed int64
 }
@@ -67,8 +65,7 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
 		views:   NewViews(),
 		dir:     dir,
-		msgchan: make(chan NetworkMessg, 10),
-		errchan: make(chan error, 10)}
+		msgchan: make(chan NetworkMessg, 10)}
 	h.peers = make(map[string]Conn)
 	h.PeerLock = sync.RWMutex{}
 	h.Ready = make(map[string]bool)
@@ -144,10 +141,7 @@ func (h *GoHost) ConnectTo(parent string) error {
 			data := h.pool.Get().(BinaryUnmarshaler)
 			err := conn.Get(data)
 
-			h.msglock.Lock()
-			h.msgchan <- NetworkMessg{Data: data, From: conn.Name()}
-			h.errchan <- err
-			h.msglock.Unlock()
+			h.msgchan <- NetworkMessg{Data: data, From: conn.Name(), Err: err}
 		}
 	}()
 
@@ -210,10 +204,7 @@ func (h *GoHost) Listen() error {
 					data := h.pool.Get().(BinaryUnmarshaler)
 					err := conn.Get(data)
 
-					h.msglock.Lock()
-					h.msgchan <- NetworkMessg{Data: data, From: conn.Name()}
-					h.errchan <- err
-					h.msglock.Unlock()
+					h.msgchan <- NetworkMessg{Data: data, From: conn.Name(), Err: err}
 				}
 			}()
 		}(c)
@@ -473,6 +464,7 @@ func (h *GoHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler) 
 			}
 		}(i, c)
 	}
+
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -491,8 +483,8 @@ func (h *GoHost) PutDown(ctx context.Context, view int, data []BinaryMarshaler) 
 
 // Get returns two channels. One of messages that are received, and another of errors
 // associated with each message.
-func (h *GoHost) Get() (chan NetworkMessg, chan error) {
-	return h.msgchan, h.errchan
+func (h *GoHost) Get() chan NetworkMessg {
+	return h.msgchan
 }
 
 // Pool returns the underlying pool of objects for creating new BinaryUnmarshalers,

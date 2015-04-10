@@ -32,22 +32,53 @@ const (
 	Error
 )
 
+func (m MessageType) String() string {
+	switch m {
+	case Unset:
+		return "Unset"
+	case Announcement:
+		return "Announcement"
+	case Commitment:
+		return "Commitment"
+	case Challenge:
+		return "Challenge"
+	case Response:
+		return "Response"
+	case ViewChange:
+		return "ViewChange"
+	case ViewAccepted:
+		return "ViewAccepted"
+	case ViewConfirmed:
+		return "ViewConfirmed"
+	case GroupChange:
+		return "GroupChange"
+	case GroupChanged:
+		return "GroupChanged"
+	case Default: // for internal use
+		return "Default"
+	case Error:
+		return "Error"
+	}
+	return "INVALID TYPE"
+}
+
 // Signing Messages are used for all comunications between servers
 // It is imporant for encoding/ decoding for type to be kept as first field
 type SigningMessage struct {
-	Type MessageType
-	Am   *AnnouncementMessage
-	Com  *CommitmentMessage
-	Chm  *ChallengeMessage
-	Rm   *ResponseMessage
-	Vcm  *ViewChangeMessage
-	Vcfm *ViewConfirmedMessage
-	Vam  *ViewAcceptedMessage
-	Gcm  *GroupChangeMessage
-	Gcr  *GroupChangeResponse
-	Err  *ErrorMessage
-	From string
-	View int
+	Type        MessageType
+	Am          *AnnouncementMessage
+	Com         *CommitmentMessage
+	Chm         *ChallengeMessage
+	Rm          *ResponseMessage
+	Vcm         *ViewChangeMessage
+	Vcfm        *ViewConfirmedMessage
+	Vam         *ViewAcceptedMessage
+	Gcm         *GroupChangeMessage
+	Gcr         *GroupChangeResponse
+	Err         *ErrorMessage
+	From        string
+	View        int
+	HighestVote int // highest vote ever seen and commited in log, used for catch-up
 }
 
 func NewSigningMessage() interface{} {
@@ -73,7 +104,8 @@ type AnnouncementMessage struct {
 	LogTest []byte // TODO: change LogTest to Messg
 	Round   int
 
-	VoteRequest *VoteRequest
+	// VoteRequest *VoteRequest
+	Vote *Vote // Vote Request (propose)
 }
 
 type CommitmentMessage struct {
@@ -87,7 +119,8 @@ type CommitmentMessage struct {
 	// annoucement from root
 	ExceptionList []abstract.Point
 
-	CountedVotes *CountedVotes // CountedVotes contains a subtree's votes
+	// CountedVotes *CountedVotes // CountedVotes contains a subtree's votes
+	Vote *Vote // Vote Response (promise)
 
 	Round int
 }
@@ -99,7 +132,8 @@ type ChallengeMessage struct {
 	MTRoot hashid.HashId // the very root of the big Merkle Tree
 	Proof  proof.Proof   // Merkle Path of Proofs from root to us
 
-	CountedVotes *CountedVotes //  CountedVotes contains the whole tree's votes
+	// CountedVotes *CountedVotes //  CountedVotes contains the whole tree's votes
+	Vote *Vote // Vote Confirmerd/ Rejected (accept)
 
 	Round int
 }
@@ -114,6 +148,8 @@ type ResponseMessage struct {
 	ExceptionV_hat abstract.Point
 	// cummulative public keys of nodes that failed after commit
 	ExceptionX_hat abstract.Point
+
+	Vote *Vote // Vote Ack/Nack in thr log (ack/nack)
 
 	Round int
 }

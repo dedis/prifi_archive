@@ -108,9 +108,7 @@ func (sn *Node) SendLocalMerkleProof(view int, chm *ChallengeMessage) error {
 // Create Personalized Merkle Proofs for children servers
 // Send Personalized Merkle Proofs to children servers
 func (sn *Node) SendChildrenChallengesProofs(view int, chm *ChallengeMessage) error {
-	sn.roundLock.RLock()
 	round := sn.Rounds[chm.Round]
-	sn.roundLock.RUnlock()
 	// proof from big root to our root will be sent to all children
 	baseProof := make(proof.Proof, len(chm.Proof))
 	copy(baseProof, chm.Proof)

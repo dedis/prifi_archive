@@ -8,9 +8,44 @@ import (
 	"github.com/dedis/protobuf"
 )
 
-// For Group Evolution
-// Root Server suggests adding or removing a node via a VoteRequest embedded in an AnnoucementMessage
-// Follower Servers vote by filling in the CountedVotes structure embedded in Commitment Message
+type VoteType int
+
+const (
+	DefaultVT VoteType = iota
+	ViewChangeVT
+	AddVT
+	RemoveVT
+	ShutdownVT
+)
+
+// Multi-Purpose Vote embeds Action to be voted on, aggregated votes, and decison
+// when embedded in Announce it equals Vote Request (propose)
+// when embedded in Commit it equals Vote Response (promise)
+// when embedded in Challenge it equals Vote Confirmed (accept)
+// when embedded in Response it equals Vote Ack/ Nack (ack/ nack)
+type Vote struct {
+	Index int
+	View  int
+	Round int
+
+	Action interface{}
+
+	Count     *Count
+	Confirmed bool
+}
+
+type ViewChangeVote struct {
+	View   int    // view number we want to switch to
+	Parent string // our parent currently
+	Root   string // the root for the new view
+	// TODO: potentially have signature of new root on proposing this view
+}
+
+type AddVote struct {
+	View   int // view number when we want add to take place
+	Name   string
+	Parent string
+}
 
 type VoteResponse struct {
 	Name     string // name of the responder
@@ -27,24 +62,19 @@ func (vr ByVoteResponse) Len() int           { return len(vr) }
 func (vr ByVoteResponse) Swap(i, j int)      { vr[i], vr[j] = vr[j], vr[i] }
 func (vr ByVoteResponse) Less(i, j int) bool { return (vr[i].Name < vr[j].Name) }
 
-type VoteRequest struct {
-	Name   string // name of server action is requested on
-	Action string // "add" or "remove"
-}
-
 // When sent up in a Committment Message CountedVotes contains a subtree's votes
 // When sent down in a Challenge Message CountedVotes contains the whole tree's votes
-type CountedVotes struct {
-	Votes   []*VoteResponse // vote responses from descendants
-	For     int             // number of votes for
-	Against int             // number of votes against
+type Count struct {
+	Responses []*VoteResponse // vote responses from descendants
+	For       int             // number of votes for
+	Against   int             // number of votes against
 }
 
-func (cv *CountedVotes) MarshalBinary() ([]byte, error) {
+func (cv *Count) MarshalBinary() ([]byte, error) {
 	return protobuf.Encode(cv)
 }
 
-func (cv *CountedVotes) UnmarshalBinary(data []byte) error {
+func (cv *Count) UnmarshalBinary(data []byte) error {
 	var cons = make(protobuf.Constructors)
 	var point abstract.Point
 	var secret abstract.Secret

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/fnv"
+	"io"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -68,10 +69,8 @@ type Node struct {
 
 	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
 	roundLock sync.RWMutex
-	ComCh     map[int]chan *SigningMessage // a channel for each round's commits
-	RmCh      map[int]chan *SigningMessage // a channel for each round's responses
-	LogTest   []byte                       // for testing purposes
-	peerKeys  map[string]abstract.Point    // map of all peer public keys
+	LogTest   []byte                    // for testing purposes
+	peerKeys  map[string]abstract.Point // map of all peer public keys
 
 	closing     chan bool  // inner channel to stop getting message when closing
 	closed      chan error // error sent when connection closed
@@ -87,12 +86,6 @@ type Node struct {
 
 	lastView int64 // lat view # I received viewChange message for
 
-	// XXX: VamCh needs to be associated with the specific view it is used for
-	// If not, then Accepted Messages can be for different viewnumbers and still
-	// be counted towards a different view
-	VamChLock sync.Mutex
-	VamCh     chan *SigningMessage // a channel for ViewAcceptedMessages
-
 	timeout  time.Duration
 	timeLock sync.RWMutex
 
@@ -101,6 +94,33 @@ type Node struct {
 
 	ActionsLock sync.Mutex
 	Actions     []*VoteRequest
+
+	VoteLog     []*Vote // log of all confirmed votes, useful for replay
+	HighestVote int     // max of all Highest Votes we've seen, and our last commited vote
+	LastVote    int     // last vote we have committed to our log
+}
+
+// Start listening for messages coming from parent(up)
+func (sn *Node) Listen() error {
+	if sn.Pool() == nil {
+		sn.GenSetPool()
+	}
+	err := sn.get()
+	return err
+}
+
+func (sn *Node) Close() {
+	sn.hbLock.Lock()
+	if sn.heartbeat != nil {
+		sn.heartbeat.Stop()
+		sn.heartbeat = nil
+		log.Println("after close", sn.Name(), "has heartbeat=", sn.heartbeat)
+	}
+	sn.hbLock.Unlock()
+	sn.closed <- io.EOF
+	sn.closing <- true
+	log.Printf("signing node: closing: %s", sn.Name())
+	sn.Host.Close()
 }
 
 func (sn *Node) ViewChangeCh() chan string {
@@ -273,16 +293,12 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
 	sn.peerKeys = make(map[string]abstract.Point)
-	sn.ComCh = make(map[int]chan *SigningMessage, 0)
-	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closed = make(chan error, 20)
 	sn.closing = make(chan bool, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
-
-	sn.viewChangeCh = make(chan string, 10)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -301,15 +317,12 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
 	sn.peerKeys = make(map[string]abstract.Point)
-	sn.ComCh = make(map[int]chan *SigningMessage, 0)
-	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closing = make(chan bool, 20)
 	sn.closed = make(chan error, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
-	sn.viewChangeCh = make(chan string, 10)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -468,34 +481,6 @@ func (sn *Node) GenSetPool() {
 	sn.SetPool(&p)
 }
 
-// accommodate nils
-func (sn *Node) add(a abstract.Point, b abstract.Point) {
-	if a == nil {
-		a = sn.suite.Point().Null()
-	}
-	if b != nil {
-		a.Add(a, b)
-	}
-
-}
-
-// accommodate nils
-func (sn *Node) sub(a abstract.Point, b abstract.Point) {
-	if a == nil {
-		a = sn.suite.Point().Null()
-	}
-	if b != nil {
-		a.Sub(a, b)
-	}
-
-}
-
-func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
-	for _, k := range keys {
-		sn.sub(a, k)
-	}
-}
-
 func (sn *Node) SetTimeout(t time.Duration) {
 	sn.timeLock.Lock()
 	sn.timeout = t
@@ -513,9 +498,7 @@ func (sn *Node) DefaultTimeout() time.Duration {
 	return 5000 * time.Millisecond
 }
 
-func max(a int64, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
+func (sn *Node) CatchUp(from string) {
+	log.Println(sn.Name(), "attempting to catch up, not implemented")
+
 }
