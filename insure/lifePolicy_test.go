@@ -20,7 +20,9 @@ var goDir = coconet.NewGoDirectory()
 var secretKeyT = produceKeyPairT()
 var secretKeyT2 = produceKeyPairT()
 var keyPairT   = produceKeyPairT()
+var clientT   = produceKeyPairT()
 var goConn     = produceChanConn(keyPairT)
+var clientConn = produceChanConn(clientT)
 
 // Alter this to easily scale the number of servers to test with. This
 // represents the number of other servers waiting to approve policies.
@@ -72,17 +74,25 @@ func produceGoConnArray() []*connMan.ChanConnManager {
 }
 
 func setupConn() bool {
-	// Give server #1 connections to everyone else.
+	// Give server #1 and client #1 connections to everyone else.
 	for i := 0; i < numServers; i++ {
 		goConn.AddConn(insurerListT[i])
+		clientConn.AddConn(insurerListT[i])
 	}
 
-	// Give everyone else connections to server #1
+	// Give server #1 and client #1 access to themselves and each other.
+	goConn.AddConn(keyPairT.Public)
+	goConn.AddConn(clientT.Public)
+
+	clientConn.AddConn(keyPairT.Public)
+	clientConn.AddConn(clientT.Public)
+
+	// Give everyone else connections to server #1 and client #1
 	for i := 0; i < numServers; i++ {
 		connectionManagers[i].AddConn(keyPairT.Public)
+		connectionManagers[i].AddConn(clientT.Public)
 		
-		// Give everyone access to everyone else (Don't give access
-		// to oneself)
+		// Give everyone access to everyone else
 		for j := 0; j < numServers; j++ {
 			connectionManagers[i].AddConn(insurerListT[j])
 		}
@@ -205,7 +215,31 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 	if err := finalState.PromiseCertified(); err != nil {
 		t.Error("The promise should now be certified:  ", err)
 	}
+	
+	// Now that the promise is certified, it should simply return without
+	// contacting the insurers. Since the insurers all should have exitted
+	// by now, this will hang if it attempts to contact the network.
+	err = policy.certifyPromise(state)
+	if err != nil {
+		t.Error("The promise failed to be certified: ", err)
+	}
 }
+
+// Verifies that the public CertifyPromise returns errors properly. Since it is just
+// a simple wrapper over the private certifyPromise, the error cases unique to the
+// public method are checked here. The functional tests ensure it calls the
+// private method properly.
+func TestLifePolicyModuleCertifyPromisePublic(t *testing.T) {
+	// Verify that it returns an error if asked to certify a promise that
+	// doesn't exist.
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn)
+	err := policy.CertifyPromise(keyPairT.Public, secretKeyT.Public)
+	if err == nil {
+		t.Error("The lookup should have failed.")
+	}
+}
+
+
 
 
 // Verifies that a sever can properly take out a policy.
@@ -504,7 +538,7 @@ func sendPromiseResponseMessagesBasic(t *testing.T, i int, promise1, promise2 pr
 	cm.Put(keyPairT.Public, policyMsg)	
 }
 
-// Verifies that an insurer can handle PromiseResponseMessage from insurers
+// Verifies that a server can handle PromiseResponseMessage from insurers
 func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
 
 	i := 1
@@ -542,6 +576,171 @@ func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
 	err = policy.handlePromiseResponseMessage(responseMsg)
 	if err == nil {
 		t.Error("Response should have been added to Promise", err)
+	}
+}
+
+ 
+// This is a helper method that is used to send PromiseToClientMessage's to a server
+func sendPromiseToClientMessagesBasic(t *testing.T, i int, serverCm, clientCm connMan.ConnManager) {
+
+	// First, send off a valid promise this server has created.
+	newPromise := new(promise.Promise)
+	newPromise.ConstructPromise(secretKeyT2, serverKeys[i], lpt, lpr, insurerListT)
+	policyMsg  := new(PolicyMessage).createPTCMessage(newPromise)
+	serverCm.Put(keyPairT.Public, policyMsg)
+
+	// Then, have the client send itself its own promise.
+	newPromise = new(promise.Promise)
+	newPromise.ConstructPromise(secretKeyT2, keyPairT, lpt, lpr, insurerListT)
+	policyMsg  = new(PolicyMessage).createPTCMessage(newPromise)
+	clientCm.Put(keyPairT.Public, policyMsg)
+	
+	// Lastly, have a server try to send a promise it doesn't own.
+	newPromise = new(promise.Promise)
+	newPromise.ConstructPromise(secretKeyT2, keyPairT, lpt, lpr, insurerListT)
+	policyMsg  = new(PolicyMessage).createPTCMessage(newPromise)
+	serverCm.Put(keyPairT.Public, policyMsg)
+}
+
+// Verifies that a client can handle PromiseToClientMessages from servers
+func TestLifePolicyModuleHandlePromiseToClientMessage(t *testing.T) {
+
+	i := 1
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	go sendPromiseToClientMessagesBasic(t, i, connectionManagers[i], goConn)
+
+	// Verify that a client can properly receive a promise from a server
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	prom := msg.getPTCM()
+	err := policy.handlePromiseToClientMessage(serverKeys[i].Public, prom)
+	if err != nil {
+		t.Error("Method should have succeeded. Error: ", err)
+	}
+	if policy.serverPromises[prom.PromiserId()][prom.Id()] == nil {
+		t.Error("Promise should have been added to hash.")
+	}
+
+	// Verify that a client ignores promises from itself.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(keyPairT.Public, msg)
+	prom = msg.getPTCM()
+	err = policy.handlePromiseToClientMessage(keyPairT.Public, prom)
+	if err == nil {
+		t.Error("Method should have failed.")
+	}
+
+	// Verifies that a client ignores a promise sent by a server that didn't
+	// create the promise.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	prom = msg.getPTCM()
+	err = policy.handlePromiseToClientMessage(serverKeys[i].Public, prom)
+	if err == nil {
+		t.Error("Method should have failed.")
+	}
+}
+
+/****************************** FUNCTIONAL TESTS ******************************/
+
+/* This functional test is designed to test the code under conditions similar to
+ * what it would be in production. It uses gochanns to simulate the network. It
+ * has three main type of channesl:
+ *
+ *   - Server channel = this is the channel of the main server who creates the
+ *                      promise. This is the TestLifePolicyFunctional method.
+ *
+ *   - Insurer channel = these are a set of channels for representing insurer
+ *                       logic with one per insurer.
+ *
+ *   - Client channel = this channel simulates requests by clients.
+ *
+ * The test undergoes several main phases that may involve all the channels or just
+ * a subset:
+ *
+ *   Phase 1: Create a new Promise
+ *
+ *     The server creates a new promise and sends it to the insurers to certify
+ *
+ *
+ *   Phase 2: Send the Promise to a Client
+ *
+ *      The server sends the Promise to the client. The client receives it and
+ *      then contacts the insurers to certify the promise.
+ *
+ *
+ */
+
+
+// This is a helper method that simulates the insurer channel
+func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
+
+	policy := new(LifePolicyModule).Init(k, lpt,lpr,lpn, cm) 
+
+	// Phase 1: Create a new Promise
+	// First, wait for the server to send a CertifyPromise message. Once
+	// a response has been sent, break
+	for true {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
+		cm.Get(keyPairT.Public, msg)
+		msgTyp, err := policy.handlePolicyMessage(keyPairT.Public, msg)
+		if msgTyp == CertifyPromise && err != nil {
+			break
+		}
+	}
+	
+	// Phase 2: Send the Promise to a Client
+	for true {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
+		cm.Get(clientT.Public, msg)
+		msgTyp, err := policy.handlePolicyMessage(serverKeys[0].Public, msg)
+		if msgTyp == CertifyPromise && err != nil {
+			break
+		}
+	}
+}
+
+// This method simulates the client channel
+func clientFunctional(t *testing.T) {
+
+	policy := new(LifePolicyModule).Init(clientT, lpt,lpr,lpn, clientConn) 
+
+	// Phase 2: Send the Promise to a Client
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	clientConn.Get(keyPairT.Public, msg)
+	msgTyp, err := policy.handlePolicyMessage(keyPairT.Public, msg)	
+
+	if msgTyp != PromiseToClient || err != nil {
+		panic("Expected to receive a promise from the server")
+	}
+
+	err = policy.CertifyPromise(keyPairT.Public, secretKeyT.Public)
+	if err != nil {
+		panic("Promise should be certified")
+	}
+}
+
+// Performs the functional test for LifePolicyModule and simulates the server channel
+func TestLifePolicyModuleFunctionalTest(t *testing.T) {
+
+	// Start up the insurers and the client
+	for i := 0; i< numServers; i++ {
+		go insurersFunctional(t, serverKeys[i], connectionManagers[i])
+	}
+	go clientFunctional(t)
+
+	
+	// Phase 1: Create a new Promise
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	err    := policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
+	if err != nil {
+		t.Fatal("The promise should have been certified.")
+	}
+	
+	// Phase 2: Send the Promise to a Client
+	err = policy.SendPromiseToClient(clientT.Public, secretKeyT.Public)
+	if err != nil {
+		t.Fatal("Message should have been sent.")
 	}
 }
 

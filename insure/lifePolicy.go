@@ -180,6 +180,11 @@ func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, serverList
  */
 func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 
+	// If the promise is already certified simply return nil.
+	if state.PromiseCertified == nil {
+		return nil
+	}
+
 	insurersList := state.Promise.Insurers()
 
 	// Send a request off to each server
@@ -191,6 +196,8 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 
 	// TODO: Add a timeout so that this process will end after a certain
 	// amount of time.
+	//
+	// TODO: Consider the case for invalid promises due to a valid blameProof.
 	
 	// Wait for responses
 	for state.PromiseCertified() != nil {
@@ -203,11 +210,28 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 	return nil
 }
 
+/* This is a public wrapper for the private certifyPromise method. The caller can
+ * specify a promise from the serverHash that it wishes to certify.
+ *
+ * Arguments
+ *   serverKey  = the long term public key of the server
+ *   promiseKey = the public key of the secret being promised
+ *
+ * Returns
+ *   nil if the promise is certified, an error otherwise.
+ */
+func (lp *LifePolicyModule) CertifyPromise(serverKey, promiseKey abstract.Point) error {
+	if state, assigned := lp.serverPromises[serverKey.String()][promiseKey.String()]; assigned {
+		return lp.certifyPromise(state)
+	}
+	return errors.New("No such promise")
+}
+
 /* This method sends a promise to another server.
  *
  * Arguments:
- *   clientLongPubKey  = the long term public key of the client to send the promise to
- *   secretKey         = the public key of the promised secret to send
+ *   clientKey    = the long term public key of the client to send the promise to
+ *   secretKey    = the public key of the promised secret to send
  *
  * Returns:
  *   nil if the message is sent, an error otherwise.
@@ -336,7 +360,7 @@ func (lp *LifePolicyModule) addServerPromise(prom promise.Promise) {
  *    clients   = the method returns a response if the specified promise exists.
  *
  * Arguments:
- *   pubKey = the public key of the requestor
+ *   pubKey = the long-term public key of the requestor
  *   msg    = the CertifyPromiseMessage
  *
  * Returns:
@@ -416,32 +440,34 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 	return errors.New("Promise does not exist.")
 }
 
-// TODO check to make sure origin of the promise and the promiser are the same.
+/* This method handles PromiseToClientMessages. When a server sends a new
+ * promise to a client, this method checks to make sure the promise is okay and
+ * adds it to the serverPromise hash
+ *
+ * Arguments:
+ *   pubKey = the long-term public key of the sender
+ *   prom   = the promise to add
+ *
+ * Returns
+ *   nil if added successfully, error otherwise
+ *
+ * Note
+ *   There are two major error conditions to consider:
+ *
+ *      - Servers can only send promises they actually own to prevent malicious
+ *      servers from registering bad promises under another's name.
+ *
+ *      - Servers should simply ignore promises they send to themselves.
+ */
 func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, prom *promise.Promise) error {
 	if prom.PromiserId() != pubKey.String() {
-		return errors.New("The sender does not own the promise sent.")
+		return errors.New("Sender does not own the promise sent.")
 	}
 	if lp.serverId == prom.PromiserId() {
 		return errors.New("Sent promise to oneself. Ignoring.")
 	}
-	promiserId := prom.PromiserId()
-	id         := prom.Id()
-
-	if _, assigned := lp.serverPromises[promiserId]; !assigned {
-		lp.serverPromises[promiserId] = make(map[string]*promise.State)
-	}
-	if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
-		state := new(promise.State).Init(*prom)
-		lp.serverPromises[promiserId][id] = state
-	}
-	state := lp.serverPromises[promiserId][id]
-
-	// If this promise is already considered valid, ignore it.
-	if state.PromiseCertified() == nil {
-		return nil
-	}
-
-	return lp.certifyPromise(state)
+	lp.addServerPromise(*prom)
+	return nil
 }
 
 func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Point, msg *PromiseShareMessage) error {
