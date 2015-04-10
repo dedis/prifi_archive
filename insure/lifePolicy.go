@@ -78,6 +78,11 @@ type LifePolicyModule struct {
  *   t, r, n  = configuration parameters for promises. See crypto's promise.Promise
  *              for more details
  *   cmann    = the connection manager for sending/receiving messages.
+ *
+ * Integration Note: cman should provide some way for the server to communicate with
+ *                   itself. Insurers will sometimes need to check that the promise they
+ *                   are insuring is certified. Hence, they will send messages to
+ *                   themselves when trying to get promiseResponses.
  */
 func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.ConnManager) *LifePolicyModule {
 	lp.keyPair         = kp
@@ -364,29 +369,51 @@ func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, m
 	return nil
 }
 
-/* This method handles CertifyPromiseMessages. If another node requests to be
- * insured, verify that the share it sent is valid. If so, insure it and send a
- * confirmation message back.
+/* This method handles PromiseResponseMessages. Servers will send CertifyPromiseMessages
+ * to insurers so they can approve or disapprove promises. Ahe promise can
+ * either be one the server created itself or one it has received from another server.
+ * The insurer will then send a PromiseResponse back for the server to add to the
+ * promise state.
  *
  * Arguments:
- *   msg = the message requesting insurance
+ *   msg = the PromiseResponseMessage
  *
  * Returns:
- *	Whether or not the request was accepted.
+ *	nil if the PromiseResponse was added to the state, err otherwise.
+ *
+ * TODO Change promise.AddResponse so that it verifies that the response is
+ *      well-formed and returns an error status.
+ *
+ * TODO Alter promise.AddResponse to keep track of the number of valid responses
+ *      it has received. To do so:
+ *
+ *          - Only add valid responses
+ *          - Increment a counter each time a valid response is added.
+ *          - If a valid response replaces another valid response, update the
+ *            array but don't change the counter
+ *          - Once a validly produced blameProof is found, set a flag to permanently
+ *            denote the promise as invalid
+ *          - Perhaps also prevent any new promises from being added to prevent
+ *            overwritting the blameproof?
  */
 func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMessage) error {
-	if state, ok := lp.promises[msg.Id]; ok &&
-		msg.PromiserId == lp.keyPair.Public.String() {
-
-		state.AddResponse(msg.ShareIndex, msg.Response)
-		return nil
-	}	
-	if state, ok := lp.serverPromises[msg.PromiserId][msg.Id]; ok {
+	// If the promise was created by the server, add the response to the
+	// server's promise state. This should only be done if the promiser id of the
+	// promise is the same as the server's long term public key.
+	state, ok := lp.promises[msg.Id];
+	if  ok && msg.PromiserId == lp.keyPair.Public.String() {
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
 	}
 
-	return errors.New("Promise specified does not exist.")
+	// Otherwise, the server was requesting a certificate for a promise
+	// from another server.
+	state, ok = lp.serverPromises[msg.PromiserId][msg.Id];	
+	if ok {
+		state.AddResponse(msg.ShareIndex, msg.Response)
+		return nil
+	}
+	return errors.New("Promise does not exist.")
 }
 
 // TODO check to make sure origin of the promise and the promiser are the same.
