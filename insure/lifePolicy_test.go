@@ -486,6 +486,67 @@ func TestLifePolicyModuleHandleCertifyPromiseMessage(t *testing.T) {
 	}
 }
 
+// This is a helper method that is used to send PromiseResponseMessage's to a server
+func sendPromiseResponseMessagesBasic(t *testing.T, i int, promise1, promise2 promise.Promise, cm connMan.ConnManager) {
+
+	// First, send the server a response to a promise it created.
+	response, _ := promise1.ProduceResponse(i, serverKeys[i])
+	responseMsg := new(PromiseResponseMessage).createMessage(i, promise1, response)
+	policyMsg  := new(PolicyMessage).createPRMessage(responseMsg)
+	cm.Put(keyPairT.Public, policyMsg)
+
+
+	// Next, send the server two responses for a promise another server created.
+	response, _ = promise2.ProduceResponse(i, serverKeys[i])
+	responseMsg = new(PromiseResponseMessage).createMessage(i, promise2, response)
+	policyMsg   = new(PolicyMessage).createPRMessage(responseMsg)
+	cm.Put(keyPairT.Public, policyMsg)
+	cm.Put(keyPairT.Public, policyMsg)	
+}
+
+// Verifies that an insurer can handle PromiseResponseMessage from insurers
+func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
+
+	i := 1
+	policy, state := produceNewServerPolicyWithPromise()
+
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT2, serverKeys[i], lpt, lpr, insurerListT)
+
+	go sendPromiseResponseMessagesBasic(t, i, state.Promise, newPromise, connectionManagers[i])
+
+	// Test that a response for one's own promise can be received.
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	responseMsg := msg.getPRM()
+	err := policy.handlePromiseResponseMessage(responseMsg)
+	if err != nil {
+		t.Error("Response should have been added to Promise", err)
+	}
+
+	// Test that a response for an unknown promise produces an error.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	responseMsg = msg.getPRM()
+	err = policy.handlePromiseResponseMessage(responseMsg)
+	if err == nil {
+		t.Error("An error should have been produced.")
+	}
+
+	// Test that adding the unknown promise to the serverPromises hash makes
+	// it work.
+	policy.addServerPromise(newPromise)
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	responseMsg = msg.getPRM()
+	err = policy.handlePromiseResponseMessage(responseMsg)
+	if err == nil {
+		t.Error("Response should have been added to Promise", err)
+	}
+}
+
+
+
 /*
 
 func TestTakeOutPolicyBasic(t *testing.T) {

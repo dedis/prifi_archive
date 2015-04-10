@@ -401,14 +401,14 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 	// server's promise state. This should only be done if the promiser id of the
 	// promise is the same as the server's long term public key.
 	state, ok := lp.promises[msg.Id];
-	if  ok && msg.PromiserId == lp.keyPair.Public.String() {
+	if  ok && msg.PromiserId == lp.serverId {
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
 	}
 
 	// Otherwise, the server was requesting a certificate for a promise
 	// from another server.
-	state, ok = lp.serverPromises[msg.PromiserId][msg.Id];	
+	//state, ok = lp.serverPromises[msg.PromiserId][msg.Id];	
 	if ok {
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
