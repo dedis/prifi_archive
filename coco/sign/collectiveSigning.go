@@ -4,7 +4,6 @@ import (
 	"errors"
 	"io"
 	"strconv"
-	"sync/atomic"
 
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -128,11 +127,11 @@ func (sn *Node) get() error {
 				}
 			case ViewChange:
 				// if we have already seen this view before skip it
-				if int64(sm.View) <= sn.lastView {
+				if sm.View <= sn.lastView {
 					log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.lastView, sm.From)
 					continue
 				}
-				sn.lastView = int64(sm.View)
+				sn.lastView = sm.View
 				sn.StopHeartbeat()
 				log.Printf("Host (%s) VIEWCHANGE", sn.Name(), sm.Vcm)
 				if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
@@ -143,7 +142,7 @@ func (sn *Node) get() error {
 					log.Errorln("view change error:", err)
 				}
 			case ViewAccepted:
-				if int64(sm.View) < sn.lastView {
+				if sm.View < sn.lastView {
 					log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.lastView)
 					continue
 				}
@@ -153,68 +152,13 @@ func (sn *Node) get() error {
 				// sn.VamCh <- sm
 				// sn.VamChLock.Unlock()
 			case ViewConfirmed:
-				if int64(sm.View) < sn.lastView {
+				if sm.View < sn.lastView {
 					log.Errorf("VIEW CONFIRMED: already seen this view: %d < %d", sm.View, sn.lastView)
 					continue
 				}
 				// log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
 				sn.StopHeartbeat()
 				sn.ViewChanged(sm.Vcfm.ViewNo, sm)
-			case GroupChange:
-				log.Println("Received Group Change Message:", sm.Gcm.Vr, sm)
-				sn.StopHeartbeat()
-
-				// if the view is uninitialized (-1) the node trying to connect must be our peer.
-				// update the signing messages view to our lastView.
-				// and move the peer to our pending peers list.
-				// XXX: assumes the peer isn't our actual peer
-				if sm.View == -1 {
-					log.Println("setting view number of votine request")
-					sm.View = int(sn.lastView)
-					// if the peer sent an add request
-					// ad it to the pending peers list
-					if sm.Gcm.Vr.Action == "add" {
-						sn.AddPeerToPending(sm.From)
-					}
-				}
-				if sn.RootFor(sm.View) != sn.Name() {
-					log.Println("NOT ROOT: Sending up:", sm.View)
-					sn.PutUp(context.TODO(), sm.View, sm)
-					continue
-				}
-				// I am the root for this
-				log.Println("Starting Voting Round")
-				vr := sm.Gcm.Vr
-				sn.StartVotingRound(vr.Name, vr.Action)
-			case GroupChanged:
-				sn.StopHeartbeat()
-				// only the leaf that initiated the GroupChange should get a response
-				log.Errorln("Received Group Changed Response: GroupChanged:", sm, sm.Gcr)
-				vr := sm.Gcr.Vr
-				// clear pending actions
-				sn.ActionsLock.Lock()
-				sn.Actions = make([]*VoteRequest, 0)
-				sn.ActionsLock.Unlock()
-
-				if vr.Action == "remove" {
-					log.Println("Stopping Heartbeat")
-					continue
-				}
-				log.Errorln("view ==", sm.View)
-				view := sm.View
-				log.Errorln("AddParent:", sm.From)
-
-				sn.Views().Lock()
-				_, exists := sn.Views().Views[view]
-				sn.Views().Unlock()
-				// also need to add self
-				if !exists {
-					sn.NewView(view, sm.From, nil, sm.Gcr.Hostlist)
-				}
-				sn.ApplyAction(view, &vr)
-				// create the view
-				sn.AddParent(view, sm.From)
-				log.Println("GROUP CHANGE RESPONSE:", vr)
 			case Error:
 				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
@@ -227,12 +171,12 @@ func (sn *Node) get() error {
 func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	log.Println(sn.Name(), "RECEIVED annoucement on", view)
 
-	if err := sn.TryFailure(view); err != nil {
+	if err := sn.TryFailure(view, am.Round); err != nil {
 		return err
 	}
 
 	Round := am.Round
-	if err = sn.setUpRound(am); err != nil {
+	if err := sn.setUpRound(view, am); err != nil {
 		return err
 	}
 
@@ -249,43 +193,15 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	}
 
 	// return sn.Commit(view, am)
-	sn.PrepareForCommits(view, am)
 	if len(sn.Children(view)) == 0 {
 		sn.Commit(view, am.Round, nil)
 	}
 	return nil
 }
 
-func (sn *Node) PrepareForCommits(view int, am *AnnouncementMessage) {
-	Round := am.Round
-
-	// update max seen round
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	atomic.StoreInt64(&sn.LastSeenRound, max(int64(Round), lsr))
-
-	sn.initCommitCrypto(Round)
-}
-
-// Create round lasting secret and commit point v and V
-// Initialize log structure for the round
-func (sn *Node) initCommitCrypto(Round int) {
-	round := sn.Rounds[Round]
-	// generate secret and point commitment for this round
-	rand := sn.suite.Cipher([]byte(sn.Name()))
-	round.Log = SNLog{}
-	round.Log.v = sn.suite.Secret().Pick(rand)
-	round.Log.V = sn.suite.Point().Mul(nil, round.Log.v)
-	// initialize product of point commitments
-	round.Log.V_hat = sn.suite.Point().Null()
-	sn.add(round.Log.V_hat, round.Log.V)
-
-	round.X_hat = sn.suite.Point().Null()
-	sn.add(round.X_hat, sn.PubKey)
-}
-
 func (sn *Node) Commit(view, Round int, sm *SigningMessage) error {
 	// update max seen round
-	sn.LastSeenRound = max(sn.LastSeenRound, int64(Round))
+	sn.LastSeenRound = max(sn.LastSeenRound, Round)
 
 	round := sn.Rounds[Round]
 	if round == nil {
@@ -361,7 +277,7 @@ func (sn *Node) actOnCommits(view, Round int) error {
 			X_hat:         round.X_hat,
 			MTRoot:        round.MTRoot,
 			ExceptionList: round.ExceptionList,
-			CountedVotes:  round.CountedVotes,
+			Vote:          round.Vote,
 			Round:         Round}
 
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
@@ -377,12 +293,10 @@ func (sn *Node) actOnCommits(view, Round int) error {
 
 // initiated by root, propagated by all others
 func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
-	atomic.StoreInt64(&sn.LastSeenRound, max(int64(chm.Round), atomic.LoadInt64(&sn.LastSeenRound)))
-	round := sn.Rounds[chm.Round]
-
 	// update max seen round
-	sn.LastSeenRound = max(sn.LastSeenRound, int64(chm.Round))
+	sn.LastSeenRound = max(sn.LastSeenRound, chm.Round)
 
+	round := sn.Rounds[chm.Round]
 	if round == nil {
 		return nil
 	}
@@ -390,14 +304,8 @@ func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 	// register challenge
 	round.c = chm.C
 
-	// act on decision of aggregated votes
-	// log.Println(sn.Name(), chm.Round, round.VoteRequest)
-	// if round.VoteRequest != nil {
-	// 	sn.actOnVotes(view, chm.CountedVotes, round.VoteRequest)
-	// }
-
 	if sn.Type == PubKey {
-		log.Println(sn.Name(), "challenge: using pubkey", sn.Type, chm.CountedVotes)
+		log.Println(sn.Name(), "challenge: using pubkey", sn.Type, chm.Vote)
 		if err := sn.SendChildrenChallenges(view, chm); err != nil {
 			return err
 		}
@@ -415,46 +323,13 @@ func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 		}
 	}
 
-	log.Println(sn.Name(), "In challenge before response")
-	sn.PrepareForResponses(view, chm.Round)
+	// log.Println(sn.Name(), "In challenge before response")
+	sn.initResponseCrypto(chm.Round)
 	if len(sn.Children(view)) == 0 {
 		sn.Respond(view, chm.Round, nil)
 	}
-	log.Println(sn.Name(), "Done handling challenge message")
+	// log.Println(sn.Name(), "Done handling challenge message")
 	return nil
-}
-
-// Figure out which kids did not submit messages
-// Add default messages to messgs, one per missing child
-// as to make it easier to identify and add them to exception lists in one place
-func (sn *Node) FillInWithDefaultMessages(view int, messgs []*SigningMessage) []*SigningMessage {
-	children := sn.Children(view)
-
-	allmessgs := make([]*SigningMessage, len(messgs))
-	copy(allmessgs, messgs)
-
-	for c := range children {
-		found := false
-		for _, m := range messgs {
-			if m.From == c {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			allmessgs = append(allmessgs, &SigningMessage{View: view, Type: Default, From: c})
-		}
-	}
-
-	return allmessgs
-}
-
-func (sn *Node) PrepareForResponses(view, Round int) {
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	atomic.StoreInt64(&sn.LastSeenRound, max(int64(Round), lsr))
-
-	sn.initResponseCrypto(Round)
 }
 
 func (sn *Node) initResponseCrypto(Round int) {
@@ -468,11 +343,10 @@ func (sn *Node) initResponseCrypto(Round int) {
 
 func (sn *Node) Respond(view, Round int, sm *SigningMessage) error {
 	log.Println(sn.Name(), "in respond")
-	round := sn.Rounds[Round]
-
 	// update max seen round
-	sn.LastSeenRound = max(sn.LastSeenRound, int64(Round))
+	sn.LastSeenRound = max(sn.LastSeenRound, Round)
 
+	round := sn.Rounds[Round]
 	if round == nil || round.Log.v == nil {
 		// If I was not announced of this round, or I failed to commit
 		return nil
@@ -590,117 +464,35 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 func (sn *Node) TryViewChange(view int) {
 	// should ideally be compare and swap
-	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", atomic.LoadInt64(&sn.lastView))
-	if int64(view) <= atomic.LoadInt64(&sn.lastView) {
+	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", sn.lastView)
+	if view <= sn.lastView {
 		log.Println("view < sn.lastView")
 		return
 	}
-	changing := atomic.LoadInt64(&sn.ChangingView)
-	if changing == TRUE {
+	if sn.ChangingView {
 		log.Errorln("cannot try view change: already chaning view")
 		return
 	}
-	atomic.StoreInt64(&sn.ChangingView, TRUE)
+	sn.ChangingView = true
 
 	// check who the new view root it
-	atomic.SwapInt64(&sn.AmNextRoot, FALSE)
+	sn.AmNextRoot = false
 	var rfv string
 	if rfv = sn.RootFor(view); rfv == sn.Name() {
-		atomic.SwapInt64(&sn.AmNextRoot, TRUE)
+		sn.AmNextRoot = true
 	}
 	log.Println(sn.Name(), "thinks", rfv, "should be root for view", view)
 
 	// take action if new view root
-	anr := atomic.LoadInt64(&sn.AmNextRoot)
-
-	if anr == TRUE {
-		lsr := atomic.LoadInt64(&sn.LastSeenRound)
+	if sn.AmNextRoot {
 		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
 		// create new view
 		nextViewNo := view
 		nextParent := ""
-		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: int(lsr + 1)}
+		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: sn.LastSeenRound + 1}
 
 		sn.ViewChange(nextViewNo, nextParent, vcm)
 	}
-}
-
-func (sn *Node) NotifyPeerOfVote(view int, vreq *VoteRequest) {
-	// if I am peers with this
-	log.Println("NOTIFYING PEER OF VOTE")
-	if good, ok := sn.Pending()[vreq.Name]; !ok || !good {
-		log.Println("not notifying peer of vote: not connected: ", ok, good)
-		return
-	}
-	log.Println("successfully notifying peer of vote:", vreq.Name, vreq)
-	sn.PutTo(
-		context.TODO(),
-		vreq.Name,
-		&SigningMessage{Type: GroupChanged, View: view, Gcr: &GroupChangeResponse{Hostlist: sn.Hostlist(), Vr: *vreq}})
-}
-
-func (sn *Node) ApplyAction(view int, vreq *VoteRequest) {
-	// Apply action on new view
-	if vreq.Action == "add" {
-		log.Println("adding pending peer:", view, vreq)
-		sn.AddPeerToHostlist(view, vreq.Name)
-		err := sn.AddPendingPeer(view, vreq.Name)
-		// unable to add pending peer
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		// peer is notified on actOnVotes
-		// notify peer that they have been added for view
-		// sn.NotifyPeerOfVote(view, vreq)
-	} else if vreq.Action == "remove" {
-		log.Println(sn.Name(), "looking to remove peer")
-		sn.RemovePeerFromHostlist(view, vreq.Name)
-		if ok := sn.RemovePeer(view, vreq.Name); ok {
-			log.Println(sn.Name(), "REMOVED peer", vreq.Name)
-		}
-		// sn.NotifyPeerOfVote(view, vreq)
-	} else {
-		log.Errorln("Vote Request contains uknown action:", vreq.Action)
-	}
-}
-
-func (sn *Node) actOnVotes(view int, cv *CountedVotes, vreq *VoteRequest) {
-	// more than 2/3 of all nodes must vote For, to accept vote request
-	log.Println(sn.Name(), "act on votes:", cv.For, len(sn.HostList))
-	accepted := cv.For > 2*len(sn.HostListOn(view))/3
-	var actionTaken string = "rejected"
-	if accepted {
-		actionTaken = "accepted"
-	}
-
-	// Report on vote decision
-	if sn.IsRoot(view) {
-		abstained := len(sn.HostListOn(view)) - cv.For - cv.Against
-		log.Infoln("Vote Request for", vreq.Name, "be", vreq.Action, actionTaken)
-		log.Infoln("Votes FOR:", cv.For, "; Votes AGAINST:", cv.Against, "; Absteined:", abstained)
-	}
-
-	// Act on vote Decision
-	if accepted {
-		sn.ActionsLock.Lock()
-		sn.Actions = append(sn.Actions, vreq)
-		sn.ActionsLock.Unlock()
-
-		// propagate view change if new view leader
-		log.Println("actOnVotes: vote has been accepted: trying viewchange")
-		// XXX WHEN TESTING DO NOT VIEW CHANGE XXX TODO
-		/*
-			sn.NotifyPeerOfVote(view, vreq)
-			time.Sleep(7 * time.Second) // wait for all vote responses to be propogated before trying to change view
-			sn.TryViewChange(view + 1)
-		*/
-	}
-
-	// List out all votes
-	// for _, vote := range round.CountedVotes.Votes {
-	// 	log.Infoln(vote.Name, vote.Accepted)
-	// }
 }
 
 // Called *only* by root node after receiving all commits
@@ -710,8 +502,8 @@ func (sn *Node) FinalizeCommits(view int, Round int) error {
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
 		round.c = hashElGamal(sn.suite, sn.LogTest, round.Log.V_hat)
-	} else if sn.Type == Vote {
-		b, err := round.CountedVotes.MarshalBinary()
+	} else if sn.Type == Voter {
+		b, err := round.Vote.MarshalBinary()
 		if err != nil {
 			log.Fatal("Marshal Binary failed for CountedVotes")
 		}
@@ -723,11 +515,11 @@ func (sn *Node) FinalizeCommits(view int, Round int) error {
 
 	proof := make([]hashid.HashId, 0)
 	err := sn.Challenge(view, &ChallengeMessage{
-		C:            round.c,
-		MTRoot:       round.MTRoot,
-		Proof:        proof,
-		Round:        Round,
-		CountedVotes: round.CountedVotes})
+		C:      round.c,
+		MTRoot: round.MTRoot,
+		Proof:  proof,
+		Round:  Round,
+		Vote:   round.Vote})
 	return err
 }
 
@@ -780,10 +572,8 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 }
 
 func (sn *Node) TimeForViewChange() bool {
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	rpv := atomic.LoadInt64(&RoundsPerView)
 	// if this round is last one for this view
-	if lsr%rpv == 0 {
+	if sn.LastSeenRound%RoundsPerView == 0 {
 		// log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)
 		return true
 	}

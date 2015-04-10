@@ -7,7 +7,4 @@ import "time"
 var ROUND_TIME time.Duration = 10 * time.Second
 var HEARTBEAT = ROUND_TIME + ROUND_TIME/2
 
-var RoundsPerView int64 = 200
-
-var FALSE int64 = 0
-var TRUE int64 = 1
+var RoundsPerView int = 200

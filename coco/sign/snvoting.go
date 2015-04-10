@@ -2,6 +2,7 @@ package sign
 
 import (
 	log "github.com/Sirupsen/logrus"
+	"golang.org/x/net/context"
 )
 
 func (sn *Node) AddSelf(parent string) error {

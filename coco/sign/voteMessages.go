@@ -28,7 +28,10 @@ type Vote struct {
 	View  int
 	Round int
 
-	Action interface{}
+	Type VoteType
+	Av   *AddVote
+	Rv   *RemoveVote
+	Vcv  *ViewChangeVote
 
 	Count     *Count
 	Confirmed bool
@@ -42,9 +45,15 @@ type ViewChangeVote struct {
 }
 
 type AddVote struct {
-	View   int // view number when we want add to take place
-	Name   string
-	Parent string
+	View   int    // view number when we want add to take place
+	Name   string // who we want to add
+	Parent string // our parent currently
+}
+
+type RemoveVote struct {
+	View   int    // view number when we want add to take place
+	Name   string // who we want to remove
+	Parent string // our parent currently
 }
 
 type VoteResponse struct {
@@ -70,16 +79,16 @@ type Count struct {
 	Against   int             // number of votes against
 }
 
-func (cv *Count) MarshalBinary() ([]byte, error) {
-	return protobuf.Encode(cv)
+func (v *Vote) MarshalBinary() ([]byte, error) {
+	return protobuf.Encode(v)
 }
 
-func (cv *Count) UnmarshalBinary(data []byte) error {
+func (v *Vote) UnmarshalBinary(data []byte) error {
 	var cons = make(protobuf.Constructors)
 	var point abstract.Point
 	var secret abstract.Secret
 	var suite = nist.NewAES128SHA256P256()
 	cons[reflect.TypeOf(&point).Elem()] = func() interface{} { return suite.Point() }
 	cons[reflect.TypeOf(&secret).Elem()] = func() interface{} { return suite.Secret() }
-	return protobuf.DecodeWithConstructors(data, cv, cons)
+	return protobuf.DecodeWithConstructors(data, v, cons)
 }

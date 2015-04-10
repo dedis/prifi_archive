@@ -11,7 +11,6 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/proof"
@@ -93,7 +92,7 @@ func (sn *Node) SendLocalMerkleProof(view int, chm *ChallengeMessage) error {
 		// if want to verify partial and full proofs
 		// log.Println("*****")
 		// log.Println(sn.Name(), chm.Round, proofForClient)
-		if coco.DEBUG == true {
+		if DEBUG == true {
 			sn.VerifyAllProofs(view, chm, proofForClient)
 		}
 

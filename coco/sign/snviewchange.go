@@ -1,22 +1,20 @@
 package sign
 
 import (
-	"sync/atomic"
-
 	log "github.com/Sirupsen/logrus"
+	"golang.org/x/net/context"
 )
 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
-	atomic.StoreInt64(&sn.ChangingView, TRUE)
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == , view == ", vcm.Round, lsr, view)
+	sn.ChangingView = true
 
-	atomic.StoreInt64(&sn.LastSeenRound, max(int64(vcm.Round), lsr))
-	lsr = atomic.LoadInt64(&sn.LastSeenRound)
+	log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == , view == ", vcm.Round, sn.LastSeenRound, view)
+	sn.LastSeenRound = max(vcm.Round, sn.LastSeenRound)
+	lsr := sn.LastSeenRound
 
-	iAmNextRoot := FALSE
+	iAmNextRoot := false
 	if sn.RootFor(vcm.ViewNo) == sn.Name() {
-		iAmNextRoot = TRUE
+		iAmNextRoot = true
 	}
 
 	sn.Views().Lock()
@@ -29,11 +27,6 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 		sn.NewView(vcm.ViewNo, parent, children, sn.HostListOn(view-1))
 	}
 
-	sn.ActionsLock.Lock()
-
-	sn.Actions = make([]*VoteRequest, 0)
-	sn.ActionsLock.Unlock()
-
 	log.Println(sn.Name(), ":multiplexing onto children:", sn.Children(view))
 	sn.multiplexOnChildren(vcm.ViewNo, &SigningMessage{View: view, Type: ViewChange, Vcm: vcm})
 
@@ -44,7 +37,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 	log.Println(sn.Name(), "received view accept messages from children:", votes)
 
 	var err error
-	if iAmNextRoot == TRUE {
+	if iAmNextRoot {
 
 		if votes > len(sn.HostListOn(view))*2/3 {
 
@@ -53,8 +46,8 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			sm := &SigningMessage{Type: ViewConfirmed, Vcfm: vcfm, From: sn.Name(), View: vcm.ViewNo}
 			sn.multiplexOnChildren(vcm.ViewNo, sm)
 
-			atomic.StoreInt64(&sn.ChangingView, FALSE)
-			atomic.StoreInt64(&sn.lastView, int64(vcm.ViewNo))
+			sn.ChangingView = false
+			sn.lastView = vcm.ViewNo
 			sn.viewChangeCh <- "root"
 		} else {
 			log.Errorln(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
@@ -81,7 +74,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 	log.Println(sn.Name(), "view CHANGED to", view)
 
-	atomic.StoreInt64(&sn.ChangingView, FALSE)
+	sn.ChangingView = false
 
 	sn.viewChangeCh <- "regular"
 

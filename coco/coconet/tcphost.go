@@ -10,7 +10,6 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coco"
 	"golang.org/x/net/context"
 )
 
@@ -157,9 +156,7 @@ func (h *TCPHost) Listen() error {
 			h.PeerLock.Lock()
 			h.Ready[name] = true
 			h.peers[name] = tp
-			if coco.DEBUG {
-				log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
-			}
+			log.Infoln("CONNECTED TO CHILD:", tp, tp.conn)
 			h.PeerLock.Unlock()
 
 			go func() {
@@ -188,9 +185,7 @@ func (h *TCPHost) ConnectTo(parent string) error {
 	// connect to the parent
 	conn, err := net.Dial("tcp4", parent)
 	if err != nil {
-		if coco.DEBUG {
-			log.Warnln("tcphost: failed to connect to parent:", err)
-		}
+		log.Warnln("tcphost: failed to connect to parent:", err)
 		return err
 	}
 	tp := NewTCPConnFromNet(conn)
@@ -226,9 +221,7 @@ func (h *TCPHost) ConnectTo(parent string) error {
 	h.peers[parent] = tp
 	// h.PendingPeers[parent] = true
 	h.PeerLock.Unlock()
-	if coco.DEBUG {
-		log.Infoln("CONNECTED TO PARENT:", parent)
-	}
+	log.Infoln("CONNECTED TO PARENT:", parent)
 
 	go func() {
 		for {

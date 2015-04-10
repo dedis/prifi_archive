@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/context"
@@ -18,7 +17,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/test/logutils"
@@ -33,10 +31,10 @@ const (
 	// Collective public keys are still created and can be used
 	PubKey
 	// Basic Signature on aggregated votes
-	Vote
+	Voter
 )
 
-var _ coco.Signer = &Node{}
+var _ Signer = &Node{}
 
 type Node struct {
 	coconet.Host
@@ -58,14 +56,14 @@ type Node struct {
 
 	nRounds       int
 	Rounds        map[int]*Round
-	Round         int   // *only* used by Root( by annoucer)
-	LastSeenRound int64 // largest round number I have seen
-	RoundsAsRoot  int64 // latest continuous streak of rounds with sn root
+	Round         int // *only* used by Root( by annoucer)
+	LastSeenRound int // largest round number I have seen
+	RoundsAsRoot  int // latest continuous streak of rounds with sn root
 
 	AnnounceLock sync.Mutex
 
-	CommitFunc coco.CommitFunc
-	DoneFunc   coco.DoneFunc
+	CommitFunc CommitFunc
+	DoneFunc   DoneFunc
 
 	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
 	roundLock sync.RWMutex
@@ -80,11 +78,11 @@ type Node struct {
 	// "root" or "regular" are sent on this channel to
 	// notify the maker of the sn what role sn plays in the new view
 	viewChangeCh chan string
-	ChangingView int64 // TRUE if node is currently engaged in changing the view
-	AmNextRoot   int64 // determined when new view is needed
-	ViewNo       int64 // *only* used by Root( by annoucer)
+	ChangingView bool // TRUE if node is currently engaged in changing the view
+	AmNextRoot   bool // determined when new view is needed
+	ViewNo       int  // *only* used by Root( by annoucer)
 
-	lastView int64 // lat view # I received viewChange message for
+	lastView int // lat view # I received viewChange message for
 
 	timeout  time.Duration
 	timeLock sync.RWMutex
@@ -92,8 +90,8 @@ type Node struct {
 	hbLock    sync.Mutex
 	heartbeat *time.Timer
 
-	ActionsLock sync.Mutex
-	Actions     []*VoteRequest
+	// ActionsLock sync.Mutex
+	// Actions     []*VoteRequest
 
 	VoteLog     []*Vote // log of all confirmed votes, useful for replay
 	HighestVote int     // max of all Highest Votes we've seen, and our last commited vote
@@ -150,11 +148,11 @@ func (sn *Node) SetFailureRate(v int) {
 	sn.FailureRate = v
 }
 
-func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
+func (sn *Node) RegisterAnnounceFunc(cf CommitFunc) {
 	sn.CommitFunc = cf
 }
 
-func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
+func (sn *Node) RegisterDoneFunc(df DoneFunc) {
 	sn.DoneFunc = df
 }
 
@@ -203,7 +201,7 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
 	var cancelederr error
 	go func() {
-		err := sn.Announce(int(atomic.LoadInt64(&sn.lastView)), am)
+		err := sn.Announce(sn.lastView, am)
 		if err != nil {
 			log.Errorln(err)
 			cancelederr = err
@@ -247,39 +245,32 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	}
 }
 
-func (sn *Node) StartVotingRound(name, action string) error {
-	vr := &VoteRequest{Name: name, Action: action}
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	sn.nRounds = int(lsr)
+func (sn *Node) StartVotingRound(v *Vote) error {
+	sn.nRounds = sn.LastSeenRound
 
 	// report view is being change, and sleep before retrying
-	changingView := atomic.LoadInt64(&sn.ChangingView)
-	if changingView == TRUE {
+	if sn.ChangingView {
 		log.Println(sn.Name(), "start signing round: changingViewError")
 		return ChangingViewError
 	}
 
 	sn.nRounds++
+	v.Round = sn.nRounds
+	v.View = sn.lastView // TODO: unify view-tracking variables
+	v.Index = sn.LastVote
+	v.Count = &Count{}
+	v.Confirmed = false
 	return sn.StartAnnouncement(
-		&AnnouncementMessage{LogTest: []byte("vote round"), Round: sn.nRounds, VoteRequest: vr})
+		&AnnouncementMessage{LogTest: []byte("vote round"), Round: sn.nRounds, Vote: v})
 }
 
 func (sn *Node) StartSigningRound() error {
-	lsr := atomic.LoadInt64(&sn.LastSeenRound)
-	sn.nRounds = int(lsr)
+	sn.nRounds = sn.LastSeenRound
 
 	// report view is being change, and sleep before retrying
-	changingView := atomic.LoadInt64(&sn.ChangingView)
-	if changingView == TRUE {
+	if sn.ChangingView {
 		log.Println(sn.Name(), "start signing round: changingViewError")
 		return ChangingViewError
-	}
-
-	// send an announcement message to all other TSServers
-	log.Println("StartSigningRound:", sn.nRounds, lsr)
-	if sn.Type == Vote && sn.nRounds == 1 {
-		log.Println("StartVotingRound")
-		return sn.StartVotingRound("127.0.1.1:11060", "remove")
 	}
 
 	sn.nRounds++
@@ -307,7 +298,6 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
 
-	sn.Actions = make([]*VoteRequest, 0)
 	return sn
 }
 
@@ -331,7 +321,6 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
 
-	sn.Actions = make([]*VoteRequest, 0)
 	return sn
 }
 
@@ -368,12 +357,12 @@ func (sn *Node) Done() chan int {
 	return sn.done
 }
 
-func (sn *Node) LastRound() int64 {
-	return atomic.LoadInt64(&sn.LastSeenRound)
+func (sn *Node) LastRound() int {
+	return sn.LastSeenRound
 }
 
-func (sn *Node) SetLastSeenRound(round int64) {
-	atomic.StoreInt64(&sn.LastSeenRound, round)
+func (sn *Node) SetLastSeenRound(round int) {
+	sn.LastSeenRound = round
 }
 
 func (sn *Node) CommitedFor(round *Round) bool {
@@ -387,37 +376,29 @@ func (sn *Node) CommitedFor(round *Round) bool {
 }
 
 // Cast on vote for Vote
-func (sn *Node) AddVotes(Round int, vreq *VoteRequest) {
-	if vreq == nil {
-		return
-	}
-	if vreq.Action != "add" && vreq.Action != "remove" {
-		log.Errorln("Vote Request contains uknown action:", vreq.Action)
+func (sn *Node) AddVotes(Round int, v *Vote) {
+	if v == nil {
 		return
 	}
 
 	round := sn.Rounds[Round]
-	cv := round.CountedVotes
+	cv := round.Vote.Count
 	vresp := &VoteResponse{Name: sn.Name()}
 
-	// Decide own vote and add it to round's counted cotes
-	if vreq.Name == sn.Name() && vreq.Action == "remove" {
-		cv.Against += 1
+	// accept what admin requested with x% probability
+	// TODO: replace with non-probabilistic approach, maybe callback
+	forProbability := 100
+	if p := sn.Rand.Int() % 100; p < forProbability {
+		cv.For += 1
+		vresp.Accepted = true
 	} else {
-		// accept what admin requested with x% probability
-		forProbability := 100
-		if p := sn.Rand.Int() % 100; p < forProbability {
-			cv.For += 1
-			vresp.Accepted = true
-		} else {
-			cv.Against += 1
-		}
+		cv.Against += 1
 	}
 
 	// log.Infoln(sn.Name(), "added votes. for:", cv.For, "against:", cv.Against)
 
 	// Generate signature on CountedVotes with OwnVote *counted* in
-	b, err := cv.MarshalBinary()
+	b, err := v.MarshalBinary()
 	if err != nil {
 		log.Fatal("Marshal Binary on Counted Votes failed")
 	}
@@ -425,8 +406,8 @@ func (sn *Node) AddVotes(Round int, vreq *VoteRequest) {
 	vresp.Sig = ElGamalSign(sn.suite, rand, b, sn.PrivKey)
 
 	// Add VoteResponse to Votes
-	cv.Votes = append(cv.Votes, vresp)
-	round.CountedVotes = cv
+	v.Count.Responses = append(v.Count.Responses, vresp)
+	round.Vote = v
 }
 
 func intToByteSlice(Round int) []byte {

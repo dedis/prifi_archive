@@ -6,9 +6,11 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/dedis/crypto/abstract"
 	"golang.org/x/net/context"
 
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/test/logutils"
 )
 
 func (sn *Node) multiplexOnChildren(view int, sm *SigningMessage) {
@@ -64,14 +66,14 @@ func (sn *Node) ReceivedHeartbeat(view int) {
 
 }
 
-func (sn *Node) TryRootFailure(view int) bool {
+func (sn *Node) TryRootFailure(view, Round int) bool {
 	if sn.IsRoot(view) && sn.FailAsRootEvery != 0 {
-		if sn.RoundsAsRoot != 0 && sn.RoundsAsRoot%int64(sn.FailAsRootEvery) == 0 {
-			log.Errorln(sn.Name() + "was imposed root failure on round" + strconv.Itoa(am.Round))
+		if sn.RoundsAsRoot != 0 && sn.RoundsAsRoot%sn.FailAsRootEvery == 0 {
+			log.Errorln(sn.Name() + "was imposed root failure on round" + strconv.Itoa(Round))
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),
 				"type":  "root_failure",
-				"round": am.Round,
+				"round": Round,
 			}).Info(sn.Name() + "Root imposed failure")
 			// It doesn't make sense to try view change twice
 			// what we essentially end up doing is double setting sn.ViewChanged
@@ -84,33 +86,51 @@ func (sn *Node) TryRootFailure(view int) bool {
 	return false
 }
 
-func (sn *Node) TryFailure(view int) bool {
-	if sn.TryRootFailure() {
+func (sn *Node) TryFailure(view, Round int) error {
+	if sn.TryRootFailure(view, Round) {
 		return ErrImposedFailure
 	}
 
-	if !sn.IsRoot(view) && sn.FailAsFollowerEvery != 0 && am.Round%sn.FailAsFollowerEvery == 0 {
+	if !sn.IsRoot(view) && sn.FailAsFollowerEvery != 0 && Round%sn.FailAsFollowerEvery == 0 {
 		// when failure rate given fail with that probability
 		if (sn.FailureRate > 0 && sn.ShouldIFail("")) || (sn.FailureRate == 0) {
 			log.WithFields(log.Fields{
 				"file":  logutils.File(),
 				"type":  "follower_failure",
-				"round": am.Round,
+				"round": Round,
 			}).Info(sn.Name() + "Follower imposed failure")
-			return errors.New(sn.Name() + "was imposed follower failure on round" + strconv.Itoa(am.Round))
+			return errors.New(sn.Name() + "was imposed follower failure on round" + strconv.Itoa(Round))
 		}
 	}
 
 	// doing this before annoucing children to avoid major drama
 	if !sn.IsRoot(view) && sn.ShouldIFail("commit") {
 		log.Warn(sn.Name(), "not announcing or commiting for round", Round)
-		return nil
+		return ErrImposedFailure
 	}
+	return nil
 }
 
-func (sn *Node) setUpRound(am *AnnouncementMessage) error {
+// Create round lasting secret and commit point v and V
+// Initialize log structure for the round
+func (sn *Node) initCommitCrypto(Round int) {
+	round := sn.Rounds[Round]
+	// generate secret and point commitment for this round
+	rand := sn.suite.Cipher([]byte(sn.Name()))
+	round.Log = SNLog{}
+	round.Log.v = sn.suite.Secret().Pick(rand)
+	round.Log.V = sn.suite.Point().Mul(nil, round.Log.v)
+	// initialize product of point commitments
+	round.Log.V_hat = sn.suite.Point().Null()
+	sn.add(round.Log.V_hat, round.Log.V)
+
+	round.X_hat = sn.suite.Point().Null()
+	sn.add(round.X_hat, sn.PubKey)
+}
+
+func (sn *Node) setUpRound(view int, am *AnnouncementMessage) error {
 	// TODO: accept annoucements on old views?? linearizabiltity?
-	if sn.ChangingView == TRUE {
+	if sn.ChangingView {
 		log.Println("currently chaning view")
 		return ChangingViewError
 	}
@@ -122,10 +142,11 @@ func (sn *Node) setUpRound(am *AnnouncementMessage) error {
 
 	// set up commit and response channels for the new round
 	sn.Rounds[Round] = NewRound()
+	sn.initCommitCrypto(Round)
 	sn.Rounds[Round].Vote = am.Vote
 
 	// update max seen round
-	sn.LastSeenRound = max(sn.LastSeenRound, int64(Round))
+	sn.LastSeenRound = max(sn.LastSeenRound, Round)
 
 	// the root is the only node that keeps track of round # internally
 	if sn.IsRoot(view) {
@@ -139,6 +160,32 @@ func (sn *Node) setUpRound(am *AnnouncementMessage) error {
 	}
 
 	return nil
+}
+
+// Figure out which kids did not submit messages
+// Add default messages to messgs, one per missing child
+// as to make it easier to identify and add them to exception lists in one place
+func (sn *Node) FillInWithDefaultMessages(view int, messgs []*SigningMessage) []*SigningMessage {
+	children := sn.Children(view)
+
+	allmessgs := make([]*SigningMessage, len(messgs))
+	copy(allmessgs, messgs)
+
+	for c := range children {
+		found := false
+		for _, m := range messgs {
+			if m.From == c {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			allmessgs = append(allmessgs, &SigningMessage{View: view, Type: Default, From: c})
+		}
+	}
+
+	return allmessgs
 }
 
 // accommodate nils
@@ -176,7 +223,7 @@ func (sn *Node) updateHighestVote(hv int, from string) {
 	}
 }
 
-func max(a int64, b int64) int64 {
+func max(a int, b int) int {
 	if a > b {
 		return a
 	}

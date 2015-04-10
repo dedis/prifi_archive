@@ -1,4 +1,4 @@
-package coco
+package sign
 
 import (
 	"github.com/dedis/crypto/abstract"
@@ -21,10 +21,10 @@ type Signer interface {
 	IsRoot(view int) bool
 	Suite() abstract.Suite
 	StartSigningRound() error
-	StartVotingRound(name, action string) error
+	StartVotingRound(v *Vote) error
 
-	LastRound() int64       // last round number seen by Signer
-	SetLastSeenRound(int64) // impose change in round numbering
+	LastRound() int       // last round number seen by Signer
+	SetLastSeenRound(int) // impose change in round numbering
 
 	Hostlist() []string
 
