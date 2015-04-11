@@ -14,6 +14,13 @@ import (
 	"github.com/dedis/prifi/coco/coconet"
 )
 
+// NOTE: This code was build with gochans that can only receive messages one
+// at a time and that block when waiting to receive a message. Changing the
+// channel might break tests.
+
+// NOTE: The same gochans are used throughout the tests. Make sure each test
+// gets all the messages it puts. Otherwise, there may be problems.
+
 var goDir = coconet.NewGoDirectory()
 
 // Variables for the server to take out the policy.
@@ -179,18 +186,18 @@ func TestSelectBasicInsurers(t * testing.T) {
 
 // This is a helper method to be run by gochan's simulating insurers.
 // The server listens for a CertifyPromiseMessage, sends a response, and then exits.
-func insurersBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
+func insurersBasic(t *testing.T, k, returnKey *config.KeyPair,  cm connMan.ConnManager) {
 
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
-		cm.Get(keyPairT.Public, msg)
+		cm.Get(returnKey.Public, msg)
 
 		// If a CertifyPromiseMessage, exit
 		if msg.Type == CertifyPromise {
 			certMsg := msg.getCPM()
 			response, _ := certMsg.Promise.ProduceResponse(certMsg.ShareIndex, k)
 			replyMsg := new(PromiseResponseMessage).createMessage(certMsg.ShareIndex, certMsg.Promise, response)
-			cm.Put(keyPairT.Public, new(PolicyMessage).createPRMessage(replyMsg))
+			cm.Put(returnKey.Public, new(PolicyMessage).createPRMessage(replyMsg))
 			return
 		}
 	}
@@ -204,7 +211,7 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
-		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
 	}
 	
 	err := policy.certifyPromise(state)
@@ -239,15 +246,71 @@ func TestLifePolicyModuleCertifyPromisePublic(t *testing.T) {
 	}
 }
 
+// Verifies that revealShare can properly communicate with other servers.
+func TestLifePolicyModuleRevealShare(t *testing.T) {
 
+	// Create the policy for the client
+	clientPolicy := new(LifePolicyModule).Init(clientT, lpt,lpr,lpn, clientConn)
 
+	// Create a policy for the first insurer. Give it a promise from the
+	// promiser server.
+	insurerPolicy := new(LifePolicyModule).Init(serverKeys[0], lpt,lpr,lpn, connectionManagers[0])
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT, keyPairT, lpt, lpr, insurerListT)
+	insurerPolicy.addServerPromise(newPromise)
+	state := insurerPolicy.serverPromises[newPromise.PromiserId()][newPromise.Id()]
+
+	// Start up the other insurers.
+	for i := 1; i < numServers; i++ {
+		go insurersBasic(t, serverKeys[i], serverKeys[0], connectionManagers[i])
+	}
+	
+	// Send the share off to the client. The first time should require
+	// the promise to be certified
+	err := insurerPolicy.revealShare(0, state, clientT.Public)
+	if err != nil {
+		t.Error("The share should have been sent: ", err)
+	}
+	
+	// Clearing out the gochan. The insurer will first send a CertifyPromise
+	// to itself and then send a PromiseResponse. However, the promise will already
+	// be certified and a second iteration within certifyPromise will not be
+	// needed. Hence, the channel needs to be cleaned for future tests.
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, serverKeys[0].Suite)
+	insurerPolicy.cman.Get(serverKeys[0].Public, msg)
+	if msg.Type != PromiseResponse {
+		t.Fatal("Unexpected message received")
+	}
+	
+	// Check that the first message was sent.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	clientPolicy.cman.Get(serverKeys[0].Public, msg)
+	if msg.Type != ShareRevealResponse {
+		t.Fatal("ShareRevealResponse Message expected")
+	}
+	
+	// Send the share off a second time. The promise should be sent immediately
+	// since the promise is now certified. Since the other insurers have
+	// already quit, this will hang if it tries to contact the network
+	err = insurerPolicy.revealShare(0, state, clientT.Public)
+	if err != nil {
+		t.Error("The share should have been sent: ", err)
+	}
+	
+	// Check that the second message was sent.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	clientPolicy.cman.Get(serverKeys[0].Public, msg)
+	if msg.Type != ShareRevealResponse {
+		t.Fatal("ShareRevealResponse Message expected")
+	}
+}
 
 // Verifies that a sever can properly take out a policy.
 func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
-		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
 	}
 	
 	policy:= new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
@@ -280,7 +343,7 @@ func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
-		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
 	}
 	
 	err = policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
@@ -305,7 +368,7 @@ func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 	}
 	// Start up the other insurers.
 	for i := 0; i < numServers; i++ {
-		go insurersBasic(t, serverKeys[i], connectionManagers[i])
+		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
 	}
 	
 	policy = new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
@@ -574,7 +637,7 @@ func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
 	policy.cman.Get(serverKeys[i].Public, msg)
 	responseMsg = msg.getPRM()
 	err = policy.handlePromiseResponseMessage(responseMsg)
-	if err == nil {
+	if err != nil {
 		t.Error("Response should have been added to Promise", err)
 	}
 }

@@ -15,6 +15,7 @@ package insure
 
 import (
 	"errors"
+	"log"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly/promise"
@@ -201,10 +202,13 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 	
 	// Wait for responses
 	for state.PromiseCertified() != nil {
-		for i := 0; i < lp.n; i++ {	
+		for i := 0; i < lp.n; i++ {
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
-			lp.handlePolicyMessage(insurersList[i], msg)
+			msgType, err := lp.handlePolicyMessage(insurersList[i], msg)
+			if err != nil {
+				log.Println("Message Type = ", msgType, ":", err)
+			}
 		}
 	}
 	return nil
@@ -221,10 +225,44 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
  *   nil if the promise is certified, an error otherwise.
  */
 func (lp *LifePolicyModule) CertifyPromise(serverKey, promiseKey abstract.Point) error {
-	if state, assigned := lp.serverPromises[serverKey.String()][promiseKey.String()]; assigned {
-		return lp.certifyPromise(state)
+	state, assigned := lp.serverPromises[serverKey.String()][promiseKey.String()]
+	if !assigned {
+		return errors.New("No such promise")
 	}
-	return errors.New("No such promise")
+	return lp.certifyPromise(state)
+}
+
+/* This function is responsible for revealing a share and sending it to a client.
+ * Once insurers have verified that the promiser is dead, insurers can use this
+ * method to reveal the share.
+ * 
+ * Arguments:
+ *   shareIndex = the index of the share to reveal
+ *   state      = the state of the promise holding the share to reveal
+ *   clientKey  = the long-term public key of the client to send the share to
+ *
+ * Returns:
+ *   nil if the share was sent successfully, err otherwise.
+ *
+ * Note:
+ *   This function is solely responsible for sending the share to the client, not
+ *   verifying if the insurer should actually send the share to the client. Such
+ *   verification must be done before the call to this function.
+ */
+func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, clientKey abstract.Point) error {
+	// A promise must be certified before a share can be revealed.
+	if state.PromiseCertified() != nil {
+		err := lp.certifyPromise(state)
+		if err != nil {
+			return err
+		}
+	}
+
+	share := state.RevealShare(shareIndex, lp.keyPair)
+	responseMsg := new(PromiseShareMessage).createResponseMessage(
+		shareIndex, state.Promise, share)
+	lp.cman.Put(clientKey, new(PolicyMessage).createSRSPMessage(responseMsg))
+	return nil
 }
 
 /* This method sends a promise to another server.
@@ -245,14 +283,14 @@ func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Po
 	return errors.New("Promise does not exist")
 }
 
-func (lp *LifePolicyModule) ReconstructSecret(longTermKey,secretPubKey abstract.Point) abstract.Secret {
+func (lp *LifePolicyModule) ReconstructSecret(reason string, longTermKey,secretPubKey abstract.Point) abstract.Secret {
 
 	state        := lp.serverPromises[longTermKey.String()][secretPubKey.String()]
 	insurersList := state.Promise.Insurers()
 
 	// Send a request off to each server
 	for i := 0; i < lp.n; i++ {
-		requestMsg := new(PromiseShareMessage).createRequestMessage(i, state.Promise)
+		requestMsg := new(PromiseShareMessage).createRequestMessage(i, reason, state.Promise)
 		policyMsg  := new(PolicyMessage).createSREQMessage(requestMsg)
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
@@ -432,7 +470,7 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 
 	// Otherwise, the server was requesting a certificate for a promise
 	// from another server.
-	//state, ok = lp.serverPromises[msg.PromiserId][msg.Id];	
+	state, ok = lp.serverPromises[msg.PromiserId][msg.Id];	
 	if ok {
 		state.AddResponse(msg.ShareIndex, msg.Response)
 		return nil
@@ -471,26 +509,11 @@ func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, 
 }
 
 func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Point, msg *PromiseShareMessage) error {
-	promiserId := msg.PromiserId
-	id := msg.Id
-	if state, assigned := lp.serverPromises[promiserId][id]; assigned {
-		if state.PromiseCertified() != nil {
-			// A promise must be certified before a share can be revealed.
-			// get the certification if so.
-			
-			// TODO if you add a timelimit to certifyPromise
-			// make sure that you check it here before continuing.
-			lp.certifyPromise(state)
-		}
-		// TODO change RevealShare to do standard checking and to return
-		// an error if it finds one.
-		share := state.RevealShare(msg.ShareIndex, lp.keyPair)
-		responseMsg := new(PromiseShareMessage).createResponseMessage(
-			msg.ShareIndex, state.Promise, share)
-		lp.cman.Put(pubKey, new(PolicyMessage).createSRSPMessage(responseMsg))
-		return nil
+	state, assigned := lp.serverPromises[msg.PromiserId][msg.Id]
+	if !assigned {
+		return errors.New("This server insurers no such Promise.")
 	}
-	return errors.New("This server insurers no such Promise.")
+	return lp.revealShare(msg.ShareIndex, state, pubKey)
 }
 
 // Add the share to the Promise if it is valid. Ignore it otherwise.
