@@ -380,6 +380,10 @@ func (h *TCPHost) IsParent(view int, peer string) bool {
 	return h.views.Parent(view) == peer
 }
 
+func (h *TCPHost) Parent(view int) string {
+	return h.views.Parent(view)
+}
+
 // IsChild returns true f the given peer is the child for the specified view.
 func (h *TCPHost) IsChild(view int, peer string) bool {
 	h.PeerLock.Lock()

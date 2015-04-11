@@ -167,7 +167,7 @@ func (sn *Node) actOnVotes(view int, v *Vote) {
 	// Report on vote decision
 	if sn.IsRoot(view) {
 		abstained := len(sn.HostListOn(view)) - v.Count.For - v.Count.Against
-		log.Infoln("Votes FOR:", v.Count.For, "; Votes AGAINST:", v.Count.Against, "; Absteined:", abstained)
+		log.Infoln("Votes FOR:", v.Count.For, "; Votes AGAINST:", v.Count.Against, "; Absteined:", abstained, actionTaken)
 	}
 
 	// Act on vote Decision

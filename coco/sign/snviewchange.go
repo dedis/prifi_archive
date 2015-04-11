@@ -10,7 +10,6 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 
 	log.Println(sn.Name(), "VIEW CHANGE MESSAGE: new Round == , oldlsr == , view == ", vcm.Round, sn.LastSeenRound, view)
 	sn.LastSeenRound = max(vcm.Round, sn.LastSeenRound)
-	lsr := sn.LastSeenRound
 
 	iAmNextRoot := false
 	if sn.RootFor(vcm.ViewNo) == sn.Name() {

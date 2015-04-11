@@ -19,8 +19,12 @@ func (sn *Node) AddSelf(parent string) error {
 		&SigningMessage{
 			Type: GroupChange,
 			View: -1,
-			Gcm: &GroupChangeMessage{
-				Vr: VoteRequest{Name: sn.Name(), Action: "add"}}})
+			Vrm: &VoteRequestMessage{
+				Vote: &Vote{
+					Type: AddVT,
+					Av: &AddVote{
+						Name:   sn.Name(),
+						Parent: parent}}}})
 }
 
 func (sn *Node) RemoveSelf() error {
@@ -30,6 +34,10 @@ func (sn *Node) RemoveSelf() error {
 		&SigningMessage{
 			Type: GroupChange,
 			View: -1,
-			Gcm: &GroupChangeMessage{
-				Vr: VoteRequest{Name: sn.Name(), Action: "remove"}}})
+			Vrm: &VoteRequestMessage{
+				Vote: &Vote{
+					Type: RemoveVT,
+					Rv: &RemoveVote{
+						Name:   sn.Name(),
+						Parent: sn.Parent(sn.lastView)}}}})
 }

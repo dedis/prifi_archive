@@ -20,6 +20,8 @@ type Host interface {
 	// Name returns the name of this host.
 	Name() string
 
+	Parent(view int) string
+
 	// Peers returns a mapping from peer names to Connections.
 	Peers() map[string]Conn
 

@@ -260,6 +260,15 @@ func (sn *Node) StartVotingRound(v *Vote) error {
 	v.Index = sn.LastVote
 	v.Count = &Count{}
 	v.Confirmed = false
+	if v.Av != nil {
+		v.Av.View = sn.lastView + 1
+	}
+	if v.Rv != nil {
+		v.Rv.View = sn.lastView + 1
+	}
+	if v.Vcv != nil {
+		v.Vcv.View = sn.lastView + 1
+	}
 	return sn.StartAnnouncement(
 		&AnnouncementMessage{LogTest: []byte("vote round"), Round: sn.nRounds, Vote: v})
 }

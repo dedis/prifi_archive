@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,14 +29,14 @@ import (
 //    / \
 //   2   3
 func TestStaticMerkle(t *testing.T) {
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
+	aux := sign.RoundsPerView
 	sign.RoundsPerView = 100
 
 	if err := runStaticTest(sign.MerkleTree); err != nil {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 func TestStaticPubKey(t *testing.T) {
@@ -205,8 +204,8 @@ func TestTreeFromBigConfig(t *testing.T) {
 	return
 
 	// not mixing view changes in
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
 
 	hc, err := oldconfig.LoadConfig("../test/data/exwax.json")
 	if err != nil {
@@ -232,7 +231,7 @@ func TestTreeFromBigConfig(t *testing.T) {
 		t.Error(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 // tree from configuration file data/exconf.json
@@ -241,8 +240,8 @@ func TestMultipleRounds(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 	// not mixing view changes in
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
 	hc, err := oldconfig.LoadConfig("../test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
@@ -272,13 +271,13 @@ func TestMultipleRounds(t *testing.T) {
 		}
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 func TestTCPStaticConfig(t *testing.T) {
 	// not mixing view changes in
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
 	time.Sleep(5 * time.Second)
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
@@ -302,14 +301,14 @@ func TestTCPStaticConfig(t *testing.T) {
 	hc.SNodes[0].LogTest = []byte("hello world")
 	hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	log.Println("Test Done")
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {
 	// not mixing view changes in
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
 	time.Sleep(5 * time.Second)
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
@@ -336,7 +335,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 		hc.SNodes[0].LogTest = []byte("hello world")
 		hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 // Tests the integration of View Change with Signer (ability to reach consensus on a view change)

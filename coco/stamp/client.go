@@ -9,8 +9,8 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
+	"github.com/dedis/prifi/coco/sign"
 )
 
 type Client struct {
@@ -61,7 +61,7 @@ func (c *Client) handleServer(s coconet.Conn) error {
 			if err == coconet.ErrNotEstablished {
 				continue
 			}
-			if coco.DEBUG {
+			if sign.DEBUG {
 				log.Warn("error getting from connection:", err)
 			}
 			return err
@@ -102,19 +102,19 @@ func (c *Client) AddServer(name string, conn coconet.Conn) {
 				c.Mux.Lock()
 				c.Servers[name] = conn
 				c.Mux.Unlock()
-				if coco.DEBUG {
+				if sign.DEBUG {
 					log.Println("SUCCESS: connected to server:", conn)
 				}
 				err := c.handleServer(conn)
 				// if a server encounters any terminating error
 				// terminate all pending client transactions and kill the client
 				if err != nil {
-					if coco.DEBUG {
+					if sign.DEBUG {
 						log.Errorln("EOF DETECTED: sending EOF to all pending TimeStamps")
 					}
 					c.Mux.Lock()
 					for _, ch := range c.doneChan {
-						if coco.DEBUG {
+						if sign.DEBUG {
 							log.Println("Sending to Receiving Channel")
 						}
 						ch <- io.EOF
@@ -165,7 +165,7 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 			Sreq:  &StampRequest{Val: val}})
 	if err != nil {
 		if err != coconet.ErrNotEstablished {
-			if coco.DEBUG {
+			if sign.DEBUG {
 				log.Warn("error timestamping: ", err)
 			}
 		}
@@ -184,14 +184,14 @@ func (c *Client) TimeStamp(val []byte, TSServerName string) error {
 		// log.Println("-------------client received  response from" + TSServerName)
 		break
 	case <-time.After(10 * ROUND_TIME):
-		if coco.DEBUG == true {
+		if sign.DEBUG == true {
 			log.Errorln(errors.New("client timeouted on waiting for response from" + TSServerName))
 		}
 		break
 		// err = ErrClientToTSTimeout
 	}
 	if err != nil {
-		if coco.DEBUG {
+		if sign.DEBUG {
 			log.Errorln("error received from DoneChan:", err)
 		}
 		return err

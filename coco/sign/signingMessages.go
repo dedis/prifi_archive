@@ -73,6 +73,7 @@ type SigningMessage struct {
 	Vcm         *ViewChangeMessage
 	Vcfm        *ViewConfirmedMessage
 	Vam         *ViewAcceptedMessage
+	Vrm         *VoteRequestMessage
 	Err         *ErrorMessage
 	From        string
 	View        int
@@ -178,4 +179,8 @@ type ViewAcceptedMessage struct {
 // TODO: maybe send equivalent of ChallengeMessage to allow verifying view confirm
 type ViewConfirmedMessage struct {
 	ViewNo int
+}
+
+type VoteRequestMessage struct {
+	Vote *Vote
 }

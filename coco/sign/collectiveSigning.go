@@ -88,7 +88,7 @@ func (sn *Node) get() error {
 				sn.ReceivedHeartbeat(sm.View)
 
 				var err error
-				if sm.Am.Vote != nil {
+				if sm.Chm.Vote != nil {
 					err = sn.Accept(sm.View, sm.Chm)
 				} else {
 					err = sn.Challenge(sm.View, sm.Chm)
@@ -105,7 +105,7 @@ func (sn *Node) get() error {
 				}
 
 				var err error
-				if sm.Am.Vote != nil {
+				if sm.Com.Vote != nil {
 					err = sn.Promise(sm.View, sm.Com.Round, sm)
 				} else {
 					err = sn.Commit(sm.View, sm.Com.Round, sm)
@@ -120,10 +120,13 @@ func (sn *Node) get() error {
 				}
 
 				var err error
-				if sm.Am.Vote != nil {
+				if sm.Rm.Vote != nil {
 					err = sn.Accepted(sm.View, sm.Rm.Round, sm)
 				} else {
 					err = sn.Respond(sm.View, sm.Rm.Round, sm)
+				}
+				if err != nil {
+					log.Errorln(sn.Name(), "response error:", err)
 				}
 			case ViewChange:
 				// if we have already seen this view before skip it
@@ -175,7 +178,6 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 		return err
 	}
 
-	Round := am.Round
 	if err := sn.setUpRound(view, am); err != nil {
 		return err
 	}

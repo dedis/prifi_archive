@@ -8,7 +8,6 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/proof"
@@ -17,7 +16,7 @@ import (
 )
 
 type Server struct {
-	coco.Signer
+	sign.Signer
 	name    string
 	Clients map[string]coconet.Conn
 
@@ -41,7 +40,7 @@ type Server struct {
 	App      string
 }
 
-func NewServer(signer coco.Signer) *Server {
+func NewServer(signer sign.Signer) *Server {
 	s := &Server{}
 
 	s.Clients = make(map[string]coconet.Conn)
@@ -217,7 +216,7 @@ func (s *Server) LogReRun(nextRole string, curRole string) {
 func (s *Server) runAsRoot(nRounds int) string {
 	// every 5 seconds start a new round
 	ticker := time.Tick(ROUND_TIME)
-	if s.LastRound()+1 > int64(nRounds) {
+	if s.LastRound()+1 > nRounds {
 		log.Errorln(s.Name(), "runAsRoot called with too large round number")
 		return "close"
 	}
@@ -235,7 +234,12 @@ func (s *Server) runAsRoot(nRounds int) string {
 
 			var err error
 			if s.App == "vote" {
-				err = s.StartVotingRound(s.Name(), "add")
+				vote := &sign.Vote{
+					Type: sign.AddVT,
+					Av: &sign.AddVote{
+						Parent: s.Name(),
+						Name:   "test-add-node"}}
+				err = s.StartVotingRound(vote)
 			} else {
 				err = s.StartSigningRound()
 			}
@@ -255,7 +259,7 @@ func (s *Server) runAsRoot(nRounds int) string {
 				break
 			}
 
-			if s.LastRound()+1 >= int64(nRounds) {
+			if s.LastRound()+1 >= nRounds {
 				log.Errorln(s.Name(), "reports exceeded the max round: terminating", s.LastRound()+1, ">=", nRounds)
 				return "close"
 			}
@@ -361,14 +365,14 @@ func (s *Server) Run(role string, nRounds int) {
 
 }
 
-func (s *Server) OnAnnounce() coco.CommitFunc {
+func (s *Server) OnAnnounce() sign.CommitFunc {
 	return func(view int) []byte {
 		//log.Println("Aggregating Commits")
 		return s.AggregateCommits(view)
 	}
 }
 
-func (s *Server) OnDone() coco.DoneFunc {
+func (s *Server) OnDone() sign.DoneFunc {
 	return func(view int, SNRoot hashid.HashId, LogHash hashid.HashId, p proof.Proof) {
 		s.mux.Lock()
 		for i, msg := range s.Queue[s.PROCESSING] {
@@ -380,7 +384,7 @@ func (s *Server) OnDone() coco.DoneFunc {
 			combProof = append(combProof, s.Proofs[i]...)
 
 			// proof that i can get from a leaf message to the big root
-			if coco.DEBUG == true {
+			if sign.DEBUG == true {
 				proof.CheckProof(s.Signer.(*sign.Node).Suite().Hash, SNRoot, s.Leaves[i], combProof)
 			}
 
@@ -430,14 +434,14 @@ func (s *Server) AggregateCommits(view int) []byte {
 		mr := s.maxRounds
 		s.rLock.Unlock()
 		// if this is our last round then close the connections
-		if lsr >= int64(mr) && mr >= 0 {
+		if lsr >= mr && mr >= 0 {
 			s.closeChan <- true
 		}
 	}
 
 	// create Merkle tree for this round's messages and check corectness
 	s.Root, s.Proofs = proof.ProofTree(s.Suite().Hash, s.Leaves)
-	if coco.DEBUG == true {
+	if sign.DEBUG == true {
 		if proof.CheckLocalProofs(s.Suite().Hash, s.Root, s.Leaves, s.Proofs) == true {
 			log.Println("Local Proofs of", s.Name(), "successful for round "+strconv.Itoa(int(s.LastRound())))
 		} else {

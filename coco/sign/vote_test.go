@@ -21,19 +21,21 @@ func TestTreeSmallConfigVote(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = hc.Run(false, sign.Vote)
+	err = hc.Run(false, sign.Voter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Achieve consensus on removing a node
-	hc.SNodes[0].LogTest = []byte("Hello Voting")
-	vr := &sign.VoteRequest{Name: "host5", Action: "remove"}
+	vote := &sign.Vote{Type: sign.AddVT, Av: &sign.AddVote{Name: "host5", Parent: "host4"}}
 
-	err = hc.SNodes[0].Announce(DefaultView,
-		&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,
-			Round:       1,
-			VoteRequest: vr})
+	err = hc.SNodes[0].StartVotingRound(vote)
+
+	// hc.SNodes[0].LogTest = []byte("Hello Voting")
+	// err = hc.SNodes[0].Announce(DefaultView,
+	// 	&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,
+	// 		Round: 1,
+	// 		Vote:  vote})
 	if err != nil {
 		t.Error(err)
 	}
@@ -52,7 +54,7 @@ func TestTCPStaticConfigVote(t *testing.T) {
 		time.Sleep(1 * time.Second)
 	}()
 
-	err = hc.Run(false, sign.Vote)
+	err = hc.Run(false, sign.Voter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,12 +63,14 @@ func TestTCPStaticConfigVote(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("Hello Voting")
-	vr := &sign.VoteRequest{Name: hc.SNodes[5].Name(), Action: "remove"}
+	vote := &sign.Vote{Type: sign.RemoveVT, Rv: &sign.RemoveVote{Name: "host5", Parent: "host4"}}
 
-	err = hc.SNodes[0].Announce(DefaultView,
-		&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,
-			Round:       1,
-			VoteRequest: vr})
+	err = hc.SNodes[0].StartVotingRound(vote)
+
+	// err = hc.SNodes[0].Announce(DefaultView,
+	// 	&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,
+	// 		Round:       1,
+	// 		Vote: vote})
 	if err != nil {
 		t.Error(err)
 	}

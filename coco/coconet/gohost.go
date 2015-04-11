@@ -217,6 +217,10 @@ func (h *GoHost) NewView(view int, parent string, children []string, hoslist []s
 	h.views.NewView(view, parent, children, hoslist)
 }
 
+func (h *GoHost) Parent(view int) string {
+	return h.views.Parent(view)
+}
+
 // AddParent adds a parent node to the specified view.
 func (h *GoHost) AddParent(view int, c string) {
 	h.PeerLock.Lock()
