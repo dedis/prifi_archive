@@ -283,9 +283,37 @@ func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Po
 	return errors.New("Promise does not exist")
 }
 
-func (lp *LifePolicyModule) ReconstructSecret(reason string, longTermKey,secretPubKey abstract.Point) abstract.Secret {
+/* Clients can use this function to reconstruct a promised secret that
+ * it has. This function will contact the insurers and then recreate the secret
+ * if it has received enough shares. It is the responsibility of the caller to
+ * ensure that the promiser has been unresponsive before calling this function.
+ *
+ * Arguments:
+ *   reason = the reason why the client is attempting to reconstruct the secret.
+ *            This is mostly used when insurers receive the request to reveal
+ *            their share. The insurers then call their function that determines
+ *            whether the promiser is dead and passes the "reason" value to it.
+ *            Methods created by users of this code can use this to determine
+ *            what type of request the client was waiting on the promiser to do
+ *            when the promiser became unresponsive.
+ *
+ *            For the default method provided by the module, nil will suffice.
+ *
+ *   serverKey  = the long term key of the promiser of the secret
+ *   promiseKey = the public key of the secret promised
+ *
+ * Returns
+ *   (key, error) pair
+ *      key   = the reconstructed key on success, nil otherwise
+ *      error = nil on success, the error that occurred otherwise 
+ */
+func (lp *LifePolicyModule) ReconstructSecret(reason string,
+	serverKey,promiseKey abstract.Point) (abstract.Secret, error) {
 
-	state        := lp.serverPromises[longTermKey.String()][secretPubKey.String()]
+	state, assigned := lp.serverPromises[serverKey.String()][promiseKey.String()]
+	if !assigned {
+		return nil, errors.New("No such Promise.")
+	}
 	insurersList := state.Promise.Insurers()
 
 	// Send a request off to each server
@@ -294,27 +322,31 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string, longTermKey,secretP
 		policyMsg  := new(PolicyMessage).createSREQMessage(requestMsg)
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
-
-	// TODO: Add a timeout such that this process will end after a certain
-	// amount of time.
 	
-	// It is important to have this seen before array. The reason is that
-	// Secret reconstruction will panic if not enough shares are provided.
-	// Hence, this is used to make sure that a malicious insurer does not
-	// send multiple shares and trick the client into thinking it has 
-	// received unique ones.
+	// It is important to have this seenBefore array. Secret reconstruction
+	// relies on crypto/poly.PriShares. The function used will panic if
+	// not enough shares have been recovered. The function also doesn't keep
+	// track of which promises have been added. Hence, this array along with
+	// the sharesRetrieved counter is used to keep track of this information.
+	// Otherwise, a malicious insurer could send multiple copies of its share
+	// and trick the client into thinking it has received unique shares and
+	// consequently try to reconstruct the secret to early.
 	seenBefore := make([]bool, lp.n, lp.n)
 	for i:= 0; i < lp.n; i++ {
 		seenBefore[i] = false;
 	}
 	sharesRetrieved := 0;
+
+	// TODO: Add timeout mechanism.
 	for sharesRetrieved < lp.t {
 		for i := 0; i < lp.n; i++ {	
-			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
+			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
+				lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
 			msgType, err := lp.handlePolicyMessage(insurersList[i], msg)
-			if msgType == ShareRevealResponse && err == nil &&
-			   seenBefore[i] == false {
+			if err == nil &&
+			   seenBefore[i] == false &&
+			   msgType == ShareRevealResponse {
 				seenBefore[i] = true
 				sharesRetrieved += 1
 			}
