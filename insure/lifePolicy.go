@@ -516,14 +516,26 @@ func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Poin
 	return lp.revealShare(msg.ShareIndex, state, pubKey)
 }
 
-// Add the share to the Promise if it is valid. Ignore it otherwise.
+/* This function handles RevealShareResponses. When a client requests that an insurer
+ * reveal a share, the insurer will respond with a RevealShareResponseMessage if
+ * the promiser is deemed dead. This method verifies that the share is valid and
+ * then adds the share to the promise state.
+ *
+ * Arguments:
+ *   msg = the PromiseShareMessage containing the share
+ *
+ * Returns:
+ *   nil if successful, err otherwise
+ */
 func (lp *LifePolicyModule) handleRevealShareResponseMessage(msg *PromiseShareMessage) error {
-	if state, assigned := lp.serverPromises[msg.PromiserId][msg.Id]; assigned {
-		if err := state.Promise.VerifyRevealedShare(msg.ShareIndex, msg.Share); err != nil {
-			return err
-		}
-		state.PriShares.SetShare(msg.ShareIndex, msg.Share)
-		return nil
+	state, assigned := lp.serverPromises[msg.PromiserId][msg.Id]
+	if !assigned {
+		return errors.New("Promise does not exist on this server.")
+	}	
+	if err := state.Promise.VerifyRevealedShare(msg.ShareIndex, msg.Share); err != nil {
+		return err
 	}
-	return errors.New("This server does not know of the specified promise.")
+	state.PriShares.SetShare(msg.ShareIndex, msg.Share)
+	return nil
 }
+

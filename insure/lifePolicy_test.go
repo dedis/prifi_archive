@@ -642,6 +642,86 @@ func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
 	}
 }
 
+
+// This is a helper method that is used to send RevealShareResponseMessage's to a server
+func sendRevealShareResponseMessageBasic(t *testing.T, i int, state1, state2 *promise.State, cm connMan.ConnManager) {
+
+	// First, send the promise a response to a promise it has.
+	response := state1.RevealShare(i, serverKeys[i])
+	responseMsg := new(PromiseShareMessage).createResponseMessage(i,
+		state1.Promise, response)
+	policyMsg  := new(PolicyMessage).createSRSPMessage(responseMsg)
+	cm.Put(clientT.Public, policyMsg)
+
+	// Next, send a bad share
+	responseMsg = new(PromiseShareMessage).createResponseMessage(i,
+		state1.Promise, clientT.Suite.Secret())
+	policyMsg  = new(PolicyMessage).createSRSPMessage(responseMsg)
+	cm.Put(clientT.Public, policyMsg)
+
+	// Next, send the client a promise it does not have.
+	responseMsg = new(PromiseShareMessage).createResponseMessage(i,
+		state2.Promise, response)
+	policyMsg  = new(PolicyMessage).createSRSPMessage(responseMsg)
+	cm.Put(clientT.Public, policyMsg)
+}
+
+// Verifies that a server can handle RevealShareResponseMessage's from insurers
+func TestLifePolicyModulehandleRevealShareResponseMessage(t *testing.T) {
+
+	// Index of the insurer to use for testing.
+	i := 1
+
+	// Create a policy for the first client. Give it a promise from the
+	// promiser server.
+	policy := new(LifePolicyModule).Init(clientT, lpt,lpr,lpn, clientConn)
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT, keyPairT, lpt, lpr, insurerListT)
+	policy.addServerPromise(newPromise)
+	state := policy.serverPromises[newPromise.PromiserId()][newPromise.Id()]
+
+	newPromise2 := promise.Promise{}
+	newPromise2.ConstructPromise(secretKeyT2, serverKeys[i], lpt, lpr, insurerListT)
+	state2 := new(promise.State).Init(newPromise2)
+
+	for j := 0; j < numServers; j++ {
+		go insurersBasic(t, serverKeys[j], clientT, connectionManagers[j])
+	}
+	// First, get the first promise certified so that the share can be revealed
+	err := policy.certifyPromise(state)
+	if err != nil {
+		t.Fatal("Promise should have been certified")
+	}
+
+	go sendRevealShareResponseMessageBasic(t, i, state, state2, connectionManagers[i])
+
+	// Test that a valid share can be received
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	responseMsg := msg.getSRSP()
+	err = policy.handleRevealShareResponseMessage(responseMsg)
+	if err != nil {
+		t.Error("Share should have been added to Promise", err)
+	}
+
+	// Test that an invalid share produces an error
+	msg  = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	responseMsg = msg.getSRSP()
+	err = policy.handleRevealShareResponseMessage(responseMsg)
+	if err == nil {
+		t.Error("The share is invalid", err)
+	}
+
+	// Test that a response for an unknown promise produces an error.
+	msg  = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	responseMsg = msg.getSRSP()
+	err = policy.handleRevealShareResponseMessage(responseMsg)
+	if err == nil {
+		t.Error("The promise specified shouldn't exist in the policy", err)
+	}
+}
  
 // This is a helper method that is used to send PromiseToClientMessage's to a server
 func sendPromiseToClientMessagesBasic(t *testing.T, i int, serverCm, clientCm connMan.ConnManager) {
