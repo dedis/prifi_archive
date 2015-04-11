@@ -561,6 +561,10 @@ type PromiseShareMessage struct {
 
 	// A string of the public key of the secret promised.
 	Id string
+	
+	// The reason why the server is requesting the share.
+	// This is defined by the protocol using the insurance policy
+	Reason string
 
 	// The secret share of the insurer for responses, nil for requests.
 	Share abstract.Secret
@@ -576,11 +580,12 @@ type PromiseShareMessage struct {
  * Returns:
  *	A new PromiseShareMessage
  */
-func (msg *PromiseShareMessage) createRequestMessage(shareIndex int,
+func (msg *PromiseShareMessage) createRequestMessage(shareIndex int, reason string,
 	promise promise.Promise) *PromiseShareMessage {
 	msg.Id         = promise.Id()
 	msg.PromiserId = promise.PromiserId()
 	msg.ShareIndex = shareIndex
+	msg.Reason     = reason
 	msg.Share      = nil
 	return msg
 }
@@ -623,6 +628,7 @@ func (msg *PromiseShareMessage) Equal(msg2 *PromiseShareMessage) bool {
 	return msg.ShareIndex == msg2.ShareIndex &&
 	       msg.PromiserId == msg2.PromiserId &&
 	       msg.Id == msg2.Id &&
+	       msg.Reason == msg2.Reason &&
 	       (msg.Share == nil && msg2.Share == nil ||
 	          (msg.Share != nil && msg2.Share != nil &&
 	            msg.Share.Equal(msg2.Share)))
@@ -642,7 +648,7 @@ func (msg *PromiseShareMessage) MarshalSize() int {
 	if msg.Share != nil {
 		shareSize = msg.Share.MarshalSize()
 	}	
-	return 4*uint32Size + len(msg.Id) + len(msg.PromiserId) + shareSize
+	return 5*uint32Size + len(msg.Id) + len(msg.PromiserId) + len(msg.Reason) + shareSize
 }
 
 /* Marshals a PromiseResponseMessage struct into a byte array
@@ -661,6 +667,7 @@ func (msg *PromiseShareMessage) MarshalBinary() ([]byte, error) {
 	buf := make([]byte, msg.MarshalSize())
 	idLen  := len(msg.Id)
 	promiserIdLen := len(msg.PromiserId)
+	reasonLen     := len(msg.Reason)
 	shareSize := 0
 	if msg.Share != nil {
 		shareSize = msg.Share.MarshalSize()
@@ -668,18 +675,20 @@ func (msg *PromiseShareMessage) MarshalBinary() ([]byte, error) {
 
 	binary.LittleEndian.PutUint32(buf, uint32(idLen))
 	binary.LittleEndian.PutUint32(buf[uint32Size:], uint32(promiserIdLen))
-	binary.LittleEndian.PutUint32(buf[2*uint32Size:], uint32(shareSize))
-	binary.LittleEndian.PutUint32(buf[3*uint32Size:], uint32(msg.ShareIndex))
+	binary.LittleEndian.PutUint32(buf[2*uint32Size:], uint32(reasonLen))
+	binary.LittleEndian.PutUint32(buf[3*uint32Size:], uint32(shareSize))
+	binary.LittleEndian.PutUint32(buf[4*uint32Size:], uint32(msg.ShareIndex))
 
-	copy(buf[4*uint32Size:], []byte(msg.Id))
-	copy(buf[4*uint32Size + idLen:], []byte(msg.PromiserId))
+	copy(buf[5*uint32Size:], []byte(msg.Id))
+	copy(buf[5*uint32Size + idLen:], []byte(msg.PromiserId))
+	copy(buf[5*uint32Size + idLen + promiserIdLen:], []byte(msg.Reason))
 
 	if msg.Share != nil {
 		shareBuf, err := msg.Share.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
-		copy(buf[4*uint32Size + idLen + promiserIdLen:], shareBuf)
+		copy(buf[5*uint32Size + idLen + promiserIdLen + reasonLen:], shareBuf)
 	}
 	return buf, nil
 }
@@ -694,26 +703,30 @@ func (msg *PromiseShareMessage) MarshalBinary() ([]byte, error) {
  */
 func (msg *PromiseShareMessage) UnmarshalBinary(buf []byte) error {
   
-  	if len(buf) < 4*uint32Size {
+  	if len(buf) < 5*uint32Size {
 		return errors.New("Buffer size too small")
 	}
   
 	idLen          := int(binary.LittleEndian.Uint32(buf))
 	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
-	shareSize      := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
-	msg.ShareIndex  = int(binary.LittleEndian.Uint32(buf[3*uint32Size:]))
+	reasonLen      := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+	shareSize      := int(binary.LittleEndian.Uint32(buf[3*uint32Size:]))
+	msg.ShareIndex  = int(binary.LittleEndian.Uint32(buf[4*uint32Size:]))
 
- 	if len(buf) < 4*uint32Size + idLen + promiserIdLen + shareSize {
+ 	if len(buf) < 5*uint32Size + idLen + promiserIdLen + reasonLen + shareSize {
 		return errors.New("Buffer size too small")
 	}
 
 	// Decode pubKey and pubPoly
-	bufPos      := 4*uint32Size
+	bufPos      := 5*uint32Size
 	msg.Id = string(buf[bufPos:bufPos+idLen])
 	bufPos += idLen
 	
 	msg.PromiserId = string(buf[bufPos:bufPos+promiserIdLen])
 	bufPos += promiserIdLen
+
+	msg.Reason = string(buf[bufPos:bufPos+reasonLen])
+	bufPos += reasonLen
 
 	if shareSize == 0 {
 		msg.Share = nil
@@ -752,18 +765,19 @@ func (msg *PromiseShareMessage) MarshalTo(w io.Writer) (int, error) {
  */
 func (msg *PromiseShareMessage) UnmarshalFrom(r io.Reader) (int, error) {
 	// Retrieve responseSize to find the entire length of the message
-	buf := make([]byte, 3*uint32Size)
+	buf := make([]byte, 4*uint32Size)
 	n, err := io.ReadFull(r, buf)
 	if err != nil {
 		return n, err
 	}
 	idLen          := int(binary.LittleEndian.Uint32(buf))
 	promiserIdLen  := int(binary.LittleEndian.Uint32(buf[uint32Size:]))
-	shareSizeLen   := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+	reasonLen      := int(binary.LittleEndian.Uint32(buf[2*uint32Size:]))
+	shareSizeLen   := int(binary.LittleEndian.Uint32(buf[3*uint32Size:]))
 
 	// Calculate the final buffer, copy the old data to it, and fill it
 	// for unmarshalling
-	finalLen := 4*uint32Size + idLen + promiserIdLen + shareSizeLen
+	finalLen := 5*uint32Size + idLen + promiserIdLen + reasonLen + shareSizeLen
 	finalBuf := make([]byte, finalLen)
 	copy(finalBuf, buf)
 	m, err := io.ReadFull(r, finalBuf[n:])

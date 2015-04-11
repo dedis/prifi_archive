@@ -34,7 +34,7 @@ var basicResponse, _ = basicPromise.ProduceResponse(10, insurerKeys[10])
 var basicCertifyMessage = new(CertifyPromiseMessage).createMessage(10, *basicPromise)
 var basicResponseMessage = new(PromiseResponseMessage).createMessage(10, *basicPromise, basicResponse)
 
-var basicShareRequest  = new(PromiseShareMessage).createRequestMessage(10, *basicPromise)
+var basicShareRequest  = new(PromiseShareMessage).createRequestMessage(10, "test", *basicPromise)
 var basicShareResponse = new(PromiseShareMessage).createResponseMessage(10, *basicPromise, basicShare)
 
 func produceKeyPair() *config.KeyPair {
@@ -252,9 +252,13 @@ func TestPromiseResponseMessageMarshalling(t *testing.T) {
 
 // Verifies that a PromiseShareMessage can be created properly.
 func TestPromiseShareMessageCreateRequestMessage(t *testing.T) {
-	shareMsg := new(PromiseShareMessage).createRequestMessage(10, *basicPromise)
+	reason   := "test_reason"
+	shareMsg := new(PromiseShareMessage).createRequestMessage(10, reason, *basicPromise)
 	if shareMsg.ShareIndex != 10 {
 		t.Error("ShareIndex not properly initialized")
+	}
+	if shareMsg.Reason != reason {
+		t.Error("Reason not properly initialized")
 	}
 	if shareMsg.Id != basicPromise.Id() {
 		t.Error("Promise Id differs")
