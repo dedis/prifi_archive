@@ -57,7 +57,7 @@ func (sn *Node) get() error {
 			sm.From = nm.From
 			sn.updateHighestVote(sm.HighestVote, sm.From)
 
-			log.Println(sn.Name(), "GOT ", sm.Type)
+			// log.Println(sn.Name(), "GOT ", sm.Type)
 			switch sm.Type {
 			// if it is a bad message just ignore it
 			default:

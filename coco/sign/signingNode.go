@@ -406,7 +406,7 @@ func (sn *Node) AddVotes(Round int, v *Vote) {
 
 	// log.Infoln(sn.Name(), "added votes. for:", cv.For, "against:", cv.Against)
 
-	// Generate signature on CountedVotes with OwnVote *counted* in
+	// Generate signature on Vote with OwnVote *counted* in
 	b, err := v.MarshalBinary()
 	if err != nil {
 		log.Fatal("Marshal Binary on Counted Votes failed")

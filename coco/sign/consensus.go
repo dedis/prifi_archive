@@ -11,6 +11,7 @@ import (
 // split voting out of collective signing logic
 
 func (sn *Node) Propose(view int, am *AnnouncementMessage) error {
+	log.Println(sn.Name(), "GOT ", "Propose", am)
 	if err := sn.setUpRound(view, am); err != nil {
 		return err
 	}
@@ -35,6 +36,7 @@ func (sn *Node) Propose(view int, am *AnnouncementMessage) error {
 }
 
 func (sn *Node) Promise(view, Round int, sm *SigningMessage) error {
+	log.Println(sn.Name(), "GOT ", "Promise", sm)
 	// update max seen round
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
 
@@ -50,6 +52,9 @@ func (sn *Node) Promise(view, Round int, sm *SigningMessage) error {
 	if len(round.Commits) != len(sn.Children(view)) {
 		return nil
 	}
+
+	// cast own vote
+	sn.AddVotes(Round, round.Vote)
 
 	for _, sm := range round.Commits {
 		// count children votes
@@ -68,6 +73,19 @@ func (sn *Node) actOnPromises(view, Round int) error {
 
 	if sn.IsRoot(view) {
 		sn.commitsDone <- Round
+
+		var b []byte
+		b, err = round.Vote.MarshalBinary()
+		if err != nil {
+			// log.Fatal("Marshal Binary failed for CountedVotes")
+			return err
+		}
+		round.c = hashElGamal(sn.suite, b, round.Log.V_hat)
+		err = sn.Accept(view, &ChallengeMessage{
+			C:     round.c,
+			Round: Round,
+			Vote:  round.Vote})
+
 	} else {
 		// create and putup own commit message
 		com := &CommitmentMessage{
@@ -75,7 +93,7 @@ func (sn *Node) actOnPromises(view, Round int) error {
 			Round: Round}
 
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
-		// log.Println(sn.Name(), "puts up promise")
+		log.Println(sn.Name(), "puts up promise")
 		ctx := context.TODO()
 		err = sn.PutUp(ctx, view, &SigningMessage{
 			View: view,
@@ -86,6 +104,7 @@ func (sn *Node) actOnPromises(view, Round int) error {
 }
 
 func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
+	log.Println(sn.Name(), "GOT ", "Accept", chm)
 	// update max seen round
 	sn.LastSeenRound = max(sn.LastSeenRound, chm.Round)
 
@@ -106,15 +125,15 @@ func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
 		return err
 	}
 
-	sn.initResponseCrypto(chm.Round)
 	if len(sn.Children(view)) == 0 {
-		sn.Respond(view, chm.Round, nil)
+		sn.Accepted(view, chm.Round, nil)
 	}
 
 	return nil
 }
 
 func (sn *Node) Accepted(view, Round int, sm *SigningMessage) error {
+	log.Println(sn.Name(), "GOT ", "Accepted", sm)
 	// update max seen round
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
 
@@ -175,13 +194,16 @@ func (sn *Node) actOnVotes(view int, v *Vote) {
 		sn.VoteLog = append(sn.VoteLog, v)
 
 		// propagate view change if new view leader
-		log.Println("actOnVotes: vote has been accepted: trying viewchange")
+		log.Println(sn.Name(), "actOnVotes: vote has been accepted")
 		// XXX WHEN TESTING DO NOT VIEW CHANGE XXX TODO
 		/*
 			sn.NotifyPeerOfVote(view, vreq)
 			time.Sleep(7 * time.Second) // wait for all vote responses to be propogated before trying to change view
 			sn.TryViewChange(view + 1)
 		*/
+	} else {
+		log.Println(sn.Name(), "actOnVotes: vote has been rejected")
+
 	}
 
 	// List out all votes
