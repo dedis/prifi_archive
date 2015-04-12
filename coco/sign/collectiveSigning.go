@@ -30,6 +30,10 @@ func (sn *Node) get() error {
 	// sn.heartbeat = time.NewTimer(500 * time.Second)
 	sn.hbLock.Unlock()
 
+	// as votes get approved they are streamed in ApplyVotes
+	voteChan := sn.VoteLog.Stream()
+	sn.ApplyVotes(voteChan)
+
 	for {
 		select {
 		case <-sn.closing:
@@ -55,7 +59,7 @@ func (sn *Node) get() error {
 			//log.Printf("got message: %#v with error %v\n", sm, err)
 			sm := nm.Data.(*SigningMessage)
 			sm.From = nm.From
-			sn.updateHighestVote(sm.HighestVote, sm.From)
+			sn.updateLastSeenVote(sm.LastSeenVote, sm.From)
 
 			// log.Println(sn.Name(), "GOT ", sm.Type)
 			switch sm.Type {
@@ -504,13 +508,6 @@ func (sn *Node) FinalizeCommits(view int, Round int) error {
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
 	if sn.Type == PubKey {
 		round.c = hashElGamal(sn.suite, sn.LogTest, round.Log.V_hat)
-	} else if sn.Type == Voter {
-		b, err := round.Vote.MarshalBinary()
-		if err != nil {
-			log.Fatal("Marshal Binary failed for CountedVotes")
-		}
-		round.c = hashElGamal(sn.suite, b, round.Log.V_hat)
-
 	} else {
 		round.c = hashElGamal(sn.suite, round.MTRoot, round.Log.V_hat)
 	}

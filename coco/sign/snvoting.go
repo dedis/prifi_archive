@@ -1,9 +1,42 @@
 package sign
 
 import (
+	"sync/atomic"
+
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
 )
+
+func (sn *Node) ApplyVotes(ch chan *Vote) {
+	go func() {
+		for v := range ch {
+			sn.ApplyVote(v)
+		}
+	}()
+}
+
+// HERE: after we change to the new view, we could send our parent
+// a notification that we are ready to use the new view
+
+func (sn *Node) ApplyVote(v *Vote) {
+	atomic.StoreInt64(&sn.LastAppliedVote, int64(v.Index))
+
+	switch v.Type {
+	case ViewChangeVT:
+		panic(sn.Name() + " view change unimplemented")
+	case AddVT:
+		sn.AddAction(v.Av.View, v)
+	case RemoveVT:
+		sn.AddAction(v.Rv.View, v)
+	case ShutdownVT:
+		sn.Close()
+	default:
+	}
+}
+
+func (sn *Node) AddAction(view int, v *Vote) {
+	sn.Actions[view] = append(sn.Actions[view], v)
+}
 
 func (sn *Node) AddSelf(parent string) error {
 	log.Println("AddSelf: connecting to:", parent)

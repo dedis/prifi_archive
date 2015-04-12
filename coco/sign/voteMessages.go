@@ -2,6 +2,7 @@ package sign
 
 import (
 	"reflect"
+	"time"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/nist"
@@ -79,6 +80,14 @@ type Count struct {
 	Against   int             // number of votes against
 }
 
+type CatchUpRequest struct {
+	Index int
+}
+
+type CatchUpResponse struct {
+	Vote *Vote
+}
+
 func (v *Vote) MarshalBinary() ([]byte, error) {
 	return protobuf.Encode(v)
 }
@@ -91,4 +100,47 @@ func (v *Vote) UnmarshalBinary(data []byte) error {
 	cons[reflect.TypeOf(&point).Elem()] = func() interface{} { return suite.Point() }
 	cons[reflect.TypeOf(&secret).Elem()] = func() interface{} { return suite.Secret() }
 	return protobuf.DecodeWithConstructors(data, v, cons)
+}
+
+type VoteLog struct {
+	Entries []*Vote
+	Last    int // last set entry
+}
+
+func (vl *VoteLog) Put(index int, v *Vote) {
+	if index >= len(vl.Entries) {
+		buf := make([]*Vote, len(vl.Entries)-index+1)
+		vl.Entries = append(vl.Entries, buf...)
+	}
+	vl.Entries[index] = v
+
+	vl.Last = max(vl.Last, index)
+}
+
+func (vl *VoteLog) Get(index int) *Vote {
+	if index >= len(vl.Entries) {
+		return nil
+	}
+
+	return vl.Entries[index]
+}
+
+func NewVoteLog() *VoteLog {
+	return &VoteLog{Last: -1}
+}
+
+func (vl *VoteLog) Stream() chan *Vote {
+	ch := make(chan *Vote, 0)
+	go func() {
+
+		i := 0
+		for {
+			if v := vl.Get(i); v != nil {
+				ch <- v
+				i++
+			} else {
+				time.Sleep(500 * time.Millisecond)
+			}
+		}
+	}()
 }

@@ -191,7 +191,7 @@ func (sn *Node) actOnVotes(view int, v *Vote) {
 
 	// Act on vote Decision
 	if accepted {
-		sn.VoteLog = append(sn.VoteLog, v)
+		sn.VoteLog.Put(v.Index, v)
 
 		// propagate view change if new view leader
 		log.Println(sn.Name(), "actOnVotes: vote has been accepted")

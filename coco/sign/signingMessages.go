@@ -65,19 +65,19 @@ func (m MessageType) String() string {
 // Signing Messages are used for all comunications between servers
 // It is imporant for encoding/ decoding for type to be kept as first field
 type SigningMessage struct {
-	Type        MessageType
-	Am          *AnnouncementMessage
-	Com         *CommitmentMessage
-	Chm         *ChallengeMessage
-	Rm          *ResponseMessage
-	Vcm         *ViewChangeMessage
-	Vcfm        *ViewConfirmedMessage
-	Vam         *ViewAcceptedMessage
-	Vrm         *VoteRequestMessage
-	Err         *ErrorMessage
-	From        string
-	View        int
-	HighestVote int // highest vote ever seen and commited in log, used for catch-up
+	Type         MessageType
+	Am           *AnnouncementMessage
+	Com          *CommitmentMessage
+	Chm          *ChallengeMessage
+	Rm           *ResponseMessage
+	Vcm          *ViewChangeMessage
+	Vcfm         *ViewConfirmedMessage
+	Vam          *ViewAcceptedMessage
+	Vrm          *VoteRequestMessage
+	Err          *ErrorMessage
+	From         string
+	View         int
+	LastSeenVote int // highest vote ever seen and commited in log, used for catch-up
 }
 
 func NewSigningMessage() interface{} {

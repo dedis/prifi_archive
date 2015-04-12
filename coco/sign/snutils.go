@@ -216,9 +216,9 @@ func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
 	}
 }
 
-func (sn *Node) updateHighestVote(hv int, from string) {
-	if sn.HighestVote < hv {
-		sn.HighestVote = hv
+func (sn *Node) updateLastSeenVote(hv int, from string) {
+	if sn.LastSeenVote < hv {
+		sn.LastSeenVote = hv
 		sn.CatchUp(from)
 	}
 }

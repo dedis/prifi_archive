@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/context"
@@ -93,9 +94,11 @@ type Node struct {
 	// ActionsLock sync.Mutex
 	// Actions     []*VoteRequest
 
-	VoteLog     []*Vote // log of all confirmed votes, useful for replay
-	HighestVote int     // max of all Highest Votes we've seen, and our last commited vote
-	LastVote    int     // last vote we have committed to our log
+	VoteLog         *VoteLog // log of all confirmed votes, useful for replay
+	LastSeenVote    int      // max of all Highest Votes we've seen, and our last commited vote
+	LastAppliedVote int      // last vote we have committed to our log
+
+	Actions map[int][]*Vote
 }
 
 // Start listening for messages coming from parent(up)
@@ -257,7 +260,7 @@ func (sn *Node) StartVotingRound(v *Vote) error {
 	sn.nRounds++
 	v.Round = sn.nRounds
 	v.View = sn.lastView // TODO: unify view-tracking variables
-	v.Index = sn.LastVote
+	v.Index = sn.LastSeenVote + 1
 	v.Count = &Count{}
 	v.Confirmed = false
 	if v.Av != nil {
@@ -306,6 +309,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
+	sn.VoteLog = NewVoteLog()
 
 	return sn
 }
@@ -329,6 +333,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
+	sn.VoteLog = NewVoteLog()
 
 	return sn
 }
@@ -489,6 +494,9 @@ func (sn *Node) DefaultTimeout() time.Duration {
 }
 
 func (sn *Node) CatchUp(from string) {
-	log.Println(sn.Name(), "attempting to catch up, not implemented")
+	log.Println(sn.Name(), "attempting to catch up")
 
+	ctx := context.TODO()
+	sn.PutTo(ctx, from,
+		&CatchUpRequest{Index: int(atomic.LoadInt64(&sn.LastAppliedVote))})
 }
