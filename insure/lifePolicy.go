@@ -16,6 +16,7 @@ package insure
 import (
 	"errors"
 	"log"
+	"time"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly/promise"
@@ -70,22 +71,53 @@ type LifePolicyModule struct {
 
 	// The connection manager used for sending/receiving messages over the network
 	cman connMan.ConnManager
+	
+	// This is the default timeout in seconds.
+	defaultTimeout int
+	
+	// This function is used to check whether a server is still alive.
+	// Insurers use this function to verify a promiser is dead before
+	// revealing its share of the promise.
+	//
+	// Arguments
+	//   reason = a string stating what type of work the client wanted the
+	//            server to do.
+	//   serverKey = the public key of the promiser
+	//   clientKey = the public key of the client
+	//   timeout   = how long to wait for a response from the promiser
+	//
+	// Returns
+	//   nil if the server is deemed alive, error otherwise.
+	//
+	// Note:
+	//   A default method is provided that simply pings the promiser. Users
+	//   of this code can define more complex functions in which the insurer
+	//   requests the work on behalf of the client, receives the work, and 
+	//   then sends it off to the client.
+	verifyServerAlive func(reason string, serverKey, clientKey abstract.Point, timeout int) error
 }
 
 /* Initializes a new LifePolicyModule object.
  *
  * Arguments:
- *   kp       = the long term public/private key of the server
- *   t, r, n  = configuration parameters for promises. See crypto's promise.Promise
- *              for more details
- *   cmann    = the connection manager for sending/receiving messages.
+ *   kp                = the long term public/private key of the server
+ *   t, r, n           = configuration parameters for promises. See crypto's promise.Promise
+ *                       for more details
+ *   cmann             = the connection manager for sending/receiving messages.
+ *   defaultTimeout    = the default timeout for waiting for messages.
+ *   verifyServerAlive = the function used to verify that a server is dead. Enter
+ *                       nil to use the default method. See the documentation for
+ *                       theLifePolicyModule for more information on how to write
+ *                       such a function.
  *
  * Integration Note: cman should provide some way for the server to communicate with
  *                   itself. Insurers will sometimes need to check that the promise they
  *                   are insuring is certified. Hence, they will send messages to
  *                   themselves when trying to get promiseResponses.
  */
-func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.ConnManager) *LifePolicyModule {
+func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int,
+                                 cman connMan.ConnManager, defaultTimeout int,
+                                 verifyServerAlive func(reason string, serverKey, clientKey abstract.Point, timeout int) error) *LifePolicyModule {
 	lp.keyPair         = kp
 	lp.serverId        = kp.Public.String()
 	lp.t               = t
@@ -94,7 +126,64 @@ func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int, cman connMan.Con
 	lp.cman            = cman
 	lp.promises        = make(map[string] *promise.State)
 	lp.serverPromises  = make(map[string](map[string]*promise.State))
+	lp.defaultTimeout  = defaultTimeout
+	lp.verifyServerAlive = lp.verifyServerAliveDefault
+	if verifyServerAlive != nil {
+		lp.verifyServerAlive = verifyServerAlive
+	}
 	return lp
+}
+
+/* This is a simple helper function for timeouts. It sleeps for the timeout
+ * duration and then sends true to the timeoutChan to let the caller know that
+ * the timeout has expired
+ *
+ * Arguments:
+ *   timeout     = the time to wait in seconds
+ *   timeoutChan = the channel to send the results to
+ *
+ * Postcondition:
+ *   The timeout is sent to the channel after the appropriate time has elapsed.
+ *
+ */
+func handleTimeout(timeout int, timeoutChan chan<- bool) {
+	time.Sleep(time.Duration(timeout) * time.Second)
+	timeoutChan <- true
+}
+
+/* This private method is the default for determining if a server is alive. It
+ * simply pings the server to see if it will respond within a given timelimit.
+ * If so, it is alive. Otherwise, it is dead.
+ *
+ * See the documentation for the verifyServerAlive function in the LifePolicyModule
+ * struct for more information on the arguments and return results.
+ */
+func (lp *LifePolicyModule) verifyServerAliveDefault(reason string,
+	serverKey, clientKey abstract.Point, timeout int) error {
+
+	// Send the request message first.
+	policyMsg  := new(PolicyMessage).createSAREQMessage()
+	lp.cman.Put(serverKey, policyMsg)
+
+	// Setup the timeout.	
+	timeoutChan  := make(chan bool, 1)
+	go handleTimeout(timeout, timeoutChan)
+	
+	// Wait for the response
+	for true {
+		if <-timeoutChan == true {
+			return errors.New("Server failed to respond in time.")
+		}
+	
+		msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
+				lp.keyPair.Suite)
+		lp.cman.Get(serverKey, msg)
+		msgType, err := lp.handlePolicyMessage(serverKey, msg)
+		if msgType == ServerAliveResponse && err == nil {
+			break
+		}
+	}
+	return nil
 }
 
 /* This private method selects n insurers from a larger list of insurers. This
@@ -352,7 +441,7 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 			}
 		}
 	}
-	return state.PriShares.Secret()
+	return state.PriShares.Secret(), nil
 }
 
 
@@ -387,6 +476,10 @@ func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *Poli
 			return ShareRevealRequest, lp.handleRevealShareRequestMessage(pubKey, msg.getSREQ())
 		case ShareRevealResponse:
 			return ShareRevealResponse, lp.handleRevealShareResponseMessage(msg.getSRSP())
+		case ServerAliveRequest:
+			return ServerAliveRequest, lp.handleServerAliveRequestMessage(pubKey)
+		case ServerAliveResponse:
+			return ServerAliveResponse, nil
 	}
 	return Error, errors.New("Invald message type")
 }
@@ -540,11 +633,32 @@ func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, 
 	return nil
 }
 
+/* This is a simple method that handles ServerAliveRequests. It simply sends a
+ * response so that the caller knows the server is alive.
+ *
+ * Arguments
+ *   pubKey = the public key of the sender.
+ *
+ * Returns
+ *   nil (since the send should always succeed)
+ */
+func (lp *LifePolicyModule) handleServerAliveRequestMessage(pubKey abstract.Point) error {
+	lp.cman.Put(pubKey, new(PolicyMessage).createSARSPMessage())
+	return nil
+}
+
+
 func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Point, msg *PromiseShareMessage) error {
 	state, assigned := lp.serverPromises[msg.PromiserId][msg.Id]
 	if !assigned {
 		return errors.New("This server insurers no such Promise.")
 	}
+	
+	// TODO: Have promise return a copy of the Promiser long term key itself.
+	//err := lp.verifyServerAlive(msg.Reason, msg.PromiserId, pubKey, lp.defaultTimeout)
+	//if err == nil {
+	//	return errors.New("Server is still alive. Share not revealed")
+	//}
 	return lp.revealShare(msg.ShareIndex, state, pubKey)
 }
 

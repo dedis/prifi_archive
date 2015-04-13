@@ -28,6 +28,8 @@ const (
 	PromiseToClient
 	ShareRevealRequest
 	ShareRevealResponse
+	ServerAliveRequest
+	ServerAliveResponse
 )
 
 type PolicyMessage struct {
@@ -101,6 +103,17 @@ func (pm *PolicyMessage) createPTCMessage(m *promise.Promise) *PolicyMessage {
 	return pm
 }
 
+func (pm *PolicyMessage) createSAREQMessage() *PolicyMessage {
+	pm.Type = ServerAliveRequest
+	return pm
+}
+
+func (pm *PolicyMessage) createSARSPMessage() *PolicyMessage {
+	pm.Type = ServerAliveResponse
+	return pm
+}
+
+
 // Returns the CertifyPromiseMessage of this PolicyMessage
 func (pm *PolicyMessage) getCPM() *CertifyPromiseMessage {
 	return pm.cpm
@@ -154,6 +167,10 @@ func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 			sub, err = pm.sreq.MarshalBinary()
 		case ShareRevealResponse:
 			sub, err = pm.srsp.MarshalBinary()
+		case ServerAliveRequest:
+		case ServerAliveResponse:
+		        sub = make([]byte, 0, 0)
+		        err = nil
 	}
 	if err == nil {
 		b.Write(sub)
@@ -178,6 +195,9 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 		err    = pm.sreq.UnmarshalBinary(msgBytes)
 	case ShareRevealResponse:
 		err    = pm.srsp.UnmarshalBinary(msgBytes)
+	case ServerAliveRequest:
+	case ServerAliveResponse:
+		err    = nil
 	}
 	return err
 }

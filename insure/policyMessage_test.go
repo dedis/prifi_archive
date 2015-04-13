@@ -456,7 +456,10 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 			msg1 := policy.getSRSP()
 			msg2 := policyMsg2.getSRSP()
 			okay  = msg1.Equal(msg2)
-
+		case ServerAliveRequest:
+			okay = true
+		case ServerAliveResponse:
+			okay = true
 	}
 
 	if !okay {
@@ -474,6 +477,8 @@ func TestPolicyMessage(t *testing.T) {
 	PolicyMessageHelper(t, new(PolicyMessage).createPTCMessage(basicPromise))
 	PolicyMessageHelper(t, new(PolicyMessage).createSREQMessage(basicShareRequest))
 	PolicyMessageHelper(t, new(PolicyMessage).createSRSPMessage(basicShareResponse))
+	PolicyMessageHelper(t, new(PolicyMessage).createSAREQMessage())
+	PolicyMessageHelper(t, new(PolicyMessage).createSARSPMessage())
 
 }
 

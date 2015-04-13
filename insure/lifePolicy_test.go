@@ -39,6 +39,8 @@ var lpt = 5
 var lpr = 7
 var lpn = 10
 
+var defaultTimeout = 5
+
 // Variables for the servers to accept the policy
 var serverKeys = produceKeys()
 var secretKeys = produceKeys()
@@ -108,8 +110,13 @@ func setupConn() bool {
 	return true
 }
 
+func produceBasicPolicy(key *config.KeyPair, conn connMan.ConnManager,
+	timeout int)  *LifePolicyModule{
+	return new(LifePolicyModule).Init(key, lpt,lpr,lpn, conn, timeout, nil) 
+}
+
 func produceNewServerPolicyWithPromise() (*LifePolicyModule,* promise.State) {
-	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn, defaultTimeout, nil) 
 	newPromise := promise.Promise{}
 	newPromise.ConstructPromise(secretKeyT, policy.keyPair, policy.t,
 		policy.r, insurerListT)
@@ -127,7 +134,7 @@ func deferTest(t *testing.T, message string) {
 
 // Insures a LifePolicyModule can be properly initialized.
 func TestLifePolicyModuleInit(t * testing.T) {
-	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn)
+	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn, 10, nil)
 	if policy.keyPair != keyPairT {
 		t.Error("keypair not properly set")
 	}
@@ -149,12 +156,26 @@ func TestLifePolicyModuleInit(t * testing.T) {
 	if policy.cman != goConn {
 		t.Error("ConnectionManager not properly set")
 	}
+	if policy.defaultTimeout != 10 {
+		t.Error("Timeout not properly set")
+	}
+	if reflect.ValueOf(policy.verifyServerAlive).Pointer() != reflect.ValueOf(policy.verifyServerAliveDefault).Pointer() {
+		t.Error("Server alive function not properly set")
+	}
 	if policy.promises == nil {
 		t.Error("promises map not properly set")
 	}
-
 	if policy.serverPromises == nil {
 		t.Error("serverPromises map not properly set")
+	}
+	
+	// Verify that passing in a user defined verifyServerAlive works.
+	temp := func(reason string, serverKey, clientKey abstract.Point, timeout int) error {
+		return nil
+	}
+	policy = new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn, 10, temp)
+	if reflect.ValueOf(policy.verifyServerAlive).Pointer() != reflect.ValueOf(temp).Pointer() {
+		t.Error("Server alive function not properly set")
 	}
 }
 
@@ -239,7 +260,7 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 func TestLifePolicyModuleCertifyPromisePublic(t *testing.T) {
 	// Verify that it returns an error if asked to certify a promise that
 	// doesn't exist.
-	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn)
+	policy := produceBasicPolicy(keyPairT, goConn, 5)
 	err := policy.CertifyPromise(keyPairT.Public, secretKeyT.Public)
 	if err == nil {
 		t.Error("The lookup should have failed.")
@@ -250,11 +271,11 @@ func TestLifePolicyModuleCertifyPromisePublic(t *testing.T) {
 func TestLifePolicyModuleRevealShare(t *testing.T) {
 
 	// Create the policy for the client
-	clientPolicy := new(LifePolicyModule).Init(clientT, lpt,lpr,lpn, clientConn)
+	clientPolicy := produceBasicPolicy(clientT, clientConn, 1)
 
 	// Create a policy for the first insurer. Give it a promise from the
 	// promiser server.
-	insurerPolicy := new(LifePolicyModule).Init(serverKeys[0], lpt,lpr,lpn, connectionManagers[0])
+	insurerPolicy := produceBasicPolicy(serverKeys[0], connectionManagers[0], 1)
 	newPromise := promise.Promise{}
 	newPromise.ConstructPromise(secretKeyT, keyPairT, lpt, lpr, insurerListT)
 	insurerPolicy.addServerPromise(newPromise)
@@ -313,7 +334,7 @@ func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
 	}
 	
-	policy:= new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	policy:= produceBasicPolicy(keyPairT, goConn, 3)
 	err := policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
 	if err != nil {
 		t.Error("The promise failed to be certified: ", err)
@@ -371,7 +392,7 @@ func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
 	}
 	
-	policy = new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	policy = produceBasicPolicy(keyPairT, goConn, 3)
 	err    = policy.TakeOutPolicy(secretKeyT, insurerListT, goodFunc)
 	if !called {
 		t.Error("The method should have used the provided method")
@@ -383,10 +404,10 @@ func TestLifePolicyModuleTakeOutPolicy(t *testing.T) {
 		return serverList[:n-1]
 	}
 	
-	// Verify that equal panics if the messages are uninitialized
+	// Verify that TakeOutPolicy panics if the insurerList is not the right size.
 	test := func() {
 		defer deferTest(t, "TakeOutPolicy should have paniced")
-		policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+		policy := produceBasicPolicy(keyPairT, goConn, 3)
 		policy.TakeOutPolicy(secretKeyT, insurerListT, badFunc)
 	}
 	test()
@@ -434,7 +455,7 @@ func TestLifePolicyModuleSendPromiseToClient(t *testing.T) {
 // Verifies that a promise can be properly added to the serverPromise hash
 func TestLifePolicyModuleAddServerPromise(t *testing.T) {
 	i := 0
-	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	policy := produceBasicPolicy(keyPairT, goConn, 3) 
 	newPromise := promise.Promise{}
 	newPromise.ConstructPromise(secretKeyT,serverKeys[i], lpt, lpr, insurerListT)
 	
@@ -528,7 +549,7 @@ func TestLifePolicyModuleHandleCertifyPromiseMessage(t *testing.T) {
 
 	clientI  := 1
 	insurerI := 2 
-	policy := new(LifePolicyModule).Init(serverKeys[insurerI], lpt,lpr,lpn, connectionManagers[insurerI]) 
+	policy := produceBasicPolicy(serverKeys[insurerI], connectionManagers[insurerI], 3)
 	go sendCertifyMessagesBasic(t, insurerI, goConn, connectionManagers[clientI])
 
 	// The first message to be received will be from a client. This will
@@ -674,7 +695,7 @@ func TestLifePolicyModulehandleRevealShareResponseMessage(t *testing.T) {
 
 	// Create a policy for the first client. Give it a promise from the
 	// promiser server.
-	policy := new(LifePolicyModule).Init(clientT, lpt,lpr,lpn, clientConn)
+	policy := produceBasicPolicy(clientT, clientConn, 3)
 	newPromise := promise.Promise{}
 	newPromise.ConstructPromise(secretKeyT, keyPairT, lpt, lpr, insurerListT)
 	policy.addServerPromise(newPromise)
@@ -749,7 +770,7 @@ func sendPromiseToClientMessagesBasic(t *testing.T, i int, serverCm, clientCm co
 func TestLifePolicyModuleHandlePromiseToClientMessage(t *testing.T) {
 
 	i := 1
-	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	policy := produceBasicPolicy(keyPairT, goConn, 3)
 	go sendPromiseToClientMessagesBasic(t, i, connectionManagers[i], goConn)
 
 	// Verify that a client can properly receive a promise from a server
@@ -818,7 +839,7 @@ func TestLifePolicyModuleHandlePromiseToClientMessage(t *testing.T) {
 // This is a helper method that simulates the insurer channel
 func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
 
-	policy := new(LifePolicyModule).Init(k, lpt,lpr,lpn, cm) 
+	policy := produceBasicPolicy(k, cm, 3)
 
 	// Phase 1: Create a new Promise
 	// First, wait for the server to send a CertifyPromise message. Once
@@ -846,7 +867,7 @@ func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager)
 // This method simulates the client channel
 func clientFunctional(t *testing.T) {
 
-	policy := new(LifePolicyModule).Init(clientT, lpt,lpr,lpn, clientConn) 
+	policy := produceBasicPolicy(clientT, clientConn, 3)
 
 	// Phase 2: Send the Promise to a Client
 	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
@@ -874,7 +895,7 @@ func TestLifePolicyModuleFunctionalTest(t *testing.T) {
 
 	
 	// Phase 1: Create a new Promise
-	policy := new(LifePolicyModule).Init(keyPairT, lpt,lpr,lpn, goConn) 
+	policy := produceBasicPolicy(keyPairT, goConn, 3)
 	err    := policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
 	if err != nil {
 		t.Fatal("The promise should have been certified.")
