@@ -2,7 +2,9 @@ package insure
 
 import (
 	//"sync"
+	"errors"
 	"reflect"
+	"time"
 	"testing"
 
 	"github.com/dedis/crypto/abstract"
@@ -179,6 +181,60 @@ func TestLifePolicyModuleInit(t * testing.T) {
 	}
 }
 
+// This is a helper method that is used to send ServerAliveResponseMessage's to an insurer
+func sendServerAliveResponseBasice(t *testing.T, i int) {
+
+	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr, lpn,
+				keyPairT.Suite)
+	goConn.Get(serverKeys[i].Public, msg)
+	if msg.Type != ServerAliveRequest {
+		panic("Server should have sent a server alive request.")
+	}
+
+	// Send response off to the insurer
+	goConn.Put(serverKeys[i].Public, new(PolicyMessage).createSARSPMessage())
+
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr, lpn,
+				keyPairT.Suite)
+	goConn.Get(serverKeys[i].Public, msg)
+	if msg.Type != ServerAliveRequest {
+		panic("Server should have sent a server alive request.")
+	}
+
+	// Send a request message just to bye time
+	goConn.Put(serverKeys[i].Public, new(PolicyMessage).createSAREQMessage())
+
+	// Clear the message the server will send back.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr, lpn,
+				keyPairT.Suite)
+	goConn.Get(serverKeys[i].Public, msg)
+	if msg.Type != ServerAliveResponse {
+		panic("Server should have sent a server alive request.")
+	}
+}
+
+// Verifies that verifyServerAliveDefault can properly recognize when the server is
+// alive.
+func TestLifePolicyModuleVerifyServerAliveDefault(t *testing.T) {
+
+	i := 1
+	policy := produceBasicPolicy(serverKeys[i], connectionManagers[i], 5)
+
+	go sendServerAliveResponseBasice(t, i)
+
+	err := policy.verifyServerAliveDefault("test", keyPairT.Public, clientT.Public, 1)
+	if err != nil {
+		t.Error("Server should have been reported alive.")
+	}
+
+	// Next, test the timeout. Since goChans block immediately, I will do
+	// this by having a timeout of 0.
+	err = policy.verifyServerAliveDefault("test", keyPairT.Public, clientT.Public, 0)
+	if err == nil {
+		t.Error("Server should have been reported dead.")
+	}
+}
+
 // Insures that SelectBasicInsurer can properly select a list of insurers.
 func TestSelectBasicInsurers(t * testing.T) {
 	
@@ -200,6 +256,16 @@ func TestSelectBasicInsurers(t * testing.T) {
 		if !result[i].Equal(insurerListT[i]) {
 			t.Fatal("List returned contains unexpected elements.")
 		}
+	}
+}
+
+// Verifies the timeout function works.
+func TestHandleTimeout(t * testing.T) {
+	timeoutChan  := make(chan bool, 1)
+	go handleTimeout(1, timeoutChan)
+	time.Sleep(1 * time.Second)
+	if <-timeoutChan != true {
+		t.Error("Expected timout to send timeout after time expired.")
 	}
 }
 
@@ -247,7 +313,7 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 	// Now that the promise is certified, it should simply return without
 	// contacting the insurers. Since the insurers all should have exitted
 	// by now, this will hang if it attempts to contact the network.
-	err = policy.certifyPromise(state)
+	err = policy.certifyPromise(finalState)
 	if err != nil {
 		t.Error("The promise failed to be certified: ", err)
 	}
@@ -263,7 +329,7 @@ func TestLifePolicyModuleCertifyPromisePublic(t *testing.T) {
 	policy := produceBasicPolicy(keyPairT, goConn, 5)
 	err := policy.CertifyPromise(keyPairT.Public, secretKeyT.Public)
 	if err == nil {
-		t.Error("The lookup should have failed.")
+		panic("The lookup should have failed.")
 	}
 }
 
@@ -604,6 +670,7 @@ func TestLifePolicyModuleHandleCertifyPromiseMessage(t *testing.T) {
 	}
 }
 
+
 // This is a helper method that is used to send PromiseResponseMessage's to a server
 func sendPromiseResponseMessagesBasic(t *testing.T, i int, promise1, promise2 promise.Promise, cm connMan.ConnManager) {
 
@@ -660,6 +727,160 @@ func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
 	err = policy.handlePromiseResponseMessage(responseMsg)
 	if err != nil {
 		t.Error("Response should have been added to Promise", err)
+	}
+}
+
+// This is a helper method that is used to send ServerAliveRequestMessage's to a server
+func sendServerAliveRequestBasics(t *testing.T, i int) {
+
+	goConn.Put(serverKeys[i].Public, new(PolicyMessage).createSAREQMessage())
+
+	msg  := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	goConn.Get(serverKeys[i].Public, msg)
+	if msg.Type != ServerAliveResponse {
+		panic("The Message should have been a ServerAliveResponse.")
+	}
+}
+
+// Verifies that verifyServerAliveDefault can properly recognize when the server is
+// alive.
+func TestLifePolicyModuleHandleServerAliveRequestMessage(t *testing.T) {
+
+	i := 1
+	policy := produceBasicPolicy(serverKeys[i], connectionManagers[i], 5)
+
+	go sendServerAliveRequestBasics(t, i)
+	
+	msg  := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+	policy.cman.Get(keyPairT.Public, msg)
+	if msg.Type != ServerAliveRequest {
+		panic("The Message should have been a ServerAliveRequest.")
+	}
+	err := policy.handleServerAliveRequestMessage(keyPairT.Public)
+	if err != nil {
+		panic("The request message should have been handled properly.")
+	}
+}
+
+// This is a helper method that is used to send RevealShareRequestMessage's to a server
+func sendRevealShareRequestMessageBasic(t *testing.T, i int, reason string, state1, state2 *promise.State) {
+
+	// First, send the insurer a promise it does not have.
+	requestMsg := new(PromiseShareMessage).createRequestMessage(i, reason, state2.Promise)
+	policyMsg  := new(PolicyMessage).createSREQMessage(requestMsg)
+	clientConn.Put(serverKeys[i].Public, policyMsg)
+
+	// Next, send the insurer two requests with a promise it has.
+	requestMsg = new(PromiseShareMessage).createRequestMessage(i, reason, state1.Promise)
+	policyMsg  = new(PolicyMessage).createSREQMessage(requestMsg)
+	clientConn.Put(serverKeys[i].Public, policyMsg)
+	clientConn.Put(serverKeys[i].Public, policyMsg)
+
+	// Reverify that the insurer sent a response.
+	msg  := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	clientConn.Get(serverKeys[i].Public, msg)
+	if msg.Type != ShareRevealResponse {
+		panic("Expected a ShareRevealResponse")
+	}
+}
+
+// Verifies that a server can handle RevealShareRequestMessage's from clients
+func TestLifePolicyModuleHandleRevealShareRequestMessage(t *testing.T) {
+
+	// Index of the insurer to use for testing.
+	i := 0
+
+	// Create a policy for the first insurer. Give it a promise from the
+	// promiser server.
+	policy := new(LifePolicyModule).Init(serverKeys[i], lpt,lpr,lpn, connectionManagers[i], defaultTimeout, nil)
+	newPromise := promise.Promise{}
+	newPromise.ConstructPromise(secretKeyT, keyPairT, lpt, lpr, insurerListT)
+	policy.addServerPromise(newPromise)
+	state := policy.serverPromises[newPromise.PromiserId()][newPromise.Id()]
+
+	newPromise2 := promise.Promise{}
+	newPromise2.ConstructPromise(secretKeyT2, serverKeys[i+1], lpt, lpr, insurerListT)
+	state2 := new(promise.State).Init(newPromise2)
+
+	for j := 1; j < numServers; j++ {
+		go insurersBasic(t, serverKeys[j], serverKeys[i], connectionManagers[j])
+	}
+	// First, get the first promise certified so that the share can be revealed
+	err := policy.certifyPromise(state)
+	if err != nil {
+		t.Fatal("Promise should have been certified")
+	}
+	state = policy.serverPromises[newPromise.PromiserId()][newPromise.Id()]
+
+	// The insure sent a certify message to itself. Make sure to handle it.
+	msg  := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, serverKeys[i].Suite)
+	policy.cman.Get(serverKeys[i].Public, msg)
+	policy.handlePolicyMessage(serverKeys[i].Public, msg)
+
+	reasonTest := "test"
+	go sendRevealShareRequestMessageBasic(t, i, reasonTest, state, state2)
+
+	// Test that a response for an unknown promise produces an error.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	policy.cman.Get(clientT.Public, msg)
+	requestMsg := msg.getSREQ()
+	err = policy.handleRevealShareRequestMessage(clientT.Public, requestMsg)
+	if err == nil {
+		t.Error("The promise specified shouldn't exist in the policy", err)
+	}
+	
+	// Test with the promise alive by default.
+	policy.verifyServerAlive = func (reason string,
+		serverKey, clientKey abstract.Point, timeout int) error {
+		if reason != reasonTest {
+			t.Error("Reason not as expected")
+		}
+		if !keyPairT.Public.Equal(serverKey) {
+			t.Error("serverKey not as expected")
+		}
+		if !clientT.Public.Equal(clientKey) {
+			t.Error("clientKey not as expected")
+		}
+		if timeout != policy.defaultTimeout {
+			t.Error("timeout not as expected")
+		}
+		return nil
+	}
+
+	// Test that an error is returned when the server is reported down.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	policy.cman.Get(clientT.Public, msg)
+	requestMsg = msg.getSREQ()
+	err = policy.handleRevealShareRequestMessage(clientT.Public, requestMsg)
+	if err == nil {
+		t.Error("Server is alive. No share should be revealed.", err)
+	}
+
+	// Test with the promise down by default.
+	policy.verifyServerAlive = func(reason string,
+		serverKey abstract.Point, clientKey abstract.Point, timeout int) error {
+		if reason != reasonTest {
+			t.Error("Reason not as expected")
+		}
+		if !keyPairT.Public.Equal(serverKey) {
+			t.Error("serverKey not as expected")
+		}
+		if !clientT.Public.Equal(clientKey) {
+			t.Error("clientKey not as expected")
+		}
+		if timeout != policy.defaultTimeout {
+			t.Error("timeout not as expected")
+		}
+		return errors.New("Server is down")
+	}
+
+	// Test that the share is successfully revealed when the server is down.
+	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
+	policy.cman.Get(clientT.Public, msg)
+	requestMsg = msg.getSREQ()
+	err = policy.handleRevealShareRequestMessage(clientT.Public, requestMsg)
+	if err != nil {
+		t.Error("Server is dead. Share should be revealed.", err)
 	}
 }
 

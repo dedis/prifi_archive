@@ -171,16 +171,23 @@ func (lp *LifePolicyModule) verifyServerAliveDefault(reason string,
 	
 	// Wait for the response
 	for true {
-		if <-timeoutChan == true {
-			return errors.New("Server failed to respond in time.")
+		select {
+			case result := <- timeoutChan:
+				if result == true {
+					return errors.New("Server failed to respond in time.")
+				}
+			default:
 		}
-	
+
 		msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
 				lp.keyPair.Suite)
 		lp.cman.Get(serverKey, msg)
 		msgType, err := lp.handlePolicyMessage(serverKey, msg)
 		if msgType == ServerAliveResponse && err == nil {
 			break
+		}
+		if err != nil {
+			log.Println(msgType, err)
 		}
 	}
 	return nil
@@ -271,7 +278,7 @@ func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, serverList
 func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 
 	// If the promise is already certified simply return nil.
-	if state.PromiseCertified == nil {
+	if state.PromiseCertified() == nil {
 		return nil
 	}
 
@@ -647,23 +654,37 @@ func (lp *LifePolicyModule) handleServerAliveRequestMessage(pubKey abstract.Poin
 	return nil
 }
 
-
+/* This method is responsible for handling RevealShareRequests. If a client believes
+ * a promiser to be down, it will send such messages to the insurers. The insurers will
+ * then verify that the server is actually down. If the server is down, it will
+ * send the revealed share to the client.
+ *
+ * Arguments:
+ *   pubKey = the public key of the sender of the message
+ *   msg    = the RevealShareRequests itself
+ *
+ * Returns
+ *  nil if the share is revealed, err otherwise
+ *
+ * Note:
+ *  If the server is actually alive, verifyServerAlive is responsible for sending
+ *  to the client any information it needs (possibly none).
+ */
 func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Point, msg *PromiseShareMessage) error {
 	state, assigned := lp.serverPromises[msg.PromiserId][msg.Id]
 	if !assigned {
 		return errors.New("This server insurers no such Promise.")
 	}
 	
-	// TODO: Have promise return a copy of the Promiser long term key itself.
-	//err := lp.verifyServerAlive(msg.Reason, msg.PromiserId, pubKey, lp.defaultTimeout)
-	//if err == nil {
-	//	return errors.New("Server is still alive. Share not revealed")
-	//}
+	err := lp.verifyServerAlive(msg.Reason, state.Promise.PromiserKey(), pubKey, lp.defaultTimeout)
+	if err == nil {
+		return errors.New("Server is still alive. Share not revealed.")
+	}
 	return lp.revealShare(msg.ShareIndex, state, pubKey)
 }
 
 /* This function handles RevealShareResponses. When a client requests that an insurer
- * reveal a share, the insurer will respond with a RevealShareResponseMessage if
+ * reveals a share, the insurer will respond with a RevealShareResponseMessage if
  * the promiser is deemed dead. This method verifies that the share is valid and
  * then adds the share to the promise state.
  *
