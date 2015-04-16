@@ -23,6 +23,8 @@ const (
 	Commitment
 	Challenge
 	Response
+	CatchUpReq
+	CatchUpResp
 	ViewChange
 	ViewAccepted
 	ViewConfirmed
@@ -44,6 +46,10 @@ func (m MessageType) String() string {
 		return "Challenge"
 	case Response:
 		return "Response"
+	case CatchUpReq:
+		return "CatchUpRequest"
+	case CatchUpResp:
+		return "CatchUpResponse"
 	case ViewChange:
 		return "ViewChange"
 	case ViewAccepted:
@@ -70,6 +76,8 @@ type SigningMessage struct {
 	Com          *CommitmentMessage
 	Chm          *ChallengeMessage
 	Rm           *ResponseMessage
+	Cureq        *CatchUpRequest
+	Curesp       *CatchUpResponse
 	Vcm          *ViewChangeMessage
 	Vcfm         *ViewConfirmedMessage
 	Vam          *ViewAcceptedMessage

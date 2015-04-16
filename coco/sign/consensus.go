@@ -110,6 +110,7 @@ func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
 
 	round := sn.Rounds[chm.Round]
 	if round == nil {
+		log.Errorln("error round is nil")
 		return nil
 	}
 
@@ -118,9 +119,10 @@ func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
 	if round.Vote != nil {
 		// append vote to vote log
 		// potentially initiates signing node action based on vote
+		log.Errorln("acting on votes")
 		sn.actOnVotes(view, chm.Vote)
 	}
-
+	log.Errorln("sending children challenges")
 	if err := sn.SendChildrenChallenges(view, chm); err != nil {
 		return err
 	}

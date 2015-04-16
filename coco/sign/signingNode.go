@@ -96,7 +96,7 @@ type Node struct {
 
 	VoteLog         *VoteLog // log of all confirmed votes, useful for replay
 	LastSeenVote    int      // max of all Highest Votes we've seen, and our last commited vote
-	LastAppliedVote int      // last vote we have committed to our log
+	LastAppliedVote int64    // last vote we have committed to our log
 
 	Actions map[int][]*Vote
 }
@@ -498,5 +498,8 @@ func (sn *Node) CatchUp(from string) {
 
 	ctx := context.TODO()
 	sn.PutTo(ctx, from,
-		&CatchUpRequest{Index: int(atomic.LoadInt64(&sn.LastAppliedVote))})
+		&SigningMessage{
+			From:  sn.Name(),
+			Type:  CatchUpReq,
+			Cureq: &CatchUpRequest{Index: int(atomic.LoadInt64(&sn.LastAppliedVote) + 1)}})
 }

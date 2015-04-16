@@ -60,6 +60,7 @@ func (sn *Node) get() error {
 			sm := nm.Data.(*SigningMessage)
 			sm.From = nm.From
 			sn.updateLastSeenVote(sm.LastSeenVote, sm.From)
+			log.Println("received message: ", sm.Type)
 
 			// log.Println(sn.Name(), "GOT ", sm.Type)
 			switch sm.Type {
@@ -132,6 +133,20 @@ func (sn *Node) get() error {
 				if err != nil {
 					log.Errorln(sn.Name(), "response error:", err)
 				}
+			case CatchUpReq:
+				v := sn.VoteLog.Get(sm.Cureq.Index)
+				ctx := context.TODO()
+				sn.PutTo(ctx, sm.From,
+					&SigningMessage{
+						From:   sn.Name(),
+						Type:   CatchUpResp,
+						Curesp: &CatchUpResponse{Vote: v}})
+			case CatchUpResp:
+				if sm.Curesp.Vote == nil {
+					continue
+				}
+				// put in votelog to be streamed and applied
+				sn.VoteLog.Put(sm.Curesp.Vote.Index, sm.Curesp.Vote)
 			case ViewChange:
 				// if we have already seen this view before skip it
 				if sm.View <= sn.lastView {

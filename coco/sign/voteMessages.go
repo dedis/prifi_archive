@@ -81,7 +81,7 @@ type Count struct {
 }
 
 type CatchUpRequest struct {
-	Index int
+	Index int // index of requested vote
 }
 
 type CatchUpResponse struct {
@@ -108,8 +108,8 @@ type VoteLog struct {
 }
 
 func (vl *VoteLog) Put(index int, v *Vote) {
-	if index >= len(vl.Entries) {
-		buf := make([]*Vote, len(vl.Entries)-index+1)
+	for index >= len(vl.Entries) {
+		buf := make([]*Vote, len(vl.Entries)+1)
 		vl.Entries = append(vl.Entries, buf...)
 	}
 	vl.Entries[index] = v
@@ -143,4 +143,5 @@ func (vl *VoteLog) Stream() chan *Vote {
 			}
 		}
 	}()
+	return ch
 }
