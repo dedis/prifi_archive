@@ -17,6 +17,7 @@ const (
 	AddVT
 	RemoveVT
 	ShutdownVT
+	NoOpVT
 )
 
 // Multi-Purpose Vote embeds Action to be voted on, aggregated votes, and decison

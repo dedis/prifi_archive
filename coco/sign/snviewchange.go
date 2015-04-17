@@ -5,6 +5,14 @@ import (
 	"golang.org/x/net/context"
 )
 
+func (sn *Node) ChangeView(vcv *ViewChangeVote) {
+	// apply actions for new view
+	view := vcv.View
+	for act := range sn.Actions[view] {
+		sn.ApplyAction(view, act)
+	}
+}
+
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	sn.ChangingView = true
 
@@ -46,7 +54,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			sn.multiplexOnChildren(vcm.ViewNo, sm)
 
 			sn.ChangingView = false
-			sn.lastView = vcm.ViewNo
+			sn.ViewNo = vcm.ViewNo
 			sn.viewChangeCh <- "root"
 		} else {
 			log.Errorln(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))

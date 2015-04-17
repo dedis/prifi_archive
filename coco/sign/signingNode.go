@@ -83,8 +83,6 @@ type Node struct {
 	AmNextRoot   bool // determined when new view is needed
 	ViewNo       int  // *only* used by Root( by annoucer)
 
-	lastView int // lat view # I received viewChange message for
-
 	timeout  time.Duration
 	timeLock sync.RWMutex
 
@@ -194,7 +192,7 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	sn.AnnounceLock.Lock()
 	defer sn.AnnounceLock.Unlock()
 
-	log.Infoln("root", sn.Name(), "starting announcement round for round: ", sn.nRounds, "on view", sn.lastView)
+	log.Infoln("root", sn.Name(), "starting announcement round for round: ", sn.nRounds, "on view", sn.ViewNo)
 
 	first := time.Now()
 	total := time.Now()
@@ -204,7 +202,7 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
 	var cancelederr error
 	go func() {
-		err := sn.Announce(sn.lastView, am)
+		err := sn.Announce(sn.ViewNo, am)
 		if err != nil {
 			log.Errorln(err)
 			cancelederr = err
@@ -259,18 +257,18 @@ func (sn *Node) StartVotingRound(v *Vote) error {
 
 	sn.nRounds++
 	v.Round = sn.nRounds
-	v.View = sn.lastView // TODO: unify view-tracking variables
+	v.View = sn.ViewNo // TODO: unify view-tracking variables
 	v.Index = sn.LastSeenVote + 1
 	v.Count = &Count{}
 	v.Confirmed = false
 	if v.Av != nil {
-		v.Av.View = sn.lastView + 1
+		v.Av.View = sn.ViewNo + 1
 	}
 	if v.Rv != nil {
-		v.Rv.View = sn.lastView + 1
+		v.Rv.View = sn.ViewNo + 1
 	}
 	if v.Vcv != nil {
-		v.Vcv.View = sn.lastView + 1
+		v.Vcv.View = sn.ViewNo + 1
 	}
 	return sn.StartAnnouncement(
 		&AnnouncementMessage{LogTest: []byte("vote round"), Round: sn.nRounds, Vote: v})

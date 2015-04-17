@@ -23,7 +23,7 @@ func (sn *Node) ApplyVote(v *Vote) {
 
 	switch v.Type {
 	case ViewChangeVT:
-		panic(sn.Name() + " view change unimplemented")
+		sn.ChangeView(v.Vcv)
 	case AddVT:
 		sn.AddAction(v.Av.View, v)
 	case RemoveVT:
@@ -63,7 +63,7 @@ func (sn *Node) AddSelf(parent string) error {
 func (sn *Node) RemoveSelf() error {
 	return sn.PutUp(
 		context.TODO(),
-		int(sn.lastView),
+		int(sn.ViewNo),
 		&SigningMessage{
 			Type: GroupChange,
 			View: -1,
@@ -72,5 +72,5 @@ func (sn *Node) RemoveSelf() error {
 					Type: RemoveVT,
 					Rv: &RemoveVote{
 						Name:   sn.Name(),
-						Parent: sn.Parent(sn.lastView)}}}})
+						Parent: sn.Parent(sn.ViewNo)}}}})
 }

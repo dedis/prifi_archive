@@ -190,24 +190,17 @@ func (sn *Node) actOnVotes(view int, v *Vote) {
 		abstained := len(sn.HostListOn(view)) - v.Count.For - v.Count.Against
 		log.Infoln("Votes FOR:", v.Count.For, "; Votes AGAINST:", v.Count.Against, "; Absteined:", abstained, actionTaken)
 	}
-
 	// Act on vote Decision
 	if accepted {
 		sn.VoteLog.Put(v.Index, v)
 
-		// propagate view change if new view leader
 		log.Println(sn.Name(), "actOnVotes: vote has been accepted")
-		// XXX WHEN TESTING DO NOT VIEW CHANGE XXX TODO
-		/*
-			sn.NotifyPeerOfVote(view, vreq)
-			time.Sleep(7 * time.Second) // wait for all vote responses to be propogated before trying to change view
-			sn.TryViewChange(view + 1)
-		*/
 	} else {
+		v.Type = NoOpVT
+		sn.VoteLog.Put(v.Index, v)
 		log.Println(sn.Name(), "actOnVotes: vote has been rejected")
 
 	}
-
 	// List out all votes
 	// for _, vote := range round.CountedVotes.Votes {
 	// 	log.Infoln(vote.Name, vote.Accepted)

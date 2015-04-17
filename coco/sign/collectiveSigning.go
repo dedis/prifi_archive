@@ -149,11 +149,11 @@ func (sn *Node) get() error {
 				sn.VoteLog.Put(sm.Curesp.Vote.Index, sm.Curesp.Vote)
 			case ViewChange:
 				// if we have already seen this view before skip it
-				if sm.View <= sn.lastView {
-					log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.lastView, sm.From)
+				if sm.View <= sn.ViewNo {
+					log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.ViewNo, sm.From)
 					continue
 				}
-				sn.lastView = sm.View
+				sn.ViewNo = sm.View
 				sn.StopHeartbeat()
 				log.Printf("Host (%s) VIEWCHANGE", sn.Name(), sm.Vcm)
 				if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
@@ -164,8 +164,8 @@ func (sn *Node) get() error {
 					log.Errorln("view change error:", err)
 				}
 			case ViewAccepted:
-				if sm.View < sn.lastView {
-					log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.lastView)
+				if sm.View < sn.ViewNo {
+					log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.ViewNo)
 					continue
 				}
 				log.Printf("Host (%s) VIEWACCEPTED", sn.Name())
@@ -174,8 +174,8 @@ func (sn *Node) get() error {
 				// sn.VamCh <- sm
 				// sn.VamChLock.Unlock()
 			case ViewConfirmed:
-				if sm.View < sn.lastView {
-					log.Errorf("VIEW CONFIRMED: already seen this view: %d < %d", sm.View, sn.lastView)
+				if sm.View < sn.ViewNo {
+					log.Errorf("VIEW CONFIRMED: already seen this view: %d < %d", sm.View, sn.ViewNo)
 					continue
 				}
 				// log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
@@ -485,9 +485,9 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 func (sn *Node) TryViewChange(view int) {
 	// should ideally be compare and swap
-	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", sn.lastView)
-	if view <= sn.lastView {
-		log.Println("view < sn.lastView")
+	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", sn.ViewNo)
+	if view <= sn.ViewNo {
+		log.Println("view < sn.ViewNo")
 		return
 	}
 	if sn.ChangingView {
