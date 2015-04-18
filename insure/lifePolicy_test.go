@@ -1,7 +1,7 @@
 package insure
 
 import (
-	//"sync"
+	"sync"
 	"errors"
 	"reflect"
 	"time"
@@ -655,7 +655,6 @@ func TestLifePolicyModuleReconstructSecret(t *testing.T) {
 		t.Error("The promise should now be certified:  ", err)
 	}
 	
-
 	// Error handling
 	// First, verify that a promise not added to the serverPromises hash produces
 	// an error. The promise is currently in the promises hash, so this should
@@ -1108,14 +1107,14 @@ func TestLifePolicyModuleHandlePromiseToClientMessage(t *testing.T) {
 /****************************** FUNCTIONAL TESTS ******************************/
 
 /* This functional test is designed to test the code under conditions similar to
- * what it would be in production. It uses gochanns to simulate the network. It
- * has three main type of channesl:
+ * production. It uses gochanns to simulate the network. It has three main types
+ * of channels:
  *
  *   - Server channel = this is the channel of the main server who creates the
  *                      promise. This is the TestLifePolicyFunctional method.
  *
  *   - Insurer channel = these are a set of channels for representing insurer
- *                       logic with one per insurer.
+ *                       logic. There is one channel per insurer.
  *
  *   - Client channel = this channel simulates requests by clients.
  *
@@ -1126,19 +1125,32 @@ func TestLifePolicyModuleHandlePromiseToClientMessage(t *testing.T) {
  *
  *     The server creates a new promise and sends it to the insurers to certify
  *
- *
  *   Phase 2: Send the Promise to a Client
  *
  *      The server sends the Promise to the client. The client receives it and
  *      then contacts the insurers to certify the promise.
  *
+ *   Phase 3: Certify insurer promises
  *
+ *      This is in preparation for the final stage. A promised secret can be
+ *      revealed only if the promise is certified. Go ahead and certify all
+ *      the insurers' promises.
+ * 
+ *      While this would be done automatically if a server received a
+ *      RevealShareRequest, it is much easier due to the limitations of blocking
+ *      channels to do this independently.
+ *
+ *   Phase 4: Reconstruct Secret
+ *
+ *      The client contacts the insurers to reconstruct the promised secret.
+ *      The insurers contact the server, verify it is dead, and then reveal their
+ *      shares.
  */
 
 
 // This is a helper method that simulates the insurer channel
-func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager) {
-
+func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager, finished *sync.WaitGroup) {
+	defer finished.Done()
 	policy := produceBasicPolicy(k, cm, 3)
 
 	// Phase 1: Create a new Promise
@@ -1148,7 +1160,7 @@ func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager)
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(keyPairT.Public, msg)
 		msgTyp, err := policy.handlePolicyMessage(keyPairT.Public, msg)
-		if msgTyp == CertifyPromise && err != nil {
+		if msgTyp == CertifyPromise && err == nil {
 			break
 		}
 	}
@@ -1157,16 +1169,45 @@ func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager)
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(clientT.Public, msg)
-		msgTyp, err := policy.handlePolicyMessage(serverKeys[0].Public, msg)
-		if msgTyp == CertifyPromise && err != nil {
+		msgTyp, err := policy.handlePolicyMessage(clientT.Public, msg)
+		if msgTyp == CertifyPromise && err == nil {
+			break
+		}
+	}
+
+	// Phase 3: Certify insurer promises.
+	for i := 0; i < numServers; i++ {
+		if k.Public.Equal(serverKeys[i].Public) {
+			policy.CertifyPromise(keyPairT.Public, secretKeyT.Public)
+			// Simply get the message sent to oneself and ignore it.
+			msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
+			cm.Get(serverKeys[i].Public, msg)
+		} else {
+			for true {
+				msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
+				cm.Get(serverKeys[i].Public, msg)
+				msgTyp, err := policy.handlePolicyMessage(serverKeys[i].Public, msg)
+				if msgTyp == CertifyPromise && err == nil {
+					break
+				}
+			}	
+		}
+	}
+	
+	// Phase 4: Reconstruct Secret
+	for true {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
+		cm.Get(clientT.Public, msg)
+		msgTyp, err := policy.handlePolicyMessage(clientT.Public, msg)
+		if msgTyp == ShareRevealRequest && err == nil {
 			break
 		}
 	}
 }
 
 // This method simulates the client channel
-func clientFunctional(t *testing.T) {
-
+func clientFunctional(t *testing.T, finished *sync.WaitGroup) {
+	defer finished.Done()
 	policy := produceBasicPolicy(clientT, clientConn, 3)
 
 	// Phase 2: Send the Promise to a Client
@@ -1182,16 +1223,28 @@ func clientFunctional(t *testing.T) {
 	if err != nil {
 		panic("Promise should be certified")
 	}
+	
+	// Phase 4 Reconstruct Secret
+	key, err := policy.ReconstructSecret("test", keyPairT.Public, secretKeyT.Public)
+	if err != nil {
+		panic("Expected promise.")
+	}
+	if !key.Equal(secretKeyT.Secret) {
+		panic("Secret Failed to be reconstructed.")
+	}
 }
 
 // Performs the functional test for LifePolicyModule and simulates the server channel
 func TestLifePolicyModuleFunctionalTest(t *testing.T) {
 
+	finished := new(sync.WaitGroup)
+	finished.Add(numServers + 1)
+
 	// Start up the insurers and the client
 	for i := 0; i< numServers; i++ {
-		go insurersFunctional(t, serverKeys[i], connectionManagers[i])
+		go insurersFunctional(t, serverKeys[i], connectionManagers[i], finished)
 	}
-	go clientFunctional(t)
+	go clientFunctional(t, finished)
 
 	
 	// Phase 1: Create a new Promise
@@ -1206,6 +1259,43 @@ func TestLifePolicyModuleFunctionalTest(t *testing.T) {
 	if err != nil {
 		t.Fatal("Message should have been sent.")
 	}
+
+	// Phase 4: Reconstruct Secret
+	// 
+	// This code would not be replicated in production. Since the tests use
+	// blocking go channels, the insurers would hang indefinitely while trying
+	// to see if the server is alive. Hence, the server must actually send
+	// them an irrelevant message so the insurers will not hang waiting for
+	// a response.
+
+	// First get all the server alive requests and ignore them.
+	for i := 0; i< numServers; i++ {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+		goConn.Get(serverKeys[i].Public, msg)
+		if msg.Type != ServerAliveRequest {
+			t.Fatal("Expecting to receive a request from the insurer")
+		}
+	}
+
+	// Sleep to ensure the timelimit expires
+	time.Sleep(4 * time.Second)
+
+	// Then send out a server alive request to simply give the insurers a message
+	// to process so they won't be waiting to hear back forever.
+	for i := 0; i< numServers; i++ {
+		goConn.Put(serverKeys[i].Public, new(PolicyMessage).createSAREQMessage())
+	}
+	
+	// Verify the insurers got the message.
+	for i := 0; i< numServers; i++ {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+		goConn.Get(serverKeys[i].Public, msg)
+		if msg.Type != ServerAliveResponse {
+			t.Fatal("Expecting to receive a response from the insurer")
+		}
+	}
+
+	finished.Wait()
 }
 
 
