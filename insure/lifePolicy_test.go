@@ -9,6 +9,7 @@ import (
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
+	"github.com/dedis/crypto/nist"
 	"github.com/dedis/crypto/poly/promise"
 	"github.com/dedis/crypto/random"
 
@@ -28,6 +29,8 @@ import (
 
 // NOTE: The same gochans are used throughout the tests. Make sure each test
 // gets all the messages it puts. Otherwise, there may be problems.
+
+var keySuite abstract.Suite = nist.NewAES128SHA256P256()
 
 var goDir = coconet.NewGoDirectory()
 
@@ -58,7 +61,7 @@ var setupOkay = setupConn()
 
 func produceKeyPairT() *config.KeyPair {
 	keyPair := new(config.KeyPair)
-	keyPair.Gen(KEY_SUITE, random.Stream)
+	keyPair.Gen(keySuite, random.Stream)
 	return keyPair
 }
 
