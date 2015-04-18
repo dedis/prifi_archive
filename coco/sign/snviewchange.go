@@ -6,11 +6,9 @@ import (
 )
 
 func (sn *Node) ChangeView(vcv *ViewChangeVote) {
-	// apply actions for new view
-	view := vcv.View
-	for act := range sn.Actions[view] {
-		sn.ApplyAction(view, act)
-	}
+	// at this point actions have already been applied
+	// all we need to do is switch our default view
+	sn.ViewNo = view
 }
 
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {

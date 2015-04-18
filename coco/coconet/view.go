@@ -149,6 +149,27 @@ func (v *Views) NewView(view int, parent string, children []string, hostlist []s
 	v.Unlock()
 }
 
+func (v *Views) NewViewFromPrev(view int, parent string) {
+	if _, ok := v.Views[view-1]; !ok {
+		log.Errorln("ERROR: INVALID PREVIOUS VIEW")
+		return
+	}
+	peers := append(v.Views[view-1].Children, v.Views[view-1].Parent)
+	// remove from peers the parent -> children
+	i := -1
+	for j, p := range peers {
+		if p == parent {
+			i = j
+		}
+	}
+	if i == -1 {
+		log.Errorln("ERROR: INVALID NEW VIEW FROM PREV: BAD PARENT")
+		return
+	}
+	children := append(peers[:i], peers[i+1:]...)
+	NewView(view, parent, children, v.Views[view-1].HostList)
+}
+
 func (vs *Views) AddPeerToHostlist(view int, name string) {
 	vs.Views[view].AddPeerToHostlist(name)
 }

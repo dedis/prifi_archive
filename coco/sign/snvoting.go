@@ -2,6 +2,7 @@ package sign
 
 import (
 	"sync/atomic"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -73,4 +74,26 @@ func (sn *Node) RemoveSelf() error {
 					Rv: &RemoveVote{
 						Name:   sn.Name(),
 						Parent: sn.Parent(sn.ViewNo)}}}})
+}
+
+func (sn *Node) CatchUp(vi int, from string) {
+	log.Println(sn.Name(), "attempting to catch up vote", vi)
+
+	ctx := context.TODO()
+	sn.PutTo(ctx, from,
+		&SigningMessage{
+			From:  sn.Name(),
+			Type:  CatchUpReq,
+			Cureq: &CatchUpRequest{Index: vi}})
+}
+
+func (sn *Node) StartGossip() {
+	go func() {
+		t := time.Tick(GOSSIP_TIME)
+		for _ = range t {
+			c := append(sn.Children(sn.ViewNo), sn.Parent(sn.ViewNo))
+			from := c[sn.Rand.Int()%len(c)]
+			sn.CatchUp(atomic.LoadInt64(&sn.LastAppliedVote)+1, from)
+		}
+	}()
 }

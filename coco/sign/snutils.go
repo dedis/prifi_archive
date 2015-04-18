@@ -219,7 +219,6 @@ func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
 func (sn *Node) updateLastSeenVote(hv int, from string) {
 	if sn.LastSeenVote < hv {
 		sn.LastSeenVote = hv
-		sn.CatchUp(from)
 	}
 }
 

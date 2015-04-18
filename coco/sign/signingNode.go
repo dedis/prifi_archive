@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/context"
@@ -249,7 +248,7 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 func (sn *Node) StartVotingRound(v *Vote) error {
 	sn.nRounds = sn.LastSeenRound
 
-	// report view is being change, and sleep before retrying
+	// report view is being changed, and sleep before retrying
 	if sn.ChangingView {
 		log.Println(sn.Name(), "start signing round: changingViewError")
 		return ChangingViewError
@@ -489,15 +488,4 @@ func (sn *Node) Timeout() time.Duration {
 
 func (sn *Node) DefaultTimeout() time.Duration {
 	return 5000 * time.Millisecond
-}
-
-func (sn *Node) CatchUp(from string) {
-	log.Println(sn.Name(), "attempting to catch up")
-
-	ctx := context.TODO()
-	sn.PutTo(ctx, from,
-		&SigningMessage{
-			From:  sn.Name(),
-			Type:  CatchUpReq,
-			Cureq: &CatchUpRequest{Index: int(atomic.LoadInt64(&sn.LastAppliedVote) + 1)}})
 }

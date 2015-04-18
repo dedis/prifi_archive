@@ -34,6 +34,9 @@ func (sn *Node) get() error {
 	voteChan := sn.VoteLog.Stream()
 	sn.ApplyVotes(voteChan)
 
+	// gossip to make sure we are up to date
+	sn.StartGossip()
+
 	for {
 		select {
 		case <-sn.closing:
@@ -61,6 +64,14 @@ func (sn *Node) get() error {
 			sm.From = nm.From
 			sn.updateLastSeenVote(sm.LastSeenVote, sm.From)
 			log.Println("received message: ", sm.Type)
+
+			// don't act on future view if not caught up, must be done after updating vote index
+			if sm.View > sn.ViewNo {
+				if sn.LastSeenVote != sn.LastAppliedVote {
+					log.Warnln("not caught up for view change", sn.LastSeenVote, sn.LastAppliedVote)
+					return
+				}
+			}
 
 			// log.Println(sn.Name(), "GOT ", sm.Type)
 			switch sm.Type {
@@ -142,11 +153,14 @@ func (sn *Node) get() error {
 						Type:   CatchUpResp,
 						Curesp: &CatchUpResponse{Vote: v}})
 			case CatchUpResp:
-				if sm.Curesp.Vote == nil {
+				vi := sm.Curesp.Vote.Index
+				if sm.Curesp.Vote == nil || sn.VoteLog.Get(vi) != nil {
 					continue
 				}
 				// put in votelog to be streamed and applied
-				sn.VoteLog.Put(sm.Curesp.Vote.Index, sm.Curesp.Vote)
+				sn.VoteLog.Put(vi, sm.Curesp.Vote)
+				// continue catching up
+				sn.CatchUp(vi+1, from)
 			case ViewChange:
 				// if we have already seen this view before skip it
 				if sm.View <= sn.ViewNo {

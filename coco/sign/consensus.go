@@ -1,17 +1,65 @@
 package sign
 
 import (
+	"errors"
+
 	"golang.org/x/net/context"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/dedis/prifi/coco/coconet"
 )
 
-// TODO: promise, ...
-// split voting out of collective signing logic
+func (sn *Node) SetupProposal(view int, am *AnouncementMessage, from string) error {
+	// if this is for viewchanges: otherwise new views are not allowed
+	if am.Vote.Type == ViewChangeVT {
+		// viewchange votes must be received from the new parent on the new view
+		if view != am.Vote.Vc.View {
+			log.Errorln("recieved view change vote on different view")
+			return errors.New("view change attempt on view != received view")
+		}
+		// ensure that we are caught up
+		if sn.LastAppliedVote != sn.LastSeenVote {
+			log.Errorln("received vote: but not up to date: need to catch up")
+			return errors.New("not up to date: need to catch up")
+		}
+		nextview := sn.ViewNo + 1
+		for ; nextview < view; nextview++ {
+			sn.NewViewFromPrev(nextview, from)
+			for act := range sn.Actions[nextview] {
+				sn.ApplyAction(nextview, act)
+			}
+		}
+	} else {
+		if view != sn.ViewNo {
+			log.Errorln("cannot vote on not-current view")
+			return errors.New("vote on not-current view")
+		}
+	}
 
-func (sn *Node) Propose(view int, am *AnnouncementMessage) error {
+	if am.Vote.Type == AddVT {
+		if am.Vote.Av.View <= sn.ViewNo {
+			log.Errorln("cannot change current-view or previous views")
+			return errors.New("unable to change past views")
+		}
+	}
+	if am.Vote.Type == RemoveVT {
+		if am.Vote.Rv.View <= sn.ViewNo {
+			log.Errorln("cannot change current-view or previous views")
+			return errors.New("unable to change past views")
+		}
+	}
+
+}
+
+// A propose for a view change would come on current view + sth
+// when we receive view change  message on a future view,
+// we must be caught up, create that view  and apply actions on it
+func (sn *Node) Propose(view int, am *AnnouncementMessage, from string) error {
 	log.Println(sn.Name(), "GOT ", "Propose", am)
+	if err := sn.SetupProposal(view, am, from); err != nil {
+		return err
+	}
+
 	if err := sn.setUpRound(view, am); err != nil {
 		return err
 	}
@@ -193,7 +241,6 @@ func (sn *Node) actOnVotes(view int, v *Vote) {
 	// Act on vote Decision
 	if accepted {
 		sn.VoteLog.Put(v.Index, v)
-
 		log.Println(sn.Name(), "actOnVotes: vote has been accepted")
 	} else {
 		v.Type = NoOpVT
