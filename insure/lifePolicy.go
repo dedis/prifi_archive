@@ -1,7 +1,7 @@
 /* This file implements the networking code for the life insurance protocol.
- * Building upon the promise.Promise cryptographic primative, this code provides
- * a simple interface for servers to set up and manage life insurance policies
- * for themselves and other servers.
+ * Building upon the promise.Promise cryptographic primative of
+ * crypto/poly/promise, this code provides a simple interface for servers to
+ * set up and manage life insurance policies.
  *
  * In particular, the file allows servers to:
  *
@@ -25,13 +25,42 @@ import (
 )
 
 /* The LifePolicyModule is responsible for handling all life insurance logic.
- * In particular, it can
+ * In particular, it provides the following functions:
  *
- *   - Create new promises
- *   - Handle promise certification
- *   - Send/receive messages over the network.
+ *   Init
+ *   TakeOutPolicy
+ *   SendPromiseToClient
+ *   CertifyPromise
+ *   ReconstructSecret
+ *   HandlePolicyMessage
+ *
+ *
+ * Servers can use Init to create the module and define what type of promises
+ * it is expecing to receive.
+ *
+ * They can then use TakeOutPolicy to create new promises and get them certified
+ * from insurers.
+ *
+ * Once the promise has been made, SendPromiseToClient can be used to send the
+ * promise to clients of the server.
+ *
+ * Clients can then use CertifyPromise to contact the insurers to certify the
+ * promise.
+ *
+ * If the promiser becomes unresponsive, clients can use ReconstructSecret to
+ * contact the insurers and reconstruct the promised secret.
+ *
+ * Lastly, HandlePolicyMessage can be used to handle messages sent by other
+ * servers. It is recommended to check frequently for other messages. 
+ *
+ * Please see the comments below for a more information about these functions.
+ *
+ * Note: It is important that users of this code frequently check and handle
+ * messages from all servers in the system. Other servers will send promised
+ * secrets to your server, request your server to become its insurer, check if 
+ * your server is still alive, etc. It is important to be able to receive these
+ * quickly and make a speedy response.
  */
-
 type LifePolicyModule struct {
 
 	// The long-term key pair of the server
@@ -369,6 +398,8 @@ func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, 
  *
  * Returns:
  *   nil if the message is sent, an error otherwise.
+ *
+ * TODO: Only allow server to send certified promises.
  */
 func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Point) error {
 	if state, assigned := lp.promises[secretKey.String()]; assigned {
@@ -464,7 +495,7 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
  *   msg    = the message to process
  *
  * Returns:
- *      A tupple of the form (type, err)
+ *      A tuple of the form (type, err)
  *         type  = the type of message processed
  *         err   = the error status received
  *
