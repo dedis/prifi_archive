@@ -387,13 +387,14 @@ func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Po
  * Arguments:
  *   reason = the reason why the client is attempting to reconstruct the secret.
  *            This is mostly used when insurers receive the request to reveal
- *            their share. The insurers then call their function that determines
+ *            their share. The insurers then call the function that determines
  *            whether the promiser is dead and passes the "reason" value to it.
- *            Methods created by users of this code can use this to determine
+ *            Methods created by users of this code can use this reason to determine
  *            what type of request the client was waiting on the promiser to do
- *            when the promiser became unresponsive.
+ *            when the promiser became unresponsive. The functions can then take
+ *            additional actions appropriately.
  *
- *            For the default method provided by the module, nil will suffice.
+ *            For the default method provided by this module, nil will suffice.
  *
  *   serverKey  = the long term key of the promiser of the secret
  *   promiseKey = the public key of the secret promised
@@ -452,24 +453,27 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 }
 
 
-
 /******************************** Receive Method ******************************/
 // These are methods responsible for handling mesges that come into the system.
 
-
-/* This function handles policy messages received. This function will handle
- * updating the life policy appropriately. Simply give it the policy message
- * and let it handle the rest.
+/* This function processes policy messages received over the internet and updates
+ * the life policy appropriately.
  *
  * Arguments:
- *   msg = the message to handle
+ *   pubKey = the public key of the sender of the message.
+ *   msg    = the message to process
  *
  * Returns:
- *      - The type of message received.
- *	- an error denoting the status of the message
+ *      A tupple of the form (type, err)
+ *         type  = the type of message processed
+ *         err   = the error status received
  *
- * NOTE: An error need not be alarming. For example, if one node sends a
- * duplicate request, the policy can simply ignore the duplicate.
+ * Note: errors need not be alarming as they can occur for a wide variety of reasons
+ * (The message specified a promise that doesn't exist, a server tried to share
+ * a promise with itself, etc.)
+ *
+ * Note: In the case of ServerAliveResponse, nothing needs to be done. Simply
+ * inform the caller that the sender is alive.
  */
 func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *PolicyMessage) (PolicyMessageType, error) {
 	switch msg.Type {

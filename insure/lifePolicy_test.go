@@ -16,6 +16,12 @@ import (
 	"github.com/dedis/prifi/coco/coconet"
 )
 
+// Note: These tests are divided into two main parts: unit tests and a functional
+// test. The unit tests attempt to isolate the behavior of the functions. Hence, they often
+// have helper functions that are written to send data over channels rather than useing
+// methods defined in lifePolic.go. This is done so as to better isolate the cause of errors.
+// The functional test makes sure that the entire system works as it should.
+
 // NOTE: This code was build with gochans that can only receive messages one
 // at a time and that block when waiting to receive a message. Changing the
 // channel might break tests.
@@ -607,6 +613,79 @@ func sendCertifyMessagesBasic(t *testing.T, insurerI int, promiserCm, clientCm c
 	clientCm.Get(serverKeys[insurerI].Public, msg)
 	if msg.Type != PromiseResponse {
 		panic("A valid certifyPromise message should have been sent.")
+	}
+}
+
+// This is a helper method to listen for RevealShareRequests and to send a response
+func sendRevealShareResponses(t *testing.T, i int, state *promise.State,  cm connMan.ConnManager) {
+
+	for true {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, serverKeys[i].Suite)
+		cm.Get(keyPairT.Public, msg)
+
+		if msg.Type == ShareRevealRequest {
+			share := state.RevealShare(i, serverKeys[i])
+			responseMsg := new(PromiseShareMessage).createResponseMessage(
+				i, state.Promise, share)
+			cm.Put(keyPairT.Public, new(PolicyMessage).createSRSPMessage(responseMsg))
+			return
+		}
+	}
+}
+
+// Verifies that ReconstructSecret can properly reconstruct a promised secret
+// Although this would be done by the client and not the server who took out the
+// policy, I use the server here for simplicity.
+func TestLifePolicyModuleReconstructSecret(t *testing.T) {
+
+	// Create a new policy module and manually create a secret.
+	policy, state := produceNewServerPolicyWithPromise()
+
+	// First certify the promise as an uncertified promise can't reveal
+	// shares
+	for i := 0; i < numServers; i++ {
+		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
+	}
+	err := policy.certifyPromise(state)
+	if err != nil {
+		t.Error("The promise failed to be certified: ", err)
+	}
+	finalState := policy.promises[secretKeyT.Public.String()]
+	if err := finalState.PromiseCertified(); err != nil {
+		t.Error("The promise should now be certified:  ", err)
+	}
+	
+
+	// Error handling
+	// First, verify that a promise not added to the serverPromises hash produces
+	// an error. The promise is currently in the promises hash, so this should
+	// fail.
+	key, err := policy.ReconstructSecret("test", keyPairT.Public, secretKeyT.Public)	
+	if err == nil  {
+		t.Error("Reconstruction should have failed.")
+	}
+	if key != nil {
+		t.Error("Key should be nil.")
+	}
+
+	// Remove the promise from the promises hash and move to the serverPromises
+	// hash to simulate another a client trying to reconstruct a promise.
+	policy.promises[secretKeyT.Public.String()] = nil
+	policy.addServerPromise(state.Promise)
+	policy.serverPromises[state.Promise.PromiserId()][state.Promise.Id()] = finalState
+
+	
+	// Start up the other insurers for revealing the share.
+	for i := 0; i < numServers; i++ {
+		go sendRevealShareResponses(t, i, finalState, connectionManagers[i])
+	}
+	
+	key, err = policy.ReconstructSecret("test", keyPairT.Public, secretKeyT.Public)	
+	if err != nil  {
+		t.Error("Unexpected error", err)
+	}
+	if !key.Equal(secretKeyT.Secret) {
+		t.Error("Failed to construct secret")
 	}
 }
 
