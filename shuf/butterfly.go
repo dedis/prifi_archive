@@ -53,7 +53,8 @@ func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 	shufPairs := Elgamal{xx, yy}
 	var prf2 []byte
 	var err2 error
-	pairs, H, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
+	pairs.Y, H, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
+	pairs.X = xx
 	if err2 != nil {
 		fmt.Printf("Error creating proof2: %s\n", err.Error())
 	}
@@ -61,7 +62,8 @@ func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 	// Send it on its way
 	instr := RouteInstr{
 		ShufPairs:    shufPairs,
-		PlainPairs:   pairs,
+		NewPairs:     pairs,
+		PlainY:       pairs.Y,
 		H:            H,
 		ShufProof:    prf,
 		DecryptProof: prf2,
@@ -74,8 +76,9 @@ func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 		instr.To = []int{gj.left[0], gj.right[0]}
 
 		// Add more onion encryption
-		pairs.X, pairs.Y, instr.H = OnionEncrypt(pairs.Y, inf, gj.left)
-		instr.NewPairs = pairs
+		var newY, newX []abstract.Point
+		newX, newY, instr.H = OnionEncrypt(pairs.Y, inf, gj.left)
+		instr.NewPairs = Elgamal{newX, newY}
 	}
 	return instr
 }

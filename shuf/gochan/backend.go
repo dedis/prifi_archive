@@ -77,7 +77,7 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs []abstract.Point, wg *sync
 						proofs[cl] <- shuf.Proof{
 							ShufProof:    instr.ShufProof,
 							DecryptProof: instr.DecryptProof,
-							PlainPairs:   instr.PlainPairs,
+							PlainY:       instr.PlainY,
 							ShufPairs:    instr.ShufPairs,
 							OldPairs:     oldpairs,
 							H:            H,

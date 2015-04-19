@@ -10,11 +10,11 @@ type IdShuffle struct{}
 
 func (id IdShuffle) ShuffleStep(pairs Elgamal, node int,
 	round int, inf *Info, H abstract.Point) RouteInstr {
-	newPairs, _, _, err := DecryptPairs(pairs, inf, node, H)
+	newY, _, _, err := DecryptPairs(pairs, inf, node, H)
 	if err != nil {
 		panic(err.Error())
 	}
-	instr := RouteInstr{ShufPairs: pairs, NewPairs: newPairs, PlainPairs: newPairs}
+	instr := RouteInstr{NewPairs: Elgamal{pairs.X, newY}}
 	next := node + 1
 	if next < inf.NumNodes {
 		instr.To = []int{next}
@@ -33,7 +33,7 @@ func (id IdShuffle) ActiveRounds(node int, inf *Info) []int {
 	return []int{node}
 }
 
-// Random, but insecure shuffle
+// Random, but unverified shuffle
 type DumbShuffle struct {
 	Seed int64
 }
@@ -58,10 +58,11 @@ func (d DumbShuffle) ShuffleStep(pairs Elgamal, node int,
 		Y[i] = pairs.Y[p[i]]
 	}
 	shufPairs := Elgamal{X, Y}
-	pairs, _, _, _ = DecryptPairs(shufPairs, inf, node, H)
+	pairs.Y, _, _, _ = DecryptPairs(shufPairs, inf, node, H)
+	pairs.X = X
 
 	// Direct it to the next in line
-	instr := RouteInstr{PlainPairs: pairs, NewPairs: pairs, ShufPairs: shufPairs}
+	instr := RouteInstr{NewPairs: pairs}
 	next := node + 1
 	if next < inf.NumNodes {
 		instr.To = []int{next}

@@ -59,7 +59,8 @@ func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
 	var prf2 []byte
 	var err2 error
 	var newH abstract.Point
-	pairs, newH, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
+	pairs.Y, newH, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
+	pairs.X = xx
 	if err2 != nil {
 		fmt.Printf("Error creating proof2: %s\n", err.Error())
 	}
@@ -67,7 +68,7 @@ func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
 	// Send it on its way
 	instr := RouteInstr{
 		ShufPairs:    shufPairs,
-		PlainPairs:   pairs,
+		PlainY:       pairs.Y,
 		NewPairs:     pairs,
 		H:            newH,
 		ShufProof:    prf,
