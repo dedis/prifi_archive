@@ -1,15 +1,15 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/edwards/ed25519"
 	"github.com/dedis/prifi/shuf"
-	"time"
-	"encoding/json"
 	"os"
-	"sync"
-	"fmt"
 	"strconv"
+	"sync"
+	"time"
 )
 
 func check(e error) {
@@ -20,21 +20,21 @@ func check(e error) {
 }
 
 type cFile struct {
-	NumNodes int
-	NumClients int
-	NumRounds int
-	ResendTime int
+	NumNodes     int
+	NumClients   int
+	NumRounds    int
+	ResendTime   int
 	MsgsPerGroup int
-	Shuffle string
-	Seed int64
+	Shuffle      string
+	Seed         int64
 }
 
 func main() {
 
-  // Read the config
+	// Read the config
 	configFile := os.Args[1]
-  f, err := os.Open(configFile)
-  check(err)
+	f, err := os.Open(configFile)
+	check(err)
 	dec := json.NewDecoder(f)
 	var c cFile
 	err = dec.Decode(&c)
@@ -57,7 +57,7 @@ func main() {
 	// Create the messages
 	messages := make([]abstract.Point, c.NumClients)
 	for i := range messages {
-		messages[i], _ = suite.Point().Pick([]byte("Message " + strconv.Itoa(i)), rand)
+		messages[i], _ = suite.Point().Pick([]byte("Message "+strconv.Itoa(i)), rand)
 	}
 
 	// Perform the shuffle
@@ -81,7 +81,7 @@ func main() {
 	case "neff":
 		s = shuf.NeffShuffle{}
 	case "subset":
-		s = shuf.NewSubsetShuffle(c.Seed, c.MsgsPerGroup, c.NumNodes)
+		s = shuf.NewSubsetShuffle(c.Seed, c.NumRounds, c.NumNodes)
 	case "butterfly":
 		s = shuf.NewButterfly(&inf, c.Seed)
 	}

@@ -33,6 +33,7 @@ func NewSubsetShuffle(seed int64, size int, total int) *SubsetShuffle {
 			s.directions[ip] = -1
 		}
 	}
+	// fmt.Printf("%v\n", *s)
 	return s
 }
 
@@ -57,7 +58,8 @@ func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
 	shufPairs := Elgamal{xx, yy}
 	var prf2 []byte
 	var err2 error
-	pairs, H, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
+	var newH abstract.Point
+	pairs, newH, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
 	if err2 != nil {
 		fmt.Printf("Error creating proof2: %s\n", err.Error())
 	}
@@ -67,7 +69,7 @@ func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
 		ShufPairs:    shufPairs,
 		PlainPairs:   pairs,
 		NewPairs:     pairs,
-		H:            H,
+		H:            newH,
 		ShufProof:    prf,
 		DecryptProof: prf2,
 	}
