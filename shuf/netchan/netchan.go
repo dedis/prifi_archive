@@ -2,31 +2,24 @@ package netchan
 
 import (
 	"bufio"
+	"encoding/binary"
+	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
 	"net"
 	"time"
-	"fmt"
-	"encoding/binary"
 )
 
 type Node struct {
 	Inf *shuf.Info
-	S shuf.Shuffle
-	C int
+	S   shuf.Shuffle
+	C   int
 }
 
 type msg struct {
 	pairs shuf.Elgamal
 	round int
 	h     abstract.Point
-}
-
-type proofmsg struct {
-	proof    []byte
-	newpairs shuf.Elgamal
-	oldpairs shuf.Elgamal
-	h        abstract.Point
 }
 
 func Check(e error) {
@@ -36,12 +29,12 @@ func Check(e error) {
 }
 
 type CFile struct {
-	NumNodes int
+	NumNodes   int
 	NumClients int
-	NumRounds int
+	NumRounds  int
 	ResendTime int
-	Port string
-	Shuffle string
+	Port       string
+	Shuffle    string
 }
 
 // Read a msg from the connection and feed it to the collector
@@ -73,7 +66,7 @@ func (n Node) decodeMsg(conn net.Conn, collect chan msg, round chan int) {
 }
 
 // Read a proof from the connection and call the callback
-func (n Node) decodeProof(conn net.Conn, proofCallback func(proofmsg)) {
+func (n Node) decodeProof(conn net.Conn, proofCallback func(proof)) {
 	reader := bufio.NewReader(conn)
 	var numPairs int
 	proof := make([]byte, n.Inf.ProofSize)
@@ -105,7 +98,7 @@ func (n Node) decodeProof(conn net.Conn, proofCallback func(proofmsg)) {
 	oldPairs := shuf.Elgamal{XX, YY}
 	err := n.S.VerifyShuffle(newPairs, oldPairs, h, n.Inf, proof)
 	if err != nil {
-		proofCallback(proofmsg{proof, newPairs, oldPairs, h})
+		proofCallback(abstract.Proof{proof, newPairs, oldPairs, h})
 	}
 }
 
@@ -167,8 +160,8 @@ func (n Node) startCollection(setter chan msg, round chan int, callback func(msg
 		H = m.h
 	}
 	r := <-round
-	callback(msg{shuf.Elgamal{X,Y}, n.S.ActiveRounds(n.C, n.Inf)[r], H})
-	round <- r+1
+	callback(msg{shuf.Elgamal{X, Y}, n.S.ActiveRounds(n.C, n.Inf)[r], H})
+	round <- r + 1
 }
 
 func (n Node) forwardProof(clients []string) func(proofmsg) {
@@ -183,32 +176,34 @@ func (n Node) forwardMessage(clients, nodes []string) func(msg) {
 	return func(m msg) {
 		oldpairs := m.pairs
 		instr := n.S.ShuffleStep(oldpairs, n.C, m.round, n.Inf, m.h)
+    for _, cl := range nodes {
+      go n.sendProof(proofmsg{
+        instr.Proof, instr.Pairs, oldpairs, instr.H
+      }, cl)
+    }
 		if instr.To == nil {
 			for _, cl := range clients {
-				go n.sendMsg(msg{instr.Pairs, m.round+1, instr.H}, cl)
+				go n.sendMsg(msg{instr.Pairs, m.round + 1, instr.H}, cl)
 			}
 		} else {
-			for _, cl := range nodes {
-				go n.sendProof(proofmsg{instr.Proof, instr.Pairs, oldpairs, instr.H}, cl)
-			}
 			chunk := len(instr.Pairs.Y) / len(instr.To)
 			if chunk*len(instr.To) != len(instr.Pairs.Y) {
 				fmt.Printf("Round %d: cannot divide cleanly\n", m.round+1)
 				chunk = len(instr.Pairs.Y)
 			}
 			for _, to := range instr.To {
-				go n.sendMsg(msg{instr.Pairs, m.round+1, instr.H}, nodes[to])
+				go n.sendMsg(msg{instr.Pairs, m.round + 1, instr.H}, nodes[to])
 			}
 		}
 	}
 }
 
-func printProof(p proofmsg) {
+func printProof(p Proof) {
 	fmt.Printf("Received proof of wrongdoing\n")
 }
 
 func printMsg(m msg) {
-	for _,y := range m.pairs.Y {
+	for _, y := range m.pairs.Y {
 		d, e := y.Data()
 		if e != nil {
 			fmt.Printf("Data got corrupted")
@@ -225,11 +220,11 @@ func (n Node) sendMsg(m msg, uri string) {
 			time.Sleep(1)
 			continue
 		}
-		conn.Write([]byte{0})
-		binary.Write(conn, binary.BigEndian, m.round)
+		conn.Write([]byte{0})                         // Pair message indicator
+		binary.Write(conn, binary.BigEndian, m.round) // Round number
 		conn.SetReadDeadline(time.Now().Add(n.Inf.ResendTime))
 		okBuf := make([]byte, 1)
-		_, err = conn.Read(okBuf)
+		_, err = conn.Read(okBuf) // Check if the round number of ok
 		if err == nil {
 			writer := bufio.NewWriter(conn)
 			binary.Write(writer, binary.BigEndian, len(m.pairs.X))
@@ -255,7 +250,7 @@ func (n Node) StartClient(nodes []string, s string, port string) {
 	r := n.Inf.Suite.Cipher(abstract.RandomKey)
 	msgPoint, _ := n.Inf.Suite.Point().Pick([]byte(s), r)
 	pairs, H, sendTo := n.S.Setup(msgPoint, n.C, n.Inf)
-	go n.sendMsg(msg{pairs,0,H}, nodes[sendTo])
+	go n.sendMsg(msg{pairs, 0, H}, nodes[sendTo])
 
 	// Receive messages from everybody
 	ln, err := net.Listen("tcp", port)

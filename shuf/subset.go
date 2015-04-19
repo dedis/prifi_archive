@@ -33,7 +33,7 @@ func NewSubsetShuffle(seed int64, size int, total int) *SubsetShuffle {
 			s.directions[ip] = -1
 		}
 	}
-	// fmt.Printf("%v\n", *s)
+	fmt.Printf("%v\n", *s)
 	return s
 }
 
