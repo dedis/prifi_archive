@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// A message containing the newest shuffled order
 type msg struct {
 	pairs shuf.Elgamal
 	round int
@@ -15,27 +16,20 @@ type msg struct {
 	ack   *bool
 }
 
-type proofmsg struct {
-	proof    []byte
-	newpairs shuf.Elgamal
-	oldpairs shuf.Elgamal
-	h        abstract.Point
-}
-
 func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 
 	// Fake internet
 	chans := make([]chan msg, inf.NumNodes)
-	proofs := make([]chan proofmsg, inf.NumNodes)
+	proofs := make([]chan shuf.Proof, inf.NumNodes)
 	result := make([]chan shuf.Elgamal, inf.NumClients)
-	cproofs := make([]chan proofmsg, inf.NumClients)
+	cproofs := make([]chan shuf.Proof, inf.NumClients)
 	for i := range result {
 		result[i] = make(chan shuf.Elgamal)
-		cproofs[i] = make(chan proofmsg)
+		cproofs[i] = make(chan shuf.Proof)
 	}
 	for i := range chans {
 		chans[i] = make(chan msg)
-		proofs[i] = make(chan proofmsg)
+		proofs[i] = make(chan shuf.Proof)
 	}
 
 	// Start the Shufflers
@@ -45,7 +39,7 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs []abstract.Point, wg *sync
 		go func(i int) {
 			for {
 				p := <-proofs[i]
-				err := s.VerifyShuffle(p.newpairs, p.oldpairs, p.h, inf, p.proof)
+				err := shuf.VerifyProof(inf, p)
 				if err != nil {
 					fmt.Printf("Node %v found a proof error: %s\n", i, err.Error())
 					for cl := range cproofs {
@@ -78,26 +72,35 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs []abstract.Point, wg *sync
 				// Shuffling step
 				oldpairs := shuf.Elgamal{xs, ys}
 				instr := s.ShuffleStep(oldpairs, i, round, inf, H)
+				if instr.ShufProof != nil && instr.DecryptProof != nil {
+					for cl := range proofs {
+						proofs[cl] <- shuf.Proof{
+							ShufProof:    instr.ShufProof,
+							DecryptProof: instr.DecryptProof,
+							PlainPairs:   instr.PlainPairs,
+							ShufPairs:    instr.ShufPairs,
+							OldPairs:     oldpairs,
+							H:            H,
+						}
+					}
+				}
 				if instr.To == nil {
 					for cl := range result {
-						result[cl] <- instr.Pairs
+						result[cl] <- instr.NewPairs
 					}
 				} else {
-					for cl := range proofs {
-						proofs[cl] <- proofmsg{instr.Proof, instr.Pairs, oldpairs, instr.H}
-					}
-					chunk := len(instr.Pairs.Y) / len(instr.To)
-					if chunk*len(instr.To) != len(instr.Pairs.Y) {
+					chunk := len(instr.NewPairs.Y) / len(instr.To)
+					if chunk*len(instr.To) != len(instr.NewPairs.Y) {
 						fmt.Printf("Node %v round %v cannot divide cleanly\n", i, round+1)
-						chunk = len(instr.Pairs.Y)
+						chunk = len(instr.NewPairs.Y)
 					}
 					pairIdx := 0
 					for _, to := range instr.To {
 						go func(pairIdx int, to int) {
 							ack := false
 							gml := shuf.Elgamal{
-								instr.Pairs.X[pairIdx : pairIdx+chunk],
-								instr.Pairs.Y[pairIdx : pairIdx+chunk],
+								instr.NewPairs.X[pairIdx : pairIdx+chunk],
+								instr.NewPairs.Y[pairIdx : pairIdx+chunk],
 							}
 							m := msg{gml, round + 1, instr.H, &ack}
 							for !ack {
@@ -138,7 +141,7 @@ func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs []abstract.Point, wg *sync
 		go func(i int, done *bool) {
 			for !(*done) {
 				p := <-cproofs[i]
-				err := s.VerifyShuffle(p.newpairs, p.oldpairs, p.h, inf, p.proof)
+				err := shuf.VerifyProof(inf, p)
 				if err != nil {
 					fmt.Printf("Client %v found a proof error: %s\n", i, err.Error())
 					*done = true

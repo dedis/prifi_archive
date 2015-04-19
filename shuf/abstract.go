@@ -2,7 +2,10 @@ package shuf
 
 import (
 	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/proof"
+	"github.com/dedis/crypto/shuffle"
 	"math/rand"
+	"strconv"
 	"time"
 )
 
@@ -13,11 +16,25 @@ type Elgamal struct {
 }
 
 // Where to send a list of pairs next
+// SHOULD optimize this (remove redundant Xs)
 type RouteInstr struct {
-	To    []int
-	Pairs Elgamal
-	Proof []byte
-	H     abstract.Point
+	To           []int
+	ShufPairs    Elgamal
+	NewPairs     Elgamal
+	PlainPairs   Elgamal
+	ShufProof    []byte
+	DecryptProof []byte
+	H            abstract.Point
+}
+
+// A proof to be verified
+type Proof struct {
+	ShufProof    []byte
+	DecryptProof []byte
+	PlainPairs   Elgamal
+	ShufPairs    Elgamal
+	OldPairs     Elgamal
+	H            abstract.Point
 }
 
 // Shuffle methods
@@ -26,7 +43,6 @@ type Shuffle interface {
 		node int, round int, inf *Info, H abstract.Point) RouteInstr
 	Setup(msg abstract.Point, client int, inf *Info) (Elgamal, abstract.Point, int)
 	ActiveRounds(node int, inf *Info) []int
-	VerifyShuffle(newPairs, oldPairs Elgamal, H abstract.Point, inf *Info, prf []byte) error
 }
 
 // Information collectively aggreed upon beforehand
@@ -63,16 +79,74 @@ func OnionEncrypt(msgs []abstract.Point, inf *Info,
 }
 
 // Decrypt a list of pairs, removing the node's part of the shared parameter
-func decryptPairs(pairs Elgamal, inf *Info, node int,
-	H abstract.Point) (Elgamal, abstract.Point) {
+func DecryptPairs(pairs Elgamal, inf *Info, node int,
+	H abstract.Point) (Elgamal, abstract.Point, []byte, error) {
+
+	newPairs := NewElgamal(len(pairs.X))
 	negKey := inf.Suite.Secret().Neg(inf.PrivKey(node))
+	var p proof.Predicate
+	sec := map[string]abstract.Secret{"-h": negKey, "1": inf.Suite.Secret().One()}
+	pub := map[string]abstract.Point{}
 	for i := range pairs.X {
-		pairs.Y[i] = inf.Suite.Point().Add(inf.Suite.Point().Mul(pairs.X[i], negKey), pairs.Y[i])
+		xname := "X" + strconv.Itoa(i)
+		mname := "M" + strconv.Itoa(i)
+		yname := "Y" + strconv.Itoa(i)
+		pub[xname] = pairs.X[i]
+		pub[yname] = pairs.Y[i]
+		if p == nil {
+			p = proof.Rep(mname, "-h", xname, "1", yname)
+		} else {
+			p = proof.And(p, proof.Rep(mname, "-h", xname, "1", yname))
+		}
+		newPairs.Y[i] = inf.Suite.Point().Add(inf.Suite.Point().Mul(pairs.X[i], negKey), pairs.Y[i])
+		newPairs.X[i] = pairs.X[i]
+		pub[mname] = newPairs.Y[i]
 	}
+	var newH abstract.Point
 	if H != nil {
-		H = inf.Suite.Point().Add(inf.Suite.Point().Mul(nil, negKey), H)
+		newH = inf.Suite.Point().Add(inf.Suite.Point().Mul(nil, negKey), H)
 	}
-	return pairs, H
+	rand := inf.Suite.Cipher(nil)
+	prover := p.Prover(inf.Suite, sec, pub, nil)
+	proof, proofErr := proof.HashProve(inf.Suite, "", rand, prover)
+	return newPairs, newH, proof, proofErr
+}
+
+func NewElgamal(i int) Elgamal {
+	X := make([]abstract.Point, i)
+	Y := make([]abstract.Point, i)
+	return Elgamal{X, Y}
+}
+
+// Verify a decryption and shuffle
+func VerifyProof(inf *Info, p Proof) error {
+
+	// Verify the shuffle
+	verifier := shuffle.Verifier(inf.Suite, nil, p.H,
+		p.OldPairs.X, p.OldPairs.Y, p.ShufPairs.X, p.ShufPairs.Y)
+	e1 := proof.HashVerify(inf.Suite, "PairShuffle", verifier, p.ShufProof)
+	if e1 != nil {
+		return e1
+	}
+
+	// Verify the decryption
+	var pred proof.Predicate
+	pub := map[string]abstract.Point{}
+	for i := range p.PlainPairs.X {
+		xname := "X" + strconv.Itoa(i)
+		mname := "M" + strconv.Itoa(i)
+		yname := "Y" + strconv.Itoa(i)
+		pub[xname] = p.ShufPairs.X[i]
+		pub[yname] = p.ShufPairs.Y[i]
+		pub[mname] = p.PlainPairs.Y[i]
+		if pred == nil {
+			pred = proof.Rep(mname, "-h", xname, "1", yname)
+		} else {
+			pred = proof.And(pred, proof.Rep(mname, "-h", xname, "1", yname))
+		}
+	}
+	verifier2 := pred.Verifier(inf.Suite, pub)
+	return proof.HashVerify(inf.Suite, "", verifier2, p.DecryptProof)
 }
 
 // Generic deal function
@@ -107,6 +181,7 @@ func xrange(extent int) []int {
 	return result
 }
 
+// Break a slice into chunks of the given size
 func chunks(in []int, size int) [][]int {
 	result := make([][]int, len(in)/size)
 	for c := range result {

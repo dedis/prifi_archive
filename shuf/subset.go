@@ -47,17 +47,30 @@ func (s SubsetShuffle) ActiveRounds(node int, inf *Info) []int {
 func (s SubsetShuffle) ShuffleStep(pairs Elgamal,
 	node int, round int, inf *Info, H abstract.Point) RouteInstr {
 
+	// Shuffle it and decrypt it
 	c := inf.Suite.Cipher(nil)
 	xx, yy, prover := shuffle.Shuffle(inf.Suite, nil, H, pairs.X, pairs.Y, c)
 	prf, err := proof.HashProve(inf.Suite, "PairShuffle", c, prover)
 	if err != nil {
 		fmt.Printf("Error creating proof: %s\n", err.Error())
 	}
-	pairs.X = xx
-	pairs.Y = yy
-	pairs, H = decryptPairs(pairs, inf, node, H)
-	instr := RouteInstr{Pairs: pairs, H: H, Proof: prf}
+	shufPairs := Elgamal{xx, yy}
+	var prf2 []byte
+	var err2 error
+	pairs, H, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
+	if err2 != nil {
+		fmt.Printf("Error creating proof2: %s\n", err.Error())
+	}
 
+	// Send it on its way
+	instr := RouteInstr{
+		ShufPairs:    shufPairs,
+		PlainPairs:   pairs,
+		NewPairs:     pairs,
+		H:            H,
+		ShufProof:    prf,
+		DecryptProof: prf2,
+	}
 	p := s.directions[node]
 	if p > 0 {
 		instr.To = []int{p}
@@ -70,10 +83,4 @@ func (s SubsetShuffle) Setup(msg abstract.Point, client int,
 	X, Y, H := OnionEncrypt([]abstract.Point{msg}, inf, s.flow)
 	elg := Elgamal{X, Y}
 	return elg, H, s.start
-}
-
-func (s SubsetShuffle) VerifyShuffle(newPairs, oldPairs Elgamal,
-	H abstract.Point, inf *Info, prf []byte) error {
-	verifier := shuffle.Verifier(inf.Suite, nil, H, oldPairs.X, oldPairs.Y, newPairs.X, newPairs.Y)
-	return proof.HashVerify(inf.Suite, "PairShuffle", verifier, prf)
 }

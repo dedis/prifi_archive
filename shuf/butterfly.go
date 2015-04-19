@@ -39,12 +39,6 @@ func (s Butterfly) Setup(msg abstract.Point, client int, inf *Info) (Elgamal, ab
 	return elg, H, s.startGroup[g][0]
 }
 
-func (s Butterfly) VerifyShuffle(newPairs, oldPairs Elgamal,
-	H abstract.Point, inf *Info, prf []byte) error {
-	verifier := shuffle.Verifier(inf.Suite, nil, H, oldPairs.X, oldPairs.Y, newPairs.X, newPairs.Y)
-	return proof.HashVerify(inf.Suite, "PairShuffle", verifier, prf)
-}
-
 func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 	round int, inf *Info, H abstract.Point) RouteInstr {
 
@@ -56,12 +50,22 @@ func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 	if err != nil {
 		fmt.Printf("Error creating proof: %s\n", err.Error())
 	}
-	pairs.X = xx
-	pairs.Y = yy
-	pairs, H = decryptPairs(pairs, inf, node, H)
+	shufPairs := Elgamal{xx, yy}
+	var prf2 []byte
+	var err2 error
+	pairs, H, prf2, err2 = DecryptPairs(shufPairs, inf, node, H)
+	if err2 != nil {
+		fmt.Printf("Error creating proof2: %s\n", err.Error())
+	}
 
 	// Send it on its way
-	instr := RouteInstr{Pairs: pairs, H: H, Proof: prf}
+	instr := RouteInstr{
+		ShufPairs:    shufPairs,
+		PlainPairs:   pairs,
+		H:            H,
+		ShufProof:    prf,
+		DecryptProof: prf2,
+	}
 	ri := s.directions[node]
 	if ri.nextNeff[round] >= 0 {
 		instr.To = []int{ri.nextNeff[round]}
@@ -71,7 +75,7 @@ func (s Butterfly) ShuffleStep(pairs Elgamal, node int,
 
 		// Add more onion encryption
 		pairs.X, pairs.Y, instr.H = OnionEncrypt(pairs.Y, inf, gj.left)
-		instr.Pairs = pairs
+		instr.NewPairs = pairs
 	}
 	return instr
 }
