@@ -31,6 +31,11 @@ type cFile struct {
 
 func main() {
 
+	if len(os.Args) < 2 {
+		fmt.Printf("Usage: gochan [config]\n")
+		os.Exit(1)
+	}
+
 	// Read the config
 	configFile := os.Args[1]
 	f, err := os.Open(configFile)

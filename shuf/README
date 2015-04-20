@@ -88,7 +88,7 @@ run on a networked cluster of machines. Tests may be invoked as follows:
 
 client [id] [configFile] [nodeURIs] [nodePubKeys] [message]
 server [id] [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [privKey]
-genKey [id] [configFile]
+genkey [pubkeyFile] [privkeyFile]
 
 At a higher level, we provide scripts, which require login access to all nodes
 and clients without a password.

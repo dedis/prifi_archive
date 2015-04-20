@@ -1,31 +1,36 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/edwards/ed25519"
 	"github.com/dedis/prifi/shuf"
 	"github.com/dedis/prifi/shuf/netchan"
-	"time"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
-	"bufio"
+	"time"
 )
 
-// client id [configFile] [nodeURIs] [nodePubKeys] message
 func main() {
+
+	if len(os.Args) < 6 {
+		fmt.Printf("Usage: client id [configFile] [nodeURIs] [nodePubKeys] message\n")
+		os.Exit(1)
+	}
+
 	// Parse the args
 	id, cerr := strconv.Atoi(os.Args[1])
 	netchan.Check(cerr)
-  configFile := os.Args[2]
-  nodesFile := os.Args[3]
-  pubKeysDir := os.Args[4]
-  message := os.Args[5]
+	configFile := os.Args[2]
+	nodesFile := os.Args[3]
+	pubKeysDir := os.Args[4]
+	message := os.Args[5]
 
-  // Read the config
-  f, err := os.Open(configFile)
-  netchan.Check(err)
+	// Read the config
+	f, err := os.Open(configFile)
+	netchan.Check(err)
 	dec := json.NewDecoder(f)
 	var c netchan.CFile
 	err = dec.Decode(&c)
@@ -35,15 +40,15 @@ func main() {
 	// Read the public keys
 	suite := ed25519.NewAES128SHA256Ed25519(true)
 	pubKeys := make([]abstract.Point, c.NumNodes)
-	for i :=0; i < c.NumNodes; i++ {
-		f, err = os.Open(filepath.Join(pubKeysDir, strconv.Itoa(i)))
+	for i := 0; i < c.NumNodes; i++ {
+		f, err = os.Open(filepath.Join(pubKeysDir, strconv.Itoa(i)+".pub"))
 		pubKeys[i] = suite.Point()
 		pubKeys[i].UnmarshalFrom(f)
 		f.Close()
 	}
-	privKeyFn := func(i int) abstract.Secret {panic("Cannot lookup key")}
+	privKeyFn := func(i int) abstract.Secret { panic("Cannot lookup key") }
 
-	 // Create the info
+	// Create the info
 	inf := shuf.Info{
 		Suite:      suite,
 		PrivKey:    privKeyFn,
