@@ -167,7 +167,7 @@ func (v *Views) NewViewFromPrev(view int, parent string) {
 		return
 	}
 	children := append(peers[:i], peers[i+1:]...)
-	NewView(view, parent, children, v.Views[view-1].HostList)
+	v.NewView(view, parent, children, v.Views[view-1].HostList)
 }
 
 func (vs *Views) AddPeerToHostlist(view int, name string) {

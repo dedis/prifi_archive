@@ -267,6 +267,10 @@ func (h *TCPHost) NewView(view int, parent string, children []string, hostlist [
 	h.views.NewView(view, parent, children, hostlist)
 }
 
+func (h *TCPHost) NewViewFromPrev(view int, parent string) {
+	h.views.NewViewFromPrev(view, parent)
+}
+
 // Close closes all the connections currently open.
 func (h *TCPHost) Close() {
 	log.Println("tcphost: closing")

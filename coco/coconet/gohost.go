@@ -217,6 +217,10 @@ func (h *GoHost) NewView(view int, parent string, children []string, hoslist []s
 	h.views.NewView(view, parent, children, hoslist)
 }
 
+func (h *GoHost) NewViewFromPrev(view int, parent string) {
+	h.views.NewViewFromPrev(view, parent)
+}
+
 func (h *GoHost) Parent(view int) string {
 	return h.views.Parent(view)
 }

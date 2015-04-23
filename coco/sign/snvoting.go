@@ -32,11 +32,30 @@ func (sn *Node) ApplyVote(v *Vote) {
 	case ShutdownVT:
 		sn.Close()
 	default:
+		log.Errorln("applyvote: unkown vote type")
 	}
 }
 
 func (sn *Node) AddAction(view int, v *Vote) {
 	sn.Actions[view] = append(sn.Actions[view], v)
+}
+
+func (sn *Node) ApplyAction(view int, v *Vote) {
+	switch v.Type {
+	case AddVT:
+		sn.AddPeerToHostlist(view, v.Av.Name)
+		if sn.Name() == v.Av.Parent {
+			sn.ConnectTo(v.Av.Name)
+			sn.AddChildren(view, v.Av.Name)
+		}
+	case RemoveVT:
+		// removes node from Hostlist, and from children list
+		sn.RemovePeer(view, v.Av.Name)
+		// not closing TCP connection on remove because if view
+		// does not go through, connection essential to old/ current view closed
+	default:
+		log.Errorln("applyvote: unkown action type")
+	}
 }
 
 func (sn *Node) AddSelf(parent string) error {
@@ -91,9 +110,9 @@ func (sn *Node) StartGossip() {
 	go func() {
 		t := time.Tick(GOSSIP_TIME)
 		for _ = range t {
-			c := append(sn.Children(sn.ViewNo), sn.Parent(sn.ViewNo))
+			c := sn.HostListOn(sn.ViewNo)
 			from := c[sn.Rand.Int()%len(c)]
-			sn.CatchUp(atomic.LoadInt64(&sn.LastAppliedVote)+1, from)
+			sn.CatchUp(int(atomic.LoadInt64(&sn.LastAppliedVote)+1), from)
 		}
 	}()
 }

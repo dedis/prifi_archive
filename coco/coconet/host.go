@@ -33,6 +33,8 @@ type Host interface {
 	// with the specified parent and children.
 	NewView(view int, parent string, children []string, hostlist []string)
 
+	NewViewFromPrev(view int, parent string)
+
 	// Returns map of this host's views
 	Views() *Views
 

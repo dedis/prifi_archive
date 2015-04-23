@@ -9,23 +9,28 @@ import (
 	"github.com/dedis/prifi/coco/coconet"
 )
 
-func (sn *Node) SetupProposal(view int, am *AnouncementMessage, from string) error {
+func (sn *Node) SetupProposal(view int, am *AnnouncementMessage, from string) error {
 	// if this is for viewchanges: otherwise new views are not allowed
 	if am.Vote.Type == ViewChangeVT {
 		// viewchange votes must be received from the new parent on the new view
-		if view != am.Vote.Vc.View {
+		if view != am.Vote.Vcv.View {
 			log.Errorln("recieved view change vote on different view")
 			return errors.New("view change attempt on view != received view")
 		}
 		// ensure that we are caught up
-		if sn.LastAppliedVote != sn.LastSeenVote {
+		if int(sn.LastAppliedVote) != sn.LastSeenVote {
 			log.Errorln("received vote: but not up to date: need to catch up")
 			return errors.New("not up to date: need to catch up")
 		}
+		if sn.RootFor(am.Vote.Vcv.View) == am.Vote.Vcv.Root {
+			log.Errorln("received vote: but invalid root")
+			return errors.New("invalid root for proposed view")
+		}
+
 		nextview := sn.ViewNo + 1
 		for ; nextview < view; nextview++ {
 			sn.NewViewFromPrev(nextview, from)
-			for act := range sn.Actions[nextview] {
+			for _, act := range sn.Actions[nextview] {
 				sn.ApplyAction(nextview, act)
 			}
 		}
@@ -48,7 +53,7 @@ func (sn *Node) SetupProposal(view int, am *AnouncementMessage, from string) err
 			return errors.New("unable to change past views")
 		}
 	}
-
+	return nil
 }
 
 // A propose for a view change would come on current view + sth

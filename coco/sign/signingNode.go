@@ -79,8 +79,8 @@ type Node struct {
 	// notify the maker of the sn what role sn plays in the new view
 	viewChangeCh chan string
 	ChangingView bool // TRUE if node is currently engaged in changing the view
-	AmNextRoot   bool // determined when new view is needed
-	ViewNo       int  // *only* used by Root( by annoucer)
+	// AmNextRoot   bool // determined when new view is needed
+	ViewNo int // *only* used by Root( by annoucer)
 
 	timeout  time.Duration
 	timeLock sync.RWMutex
@@ -248,25 +248,28 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 func (sn *Node) StartVotingRound(v *Vote) error {
 	sn.nRounds = sn.LastSeenRound
 
-	// report view is being changed, and sleep before retrying
-	if sn.ChangingView {
+	// during view changes, only accept view change related votes
+	if sn.ChangingView && v.Vcv == nil {
 		log.Println(sn.Name(), "start signing round: changingViewError")
 		return ChangingViewError
 	}
 
 	sn.nRounds++
 	v.Round = sn.nRounds
-	v.View = sn.ViewNo // TODO: unify view-tracking variables
 	v.Index = sn.LastSeenVote + 1
 	v.Count = &Count{}
 	v.Confirmed = false
-	if v.Av != nil {
+	// only default fill-in view numbers when not prefilled
+	if v.View == 0 {
+		v.View = sn.ViewNo
+	}
+	if v.Av != nil && v.Av.View == 0 {
 		v.Av.View = sn.ViewNo + 1
 	}
-	if v.Rv != nil {
+	if v.Rv != nil && v.Rv.View == 0 {
 		v.Rv.View = sn.ViewNo + 1
 	}
-	if v.Vcv != nil {
+	if v.Vcv != nil && v.Vcv.View == 0 {
 		v.Vcv.View = sn.ViewNo + 1
 	}
 	return sn.StartAnnouncement(

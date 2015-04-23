@@ -1,16 +1,14 @@
 package sign
 
-import (
-	log "github.com/Sirupsen/logrus"
-	"golang.org/x/net/context"
-)
-
 func (sn *Node) ChangeView(vcv *ViewChangeVote) {
 	// at this point actions have already been applied
 	// all we need to do is switch our default view
-	sn.ViewNo = view
+	sn.ViewNo = vcv.View
+
+	// TODO: garbage collect old connections
 }
 
+/*
 func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) error {
 	sn.ChangingView = true
 
@@ -87,3 +85,4 @@ func (sn *Node) ViewChanged(view int, sm *SigningMessage) {
 	sn.multiplexOnChildren(view, sm)
 	log.Println(sn.Name(), " exited view CHANGE to", view)
 }
+*/

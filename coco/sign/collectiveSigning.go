@@ -67,9 +67,9 @@ func (sn *Node) get() error {
 
 			// don't act on future view if not caught up, must be done after updating vote index
 			if sm.View > sn.ViewNo {
-				if sn.LastSeenVote != sn.LastAppliedVote {
+				if sn.LastSeenVote != int(sn.LastAppliedVote) {
 					log.Warnln("not caught up for view change", sn.LastSeenVote, sn.LastAppliedVote)
-					return
+					return errors.New("not caught up for view change")
 				}
 			}
 
@@ -88,7 +88,7 @@ func (sn *Node) get() error {
 				// log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 				var err error
 				if sm.Am.Vote != nil {
-					err = sn.Propose(sm.View, sm.Am)
+					err = sn.Propose(sm.View, sm.Am, sm.From)
 				} else {
 					err = sn.Announce(sm.View, sm.Am)
 				}
@@ -160,41 +160,7 @@ func (sn *Node) get() error {
 				// put in votelog to be streamed and applied
 				sn.VoteLog.Put(vi, sm.Curesp.Vote)
 				// continue catching up
-				sn.CatchUp(vi+1, from)
-			case ViewChange:
-				// if we have already seen this view before skip it
-				if sm.View <= sn.ViewNo {
-					log.Errorf("VIEWCHANGE: already seen this view: %d <= %d", sm.View, sn.ViewNo, sm.From)
-					continue
-				}
-				sn.ViewNo = sm.View
-				sn.StopHeartbeat()
-				log.Printf("Host (%s) VIEWCHANGE", sn.Name(), sm.Vcm)
-				if err := sn.ViewChange(sm.View, sm.From, sm.Vcm); err != nil {
-					if err == coconet.ErrClosed || err == io.EOF {
-						sn.closed <- io.EOF
-						sn.Close()
-					}
-					log.Errorln("view change error:", err)
-				}
-			case ViewAccepted:
-				if sm.View < sn.ViewNo {
-					log.Errorf("VIEW ACCEPTED: already seen this view: %d < %d", sm.View, sn.ViewNo)
-					continue
-				}
-				log.Printf("Host (%s) VIEWACCEPTED", sn.Name())
-				sn.StopHeartbeat()
-				// sn.VamChLock.Lock()
-				// sn.VamCh <- sm
-				// sn.VamChLock.Unlock()
-			case ViewConfirmed:
-				if sm.View < sn.ViewNo {
-					log.Errorf("VIEW CONFIRMED: already seen this view: %d < %d", sm.View, sn.ViewNo)
-					continue
-				}
-				// log.Printf("Host (%s) VIEW CONFIRMED", sn.Name())
-				sn.StopHeartbeat()
-				sn.ViewChanged(sm.Vcfm.ViewNo, sm)
+				sn.CatchUp(vi+1, sm.From)
 			case Error:
 				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
@@ -491,43 +457,37 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 	if sn.TimeForViewChange() {
 		log.Println("acting on responses: trying viewchanges")
-		sn.TryViewChange(view + 1)
+		err := sn.TryViewChange(view + 1)
+		if err != nil {
+			log.Errorln(err)
+		}
 	}
 
 	return err
 }
 
-func (sn *Node) TryViewChange(view int) {
+func (sn *Node) TryViewChange(view int) error {
 	// should ideally be compare and swap
 	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", sn.ViewNo)
 	if view <= sn.ViewNo {
-		log.Println("view < sn.ViewNo")
-		return
+		return errors.New("trying to view change on previous/ current view")
 	}
 	if sn.ChangingView {
-		log.Errorln("cannot try view change: already chaning view")
-		return
+		return ChangingViewError
 	}
 	sn.ChangingView = true
 
-	// check who the new view root it
-	sn.AmNextRoot = false
-	var rfv string
-	if rfv = sn.RootFor(view); rfv == sn.Name() {
-		sn.AmNextRoot = true
-	}
-	log.Println(sn.Name(), "thinks", rfv, "should be root for view", view)
-
 	// take action if new view root
-	if sn.AmNextRoot {
+	var err error
+	if sn.Name() == sn.RootFor(view) {
 		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
-		// create new view
-		nextViewNo := view
-		nextParent := ""
-		vcm := &ViewChangeMessage{ViewNo: nextViewNo, Round: sn.LastSeenRound + 1}
-
-		sn.ViewChange(nextViewNo, nextParent, vcm)
+		err = sn.StartVotingRound(
+			&Vote{
+				Vcv: &ViewChangeVote{
+					View: view,
+					Root: sn.Name()}})
 	}
+	return err
 }
 
 // Called *only* by root node after receiving all commits
