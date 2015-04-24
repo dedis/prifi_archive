@@ -65,7 +65,7 @@ func NewGoHost(hostname string, dir *GoDirectory) *GoHost {
 	h := &GoHost{name: hostname,
 		views:   NewViews(),
 		dir:     dir,
-		msgchan: make(chan NetworkMessg, 10)}
+		msgchan: make(chan NetworkMessg, 0)}
 	h.peers = make(map[string]Conn)
 	h.PeerLock = sync.RWMutex{}
 	h.Ready = make(map[string]bool)

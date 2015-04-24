@@ -130,8 +130,8 @@ func (sn *Node) initCommitCrypto(Round int) {
 
 func (sn *Node) setUpRound(view int, am *AnnouncementMessage) error {
 	// TODO: accept annoucements on old views?? linearizabiltity?
-	if sn.ChangingView {
-		log.Println("currently chaning view")
+	if sn.ChangingView && am.Vote.Vcv == nil {
+		log.Println(sn.Name(), "currently chaning view")
 		return ChangingViewError
 	}
 

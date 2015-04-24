@@ -21,6 +21,8 @@ func (sn *Node) ApplyVotes(ch chan *Vote) {
 
 func (sn *Node) ApplyVote(v *Vote) {
 	atomic.StoreInt64(&sn.LastAppliedVote, int64(v.Index))
+	lav := atomic.LoadInt64(&sn.LastAppliedVote)
+	sn.LastSeenVote = max(sn.LastSeenVote, int(lav))
 
 	switch v.Type {
 	case ViewChangeVT:

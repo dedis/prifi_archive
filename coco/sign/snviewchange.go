@@ -1,10 +1,21 @@
 package sign
 
+import "log"
+
 func (sn *Node) ChangeView(vcv *ViewChangeVote) {
+	// log.Println(sn.Name(), " in CHANGE VIEW")
 	// at this point actions have already been applied
 	// all we need to do is switch our default view
 	sn.ViewNo = vcv.View
+	if sn.RootFor(vcv.View) == sn.Name() {
+		log.Println(sn.Name(), "CHANGE VIEW TO ROOT")
+		sn.viewChangeCh <- "root"
+	} else {
+		log.Println(sn.Name(), "CHANGE VIEW TO REGULAR")
+		sn.viewChangeCh <- "regular"
+	}
 
+	sn.ChangingView = false
 	// TODO: garbage collect old connections
 }
 

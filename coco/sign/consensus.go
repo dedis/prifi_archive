@@ -2,6 +2,8 @@ package sign
 
 import (
 	"errors"
+	"fmt"
+	"os"
 
 	"golang.org/x/net/context"
 
@@ -19,21 +21,23 @@ func (sn *Node) SetupProposal(view int, am *AnnouncementMessage, from string) er
 		}
 		// ensure that we are caught up
 		if int(sn.LastAppliedVote) != sn.LastSeenVote {
-			log.Errorln("received vote: but not up to date: need to catch up")
+			log.Errorln(sn.Name(), "received vote: but not up to date: need to catch up", sn.LastAppliedVote, sn.LastSeenVote)
 			return errors.New("not up to date: need to catch up")
 		}
-		if sn.RootFor(am.Vote.Vcv.View) == am.Vote.Vcv.Root {
-			log.Errorln("received vote: but invalid root")
+		if sn.RootFor(am.Vote.Vcv.View) != am.Vote.Vcv.Root {
+			log.Errorln("received vote: but invalid root", sn.RootFor(am.Vote.Vcv.View), am.Vote.Vcv.Root)
 			return errors.New("invalid root for proposed view")
 		}
 
 		nextview := sn.ViewNo + 1
-		for ; nextview < view; nextview++ {
+		for ; nextview <= view; nextview++ {
 			sn.NewViewFromPrev(nextview, from)
 			for _, act := range sn.Actions[nextview] {
 				sn.ApplyAction(nextview, act)
 			}
 		}
+		fmt.Fprintln(os.Stderr, sn.Name(), "setuppropose:", sn.HostListOn(view))
+		fmt.Fprintln(os.Stderr, sn.Name(), "setuppropose:", sn.Parent(view))
 	} else {
 		if view != sn.ViewNo {
 			log.Errorln("cannot vote on not-current view")
@@ -68,12 +72,17 @@ func (sn *Node) Propose(view int, am *AnnouncementMessage, from string) error {
 	if err := sn.setUpRound(view, am); err != nil {
 		return err
 	}
+	// log.Println(sn.Name(), "propose on view", view, sn.HostListOn(view))
 	sn.Rounds[am.Round].Vote = am.Vote
 
 	// Inform all children of proposal
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren(view))
 	for i := range messgs {
-		sm := SigningMessage{Type: Announcement, View: view, Am: am}
+		sm := SigningMessage{
+			Type:         Announcement,
+			View:         view,
+			LastSeenVote: sn.LastSeenVote,
+			Am:           am}
 		messgs[i] = &sm
 	}
 	ctx := context.TODO()
@@ -83,6 +92,7 @@ func (sn *Node) Propose(view int, am *AnnouncementMessage, from string) error {
 	}
 
 	if len(sn.Children(view)) == 0 {
+		log.Println(sn.Name(), "no children")
 		sn.Promise(view, am.Round, nil)
 	}
 	return nil
@@ -146,12 +156,13 @@ func (sn *Node) actOnPromises(view, Round int) error {
 			Round: Round}
 
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
-		log.Println(sn.Name(), "puts up promise")
+		// log.Println(sn.Name(), "puts up promise on view", view, "to", sn.Parent(view))
 		ctx := context.TODO()
 		err = sn.PutUp(ctx, view, &SigningMessage{
-			View: view,
-			Type: Commitment,
-			Com:  com})
+			View:         view,
+			Type:         Commitment,
+			LastSeenVote: sn.LastSeenVote,
+			Com:          com})
 	}
 	return err
 }
@@ -172,10 +183,8 @@ func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
 	if round.Vote != nil {
 		// append vote to vote log
 		// potentially initiates signing node action based on vote
-		log.Errorln("acting on votes")
 		sn.actOnVotes(view, chm.Vote)
 	}
-	log.Errorln("sending children challenges")
 	if err := sn.SendChildrenChallenges(view, chm); err != nil {
 		return err
 	}
@@ -188,7 +197,7 @@ func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
 }
 
 func (sn *Node) Accepted(view, Round int, sm *SigningMessage) error {
-	log.Println(sn.Name(), "GOT ", "Accepted", sm)
+	log.Println(sn.Name(), "GOT ", "Accepted")
 	// update max seen round
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
 
@@ -219,16 +228,16 @@ func (sn *Node) Accepted(view, Round int, sm *SigningMessage) error {
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
 		ctx := context.TODO()
 		return sn.PutUp(ctx, view, &SigningMessage{
-			Type: Response,
-			View: view,
-			Rm:   rm})
+			Type:         Response,
+			View:         view,
+			LastSeenVote: sn.LastSeenVote,
+			Rm:           rm})
 	}
 
 	return nil
 }
 
 func (sn *Node) actOnVotes(view int, v *Vote) {
-	log.Println(sn.Name(), "act on votes:")
 	// TODO: percentage of nodes for quorum should be parameter
 	// Basic check to validate Vote was Confirmed, can be enhanced
 	// TODO: signing node can go through list of votes and verify
@@ -246,11 +255,11 @@ func (sn *Node) actOnVotes(view int, v *Vote) {
 	// Act on vote Decision
 	if accepted {
 		sn.VoteLog.Put(v.Index, v)
-		log.Println(sn.Name(), "actOnVotes: vote has been accepted")
+		log.Println(sn.Name(), "actOnVotes: vote", v.Index, " has been accepted")
 	} else {
 		v.Type = NoOpVT
 		sn.VoteLog.Put(v.Index, v)
-		log.Println(sn.Name(), "actOnVotes: vote has been rejected")
+		log.Println(sn.Name(), "actOnVotes: vote", v.Index, " has been rejected")
 
 	}
 	// List out all votes

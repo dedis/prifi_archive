@@ -134,7 +134,7 @@ func (vl *VoteLog) Stream() chan *Vote {
 	ch := make(chan *Vote, 0)
 	go func() {
 
-		i := 0
+		i := 1
 		for {
 			if v := vl.Get(i); v != nil {
 				ch <- v

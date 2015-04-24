@@ -25,6 +25,8 @@ import (
 func (sn *Node) get() error {
 	sn.UpdateTimeout()
 	msgchan := sn.Host.Get()
+	log.Println(sn.Name(), "getting")
+	defer log.Println(sn.Name(), "done getting")
 	// heartbeat for intiating viewChanges, allows intial 500s setup time
 	sn.hbLock.Lock()
 	// sn.heartbeat = time.NewTimer(500 * time.Second)
@@ -62,8 +64,8 @@ func (sn *Node) get() error {
 			//log.Printf("got message: %#v with error %v\n", sm, err)
 			sm := nm.Data.(*SigningMessage)
 			sm.From = nm.From
+			// log.Println(sn.Name(), "received message: ", sm.Type)
 			sn.updateLastSeenVote(sm.LastSeenVote, sm.From)
-			log.Println("received message: ", sm.Type)
 
 			// don't act on future view if not caught up, must be done after updating vote index
 			if sm.View > sn.ViewNo {
@@ -73,23 +75,23 @@ func (sn *Node) get() error {
 				}
 			}
 
-			// log.Println(sn.Name(), "GOT ", sm.Type)
 			switch sm.Type {
 			// if it is a bad message just ignore it
 			default:
 				continue
 			case Announcement:
-				if !sn.IsParent(sm.View, sm.From) {
-					log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
-					continue
-				}
 				sn.ReceivedHeartbeat(sm.View)
 
 				// log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
 				var err error
 				if sm.Am.Vote != nil {
 					err = sn.Propose(sm.View, sm.Am, sm.From)
+					log.Println(sn.Name(), "done proposing")
 				} else {
+					if !sn.IsParent(sm.View, sm.From) {
+						log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
+						continue
+					}
 					err = sn.Announce(sm.View, sm.Am)
 				}
 				if err != nil {
@@ -149,14 +151,15 @@ func (sn *Node) get() error {
 				ctx := context.TODO()
 				sn.PutTo(ctx, sm.From,
 					&SigningMessage{
-						From:   sn.Name(),
-						Type:   CatchUpResp,
-						Curesp: &CatchUpResponse{Vote: v}})
+						From:         sn.Name(),
+						Type:         CatchUpResp,
+						LastSeenVote: sn.LastSeenVote,
+						Curesp:       &CatchUpResponse{Vote: v}})
 			case CatchUpResp:
-				vi := sm.Curesp.Vote.Index
-				if sm.Curesp.Vote == nil || sn.VoteLog.Get(vi) != nil {
+				if sm.Curesp.Vote == nil || sn.VoteLog.Get(sm.Curesp.Vote.Index) != nil {
 					continue
 				}
+				vi := sm.Curesp.Vote.Index
 				// put in votelog to be streamed and applied
 				sn.VoteLog.Put(vi, sm.Curesp.Vote)
 				// continue catching up
@@ -184,7 +187,11 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 	// Inform all children of announcement
 	messgs := make([]coconet.BinaryMarshaler, sn.NChildren(view))
 	for i := range messgs {
-		sm := SigningMessage{Type: Announcement, View: view, Am: am}
+		sm := SigningMessage{
+			Type:         Announcement,
+			View:         view,
+			LastSeenVote: sn.LastSeenVote,
+			Am:           am}
 		messgs[i] = &sm
 	}
 	ctx := context.TODO()
@@ -285,9 +292,10 @@ func (sn *Node) actOnCommits(view, Round int) error {
 		log.Println(sn.Name(), "puts up commit")
 		ctx := context.TODO()
 		err = sn.PutUp(ctx, view, &SigningMessage{
-			View: view,
-			Type: Commitment,
-			Com:  com})
+			View:         view,
+			Type:         Commitment,
+			LastSeenVote: sn.LastSeenVote,
+			Com:          com})
 	}
 	return err
 }
@@ -343,7 +351,6 @@ func (sn *Node) initResponseCrypto(Round int) {
 }
 
 func (sn *Node) Respond(view, Round int, sm *SigningMessage) error {
-	log.Println(sn.Name(), "in respond")
 	// update max seen round
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
 
@@ -445,9 +452,10 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
 		ctx := context.TODO()
 		err = sn.PutUp(ctx, view, &SigningMessage{
-			Type: Response,
-			View: view,
-			Rm:   rm})
+			Type:         Response,
+			View:         view,
+			LastSeenVote: sn.LastSeenVote,
+			Rm:           rm})
 	}
 
 	// root reports round is done
@@ -478,16 +486,22 @@ func (sn *Node) TryViewChange(view int) error {
 	sn.ChangingView = true
 
 	// take action if new view root
-	var err error
 	if sn.Name() == sn.RootFor(view) {
 		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
-		err = sn.StartVotingRound(
-			&Vote{
-				Vcv: &ViewChangeVote{
+		go func() {
+			err := sn.StartVotingRound(
+				&Vote{
 					View: view,
-					Root: sn.Name()}})
+					Type: ViewChangeVT,
+					Vcv: &ViewChangeVote{
+						View: view,
+						Root: sn.Name()}})
+			if err != nil {
+				log.Errorln(sn.Name(), "TRY VIEW CHANGE FAILED: ", err)
+			}
+		}()
 	}
-	return err
+	return nil
 }
 
 // Called *only* by root node after receiving all commits
@@ -573,9 +587,10 @@ func (sn *Node) PutUpError(view int, err error) {
 	// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
 	ctx := context.TODO()
 	sn.PutUp(ctx, view, &SigningMessage{
-		Type: Error,
-		View: view,
-		Err:  &ErrorMessage{Err: err.Error()}})
+		Type:         Error,
+		View:         view,
+		LastSeenVote: sn.LastSeenVote,
+		Err:          &ErrorMessage{Err: err.Error()}})
 }
 
 // Returns a secret that depends on on a message and a point

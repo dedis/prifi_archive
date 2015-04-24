@@ -201,7 +201,13 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
 	var cancelederr error
 	go func() {
-		err := sn.Announce(sn.ViewNo, am)
+		var err error
+		if am.Vote != nil {
+			err = sn.Propose(am.Vote.View, am, "")
+		} else {
+			err = sn.Announce(sn.ViewNo, am)
+		}
+
 		if err != nil {
 			log.Errorln(err)
 			cancelederr = err
@@ -246,6 +252,7 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 }
 
 func (sn *Node) StartVotingRound(v *Vote) error {
+	log.Println(sn.Name(), "start voting round")
 	sn.nRounds = sn.LastSeenRound
 
 	// during view changes, only accept view change related votes
@@ -302,6 +309,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.closing = make(chan bool, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
+	sn.viewChangeCh = make(chan string, 0)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -326,6 +334,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.closed = make(chan error, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
+	sn.viewChangeCh = make(chan string, 0)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()

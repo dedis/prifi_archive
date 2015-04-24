@@ -154,7 +154,10 @@ func (v *Views) NewViewFromPrev(view int, parent string) {
 		log.Errorln("ERROR: INVALID PREVIOUS VIEW")
 		return
 	}
-	peers := append(v.Views[view-1].Children, v.Views[view-1].Parent)
+	peers := v.Views[view-1].Children
+	if v.Views[view-1].Parent != "" {
+		peers = append(peers, v.Views[view-1].Parent)
+	}
 	// remove from peers the parent -> children
 	i := -1
 	for j, p := range peers {
@@ -162,11 +165,13 @@ func (v *Views) NewViewFromPrev(view int, parent string) {
 			i = j
 		}
 	}
-	if i == -1 {
-		log.Errorln("ERROR: INVALID NEW VIEW FROM PREV: BAD PARENT")
-		return
+
+	var children []string
+	if i != -1 {
+		children = append(peers[:i], peers[i+1:]...)
+	} else {
+		children = peers
 	}
-	children := append(peers[:i], peers[i+1:]...)
 	v.NewView(view, parent, children, v.Views[view-1].HostList)
 }
 

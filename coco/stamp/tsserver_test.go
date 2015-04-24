@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/stamp"
@@ -31,7 +29,7 @@ import (
 //    / \   \
 //   2   3   5
 func init() {
-	coco.DEBUG = true
+	sign.DEBUG = true
 }
 
 func TestTSSIntegrationHealthy(t *testing.T) {
@@ -48,8 +46,8 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 	}
 
 	// not mixing view changes with faults
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
 
@@ -59,14 +57,13 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
-// with 8 rounds and 1 round per view we see 7 successful view Changes, and 8 views
 func TestTSSViewChange1(t *testing.T) {
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 1)
-	nRounds := 3
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 2
+	nRounds := 12
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
 
@@ -74,13 +71,12 @@ func TestTSSViewChange1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
-// with 8 rounds and 3 rounds per view we see 2 successful view Changes, and 3 views
 func TestTSSViewChange2(t *testing.T) {
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 3)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 3
 	nRounds := 8
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
@@ -89,15 +85,15 @@ func TestTSSViewChange2(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 // Each View Root fails on its 3rd round of being root
 // View Change is initiated as a result
 // RoundsPerView very large to avoid other reason for ViewChange
 func TestTSSViewChangeOnRootFailure(t *testing.T) {
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 1000)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 1000
 	nRounds := 12
 	failAsRootEvery := 3     // fail on announce every 3rd round
 	failAsFollowerEvery := 0 // never fail on commit or response
@@ -106,13 +102,13 @@ func TestTSSViewChangeOnRootFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 // Faulty Followers fail every 3rd round
 func TestTSSViewChangeOnFollowerFailureNoRate(t *testing.T) {
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 1000)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 1000
 	nRounds := 12
 	failAsRootEvery := 0 // never fail on announce
 	// selected faultyNodes will fail on commit and response every 3 rounds
@@ -125,13 +121,13 @@ func TestTSSViewChangeOnFollowerFailureNoRate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 // Faulty Followers fail every 3rd round, with probability failureRate%
 func TestTSSViewChangeOnFollowerFailureWithRate(t *testing.T) {
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 1000)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 1000
 	nRounds := 12
 	failAsRootEvery := 0 // never fail on announce
 	failureRate := 10
@@ -145,7 +141,7 @@ func TestTSSViewChangeOnFollowerFailureWithRate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 }
 
 // # Messages per round, # rounds, failure rate[0..100], list of faulty nodes
@@ -310,8 +306,8 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 	}
 
 	// not mixing view changes with faults
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
 	// not mixing view changes with faults
 	aux2 := sign.HEARTBEAT
 	sign.HEARTBEAT = 4 * sign.ROUND_TIME
@@ -322,23 +318,23 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 	sign.HEARTBEAT = aux2
 }
 
 func TestTCPTimestampFromConfigVote(t *testing.T) {
 	// not mixing view changes with faults
-	aux := atomic.LoadInt64(&sign.RoundsPerView)
-	atomic.StoreInt64(&sign.RoundsPerView, 100)
+	aux := sign.RoundsPerView
+	sign.RoundsPerView = 100
 	// not mixing view changes with faults
 	aux2 := sign.HEARTBEAT
 	sign.HEARTBEAT = 4 * sign.ROUND_TIME
 
-	if err := runTCPTimestampFromConfig(sign.Vote, 0, 0, 5, 0); err != nil {
+	if err := runTCPTimestampFromConfig(sign.Voter, 0, 0, 5, 0); err != nil {
 		t.Fatal(err)
 	}
 
-	atomic.StoreInt64(&sign.RoundsPerView, aux)
+	sign.RoundsPerView = aux
 	sign.HEARTBEAT = aux2
 }
 
