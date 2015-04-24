@@ -6,13 +6,31 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 
+	"github.com/dedis/crypto/abstract"
+	"github.com/dedis/crypto/edwards/ed25519"
+	"github.com/dedis/crypto/nist"
 	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/sign"
 	"github.com/dedis/prifi/coco/test/logutils"
 	"github.com/dedis/prifi/coco/test/oldconfig"
 )
 
-func Run(hostname, cfg, app string, rounds int, rootwait int, debug, testConnect bool, failureRate, rFail, fFail int, logger string) {
+func GetSuite(suite string) abstract.Suite {
+	var s abstract.Suite
+	switch {
+	case suite == "nist256":
+		s = nist.NewAES128SHA256P256()
+	case suite == "nist512":
+		s = nist.NewAES128SHA256QR512()
+	case suite == "ed25519":
+		s = ed25519.NewAES128SHA256Ed25519(true)
+	default:
+		s = nist.NewAES128SHA256P256()
+	}
+	return s
+}
+
+func Run(hostname, cfg, app string, rounds int, rootwait int, debug, testConnect bool, failureRate, rFail, fFail int, logger, suite string) {
 	if debug {
 		coco.DEBUG = true
 	}
@@ -27,12 +45,12 @@ func Run(hostname, cfg, app string, rounds int, rootwait int, debug, testConnect
 	//log.Println("loading configuration")
 	var hc *oldconfig.HostConfig
 	var err error
+	s := GetSuite(suite)
+	opts := oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname, Suite: s}
 	if failureRate > 0 || fFail > 0 {
-		hc, err = oldconfig.LoadConfig(cfg, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname, Faulty: true})
-
-	} else {
-		hc, err = oldconfig.LoadConfig(cfg, oldconfig.ConfigOptions{ConnType: "tcp", Host: hostname})
+		opts.Faulty = true
 	}
+	hc, err = oldconfig.LoadConfig(cfg, opts)
 	if err != nil {
 		fmt.Println(err)
 		log.Fatal(err)

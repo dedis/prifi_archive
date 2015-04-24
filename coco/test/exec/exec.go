@@ -41,6 +41,7 @@ var rFail int
 var fFail int
 var amroot bool
 var testConnect bool
+var suite string
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -58,6 +59,7 @@ func init() {
 	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.BoolVar(&amroot, "amroot", false, "am I root node")
 	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
 func main() {
@@ -103,5 +105,5 @@ func main() {
 	}()
 
 	// log.Println("!!!!!!!!!!!!!!!Running timestamp with rFail and fFail: ", rFail, fFail)
-	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, testConnect, failures, rFail, fFail, logger)
+	timestamper.Run(hostname, cfg, app, rounds, rootwait, debug, testConnect, failures, rFail, fFail, logger, suite)
 }

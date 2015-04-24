@@ -33,12 +33,11 @@ type TCPHost struct {
 	pkLock sync.RWMutex
 	Pubkey abstract.Point // own public key
 
-	pool *sync.Pool
+	pool  *sync.Pool
+	suite abstract.Suite
 
 	// channels to send on Get() and update
 	msgchan chan NetworkMessg
-
-	suite abstract.Suite
 
 	// 1 if closed, 0 if not closed
 	closed int64

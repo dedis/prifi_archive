@@ -141,7 +141,7 @@ func (sn *Node) setUpRound(view int, am *AnnouncementMessage) error {
 	}
 
 	// set up commit and response channels for the new round
-	sn.Rounds[Round] = NewRound()
+	sn.Rounds[Round] = NewRound(sn.suite)
 	sn.initCommitCrypto(Round)
 	sn.Rounds[Round].Vote = am.Vote
 

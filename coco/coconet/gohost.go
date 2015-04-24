@@ -50,8 +50,7 @@ type GoHost struct {
 	pool *sync.Pool
 
 	msgchan chan NetworkMessg
-
-	closed int64
+	closed  int64
 }
 
 // GetDirectory returns the underlying directory used for GoHosts.
@@ -158,7 +157,6 @@ func (h *GoHost) Connect(view int) error {
 	return h.ConnectTo(parent)
 }
 
-// Listen listens for incoming goconn connections.
 // It shares the public keys and names of the hosts.
 func (h *GoHost) Listen() error {
 	children := h.views.Children(0)

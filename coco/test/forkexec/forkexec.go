@@ -25,6 +25,7 @@ var fFail int
 var rounds int
 var amroot bool
 var testConnect bool
+var suite string
 
 // TODO: add debug flag for more debugging information (memprofilerate...)
 func init() {
@@ -42,6 +43,7 @@ func init() {
 	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.BoolVar(&amroot, "amroot", false, "am I root")
 	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
 func main() {
@@ -79,6 +81,7 @@ func main() {
 		"-rounds=" + strconv.Itoa(rounds),
 		"-amroot=" + strconv.FormatBool(amroot),
 		"-test_connect=" + strconv.FormatBool(testConnect),
+		"-suite=" + suite,
 	}
 	cmd := exec.Command("./exec", args...)
 	cmd.Stdout = log.StandardLogger().Writer()

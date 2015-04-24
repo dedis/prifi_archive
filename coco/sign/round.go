@@ -50,10 +50,11 @@ type Round struct {
 	// CountedVotes *CountedVotes // CountedVotes contains a subtree's votes
 }
 
-func NewRound() *Round {
+func NewRound(suite abstract.Suite) *Round {
 	round := &Round{}
 	round.Commits = make([]*SigningMessage, 0)
 	round.Responses = make([]*SigningMessage, 0)
 	round.ExceptionList = make([]abstract.Point, 0)
+	round.Log.Suite = suite
 	return round
 }

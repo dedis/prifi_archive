@@ -113,6 +113,10 @@ func (sn *Node) StartGossip() {
 		t := time.Tick(GOSSIP_TIME)
 		for _ = range t {
 			c := sn.HostListOn(sn.ViewNo)
+			if len(c) == 0 {
+				log.Errorln(sn.Name(), "StartGossip: none in hostlist for view: ", len(c))
+				continue
+			}
 			from := c[sn.Rand.Int()%len(c)]
 			sn.CatchUp(int(atomic.LoadInt64(&sn.LastAppliedVote)+1), from)
 		}

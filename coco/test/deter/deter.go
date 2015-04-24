@@ -57,6 +57,7 @@ func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerp
 			" -hostname=" + n +
 			" -logger=" + loggerport +
 			" -debug=" + debug +
+			" -suite=" + suite +
 			" -rounds=" + strconv.Itoa(rounds) +
 			" -app=" + app +
 			" -test_connect=" + strconv.FormatBool(connect) +
@@ -79,6 +80,7 @@ var rounds int
 var kill bool
 var testConnect bool
 var app string
+var suite string
 
 func init() {
 	flag.StringVar(&nmsgs, "nmsgs", "100", "the number of messages per round")
@@ -93,6 +95,7 @@ func init() {
 	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
 	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
 	flag.StringVar(&app, "app", "stamp", "app to run")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
 func main() {

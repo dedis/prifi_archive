@@ -47,6 +47,7 @@ var rounds int
 var nmachs int
 var testConnect bool
 var app string
+var suite string
 
 func init() {
 	flag.IntVar(&bf, "bf", 2, "branching factor: default binary")
@@ -62,6 +63,7 @@ func init() {
 	flag.IntVar(&nmachs, "nmachs", 32, "number of machines to use")
 	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
 	flag.StringVar(&app, "app", "stamp", "app to run")
+	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
 func main() {
@@ -225,5 +227,6 @@ func main() {
 			" -ffail="+strconv.Itoa(fFail)+
 			" -test_connect="+strconv.FormatBool(testConnect)+
 			" -app="+app+
+			" -suite="+suite+
 			" -kill="+strconv.FormatBool(kill)))
 }
