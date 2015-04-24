@@ -92,16 +92,24 @@ func (inf *Info) PublicKey(nodes []int) abstract.Point {
 }
 
 // Verify that the shuffle history from a node is correct
-func (inf *Info) VerifyShuffles(history []Proof,
+func (inf *Info) VerifyShuffles(hist []Proof,
 	x, y []abstract.Point, h abstract.Point) error {
-	for _, p := range history {
-		verifier := shuffle.Verifier(inf.Suite, nil, h, p.X, p.Y, x, y)
-		e := proof.HashVerify(inf.Suite, "PairShuffle", verifier, p.Proof)
+
+	// Check everything but the last proof
+	for p := 0; p < len(hist)-1; p++ {
+		verifier := shuffle.Verifier(inf.Suite, nil, h, hist[p].X, hist[p].Y, hist[p+1].X, hist[p+1].Y)
+		e := proof.HashVerify(inf.Suite, "PairShuffle", verifier, hist[p].Proof)
 		if e != nil {
 			return e
 		}
-		y = p.Y
-		x = p.X
+	}
+
+	// Check the last proof
+	p := hist[len(hist)-1]
+	verifier := shuffle.Verifier(inf.Suite, nil, h, p.X, p.Y, x, y)
+	e := proof.HashVerify(inf.Suite, "PairShuffle", verifier, p.Proof)
+	if e != nil {
+		return e
 	}
 	return nil
 }

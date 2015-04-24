@@ -37,6 +37,7 @@ type Info struct {
 	Active      [][]int               // node -> active rounds
 	EncryptKeys [][][2]abstract.Point // (groupid, level) -> left+right pubkeys
 	GroupKeys   [][]abstract.Point    // (groupid, level) -> group key
+	StartNodes  []int                 // client % numgroups -> node
 	NodeGroup   []int                 // node -> groupid
 	NumGroups   int
 	NeffLen     int

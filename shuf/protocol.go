@@ -36,13 +36,12 @@ func (inf *Info) HandleClient(i int, m *Msg) {
 
 func (inf *Info) Setup(msg abstract.Point, client int) (
 	[]abstract.Point, []abstract.Point, int) {
-	n := client % inf.NumNodes
-	x, y := inf.Encrypt([]abstract.Point{msg}, inf.GroupKeys[n][0])
-	return x, y, n
+	g := client % inf.NumGroups
+	x, y := inf.Encrypt([]abstract.Point{msg}, inf.GroupKeys[g][0])
+	return x, y, inf.StartNodes[g]
 }
 
 func MakeInfo(uinf UserInfo, seed int64) *Info {
-	// Initialization
 	inf := new(Info)
 	inf.UserInfo = uinf
 	rand.Seed(seed)
@@ -53,6 +52,7 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 	inf.EncryptKeys = make([][][2]abstract.Point, inf.NumGroups)
 	inf.GroupKeys = make([][]abstract.Point, inf.NumGroups)
 	inf.NodeGroup = make([]int, inf.NumNodes)
+	inf.StartNodes = make([]int, inf.NumGroups)
 	for n := range inf.Routes {
 		inf.Routes[n] = make([][]int, inf.NumRounds)
 	}
@@ -78,6 +78,10 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 					inf.PublicKey(groups[i]),
 					inf.PublicKey(groups[p[i]]),
 				}
+			}
+		} else {
+			for gi, g := range groups {
+				inf.StartNodes[gi] = g[0]
 			}
 		}
 
@@ -149,7 +153,7 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 			inf.Cache.Proofs = proofs
 			return nil
 		} else {
-			fmt.Printf("Done collecting for round %d\n", m.Round)
+			fmt.Printf("Node %d: done collecting for round %d\n", i, m.Round)
 			var prf Proof
 			m.X, m.Y, prf = inf.Shuffle(inf.Cache.X, inf.Cache.Y, groupKey, rnd)
 			if inf.Cache.Proofs != nil {
@@ -172,8 +176,10 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 		var prf Proof
 		m.X, m.Y, prf = inf.Shuffle(m.X, m.Y, groupKey, rnd)
 		m.Round = m.Round + 1
-		m.LeftProofs = m.LeftProofs[1:]
-		m.RightProofs = m.RightProofs[1:]
+		if m.LeftProofs != nil && m.RightProofs != nil {
+			m.LeftProofs = m.LeftProofs[1:]
+			m.RightProofs = m.RightProofs[1:]
+		}
 		m.ShufProofs = append(m.ShufProofs, prf)
 
 	// Verify a part of the second cycle
