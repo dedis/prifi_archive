@@ -30,12 +30,14 @@ type UserInfo struct {
 }
 
 // Information required to run the shuffle
+// Implicitly, level = round / (2*neffLen)
 type Info struct {
 	UserInfo
 	Routes      [][][]int             // (node, round) -> []to
-	Active      [][]int               // node -> active rounds (collection rounds 2x)
-	EncryptKeys [][][2]abstract.Point // (node, round / (2*neffLen)) -> left+right pubkeys
-	GroupKeys   [][]abstract.Point    // (node, round / (2*neffLen)) -> group key
+	Active      [][]int               // node -> active rounds
+	EncryptKeys [][][2]abstract.Point // (groupid, level) -> left+right pubkeys
+	GroupKeys   [][]abstract.Point    // (groupid, level) -> group key
+	NodeGroup   []int                 // node -> groupid
 	NumGroups   int
 	NeffLen     int
 	Cache       Cache

@@ -3,8 +3,6 @@ package shuf
 import (
 	"fmt"
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/crypto/proof"
-	"github.com/dedis/crypto/shuffle"
 	"math/rand"
 )
 
@@ -52,10 +50,13 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 	inf.NeffLen = inf.NumNodes / inf.NumGroups
 	numLevels := inf.NumRounds / (2 * inf.NeffLen)
 	inf.Routes = make([][][]int, inf.NumNodes)
-	inf.EncryptKeys = make([][][2]abstract.Point, inf.NumNodes)
-	inf.GroupKeys = make([][]abstract.Point, inf.NumNodes)
+	inf.EncryptKeys = make([][][2]abstract.Point, inf.NumGroups)
+	inf.GroupKeys = make([][]abstract.Point, inf.NumGroups)
+	inf.NodeGroup = make([]int, inf.NumNodes)
 	for n := range inf.Routes {
 		inf.Routes[n] = make([][]int, inf.NumRounds)
+	}
+	for n := range inf.EncryptKeys {
 		inf.EncryptKeys[n] = make([][2]abstract.Point, numLevels)
 		inf.GroupKeys[n] = make([]abstract.Point, numLevels)
 	}
@@ -73,7 +74,7 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 		if level != 0 {
 			for i, e := range oldEnders {
 				inf.Routes[e][(level+1)*2*inf.NeffLen-1] = []int{groups[i][0], groups[p[i]][0]}
-				inf.EncryptKeys[e][level] = [2]abstract.Point{
+				inf.EncryptKeys[i][level-1] = [2]abstract.Point{
 					inf.PublicKey(groups[i]),
 					inf.PublicKey(groups[p[i]]),
 				}
@@ -82,8 +83,9 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 
 		// Fix the directions within each group
 		for gi, g := range groups {
+			inf.GroupKeys[gi][level] = inf.PublicKey(g)
 			for i := range g {
-				inf.GroupKeys[g[i]][level] = inf.PublicKey(g)
+				inf.NodeGroup[g[i]] = gi
 				inf.Active[g[i]] = append(inf.Active[g[i]], level*2*inf.NeffLen+i)
 				if i < len(g)-1 {
 					inf.Routes[g[i]][level*2*inf.NeffLen+i] = []int{g[i+1]}
@@ -100,10 +102,14 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 			oldEnders[gi] = lst
 		}
 	}
-	// need to set encryptkeys for the last level to be for null
-	// can't just set encryptkeys for oldEnders. set it for everyone.
-	// wasted space... is there a way not to?
-	// yes: map node to groupid, then groupid to key
+
+	// Set the last EncryptKeys to the null element
+	for i := range inf.EncryptKeys {
+		inf.EncryptKeys[i][numLevels-1] = [2]abstract.Point{
+			inf.Suite.Point().Null(),
+			inf.Suite.Point().Null(),
+		}
+	}
 	return inf
 }
 
@@ -113,16 +119,6 @@ func check(i int, e error) bool {
 		return true
 	}
 	return false
-}
-
-func (inf *Info) shuffle(x, y []abstract.Point, h abstract.Point, rnd abstract.Cipher) (
-	[]abstract.Point, []abstract.Point, Proof) {
-	xx, yy, prover := shuffle.Shuffle(inf.Suite, nil, h, x, y, rnd)
-	prf, err := proof.HashProve(inf.Suite, "PairShuffle", rnd, prover)
-	if err != nil {
-		fmt.Printf("Error creating proof: %s\n", err.Error())
-	}
-	return xx, yy, Proof{x, y, prf}
 }
 
 func nonNil(left, right []Proof) []Proof {
@@ -135,7 +131,8 @@ func nonNil(left, right []Proof) []Proof {
 
 func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 	subround := m.Round % (2 * inf.NeffLen)
-	group := m.Round / (2 * inf.NeffLen)
+	level := m.Round / (2 * inf.NeffLen)
+	groupKey := inf.GroupKeys[inf.NodeGroup[i]][level]
 	half := len(m.X) / 2
 	rnd := inf.Suite.Cipher(nil)
 	switch {
@@ -145,7 +142,7 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 		inf.Cache.X = append(inf.Cache.X, m.X...)
 		inf.Cache.Y = append(inf.Cache.Y, m.Y...)
 		proofs := nonNil(m.LeftProofs, m.RightProofs)
-		if proofs != nil && check(i, inf.VerifyDecrypts(proofs, m.Y, inf.GroupKeys[i][group])) {
+		if proofs != nil && check(i, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
 			return nil
 		}
 		if len(inf.Cache.X) < inf.NumClients {
@@ -154,7 +151,7 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 		} else {
 			fmt.Printf("Done collecting for round %d\n", m.Round)
 			var prf Proof
-			m.X, m.Y, prf = inf.shuffle(inf.Cache.X, inf.Cache.Y, inf.GroupKeys[i][m.Round], rnd)
+			m.X, m.Y, prf = inf.Shuffle(inf.Cache.X, inf.Cache.Y, groupKey, rnd)
 			if inf.Cache.Proofs != nil {
 				m.LeftProofs = inf.Cache.Proofs[1:]
 				m.RightProofs = proofs[1:]
@@ -166,14 +163,14 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 
 	// Is it the first part of a cycle?
 	case subround < inf.NeffLen:
-		if check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, inf.GroupKeys[i][group])) ||
-			(m.LeftProofs != nil &&
-				(check(i, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], inf.GroupKeys[i][group])) ||
-					check(i, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], inf.GroupKeys[i][group])))) {
+		if check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey)) ||
+			m.LeftProofs != nil &&
+				(check(i, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], groupKey)) ||
+					check(i, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], groupKey))) {
 			return nil
 		}
 		var prf Proof
-		m.X, m.Y, prf = inf.shuffle(m.X, m.Y, inf.GroupKeys[i][m.Round], rnd)
+		m.X, m.Y, prf = inf.Shuffle(m.X, m.Y, groupKey, rnd)
 		m.Round = m.Round + 1
 		m.LeftProofs = m.LeftProofs[1:]
 		m.RightProofs = m.RightProofs[1:]
@@ -181,35 +178,45 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 
 	// Verify a part of the second cycle
 	case subround >= inf.NeffLen:
+		encryptKey := inf.EncryptKeys[inf.NodeGroup[i]][level]
 		var b bool
 		if m.LeftProofs == nil || m.RightProofs == nil {
 			m.LeftProofs = []Proof{}
 			m.RightProofs = []Proof{}
-			b = check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, inf.GroupKeys[i][group]))
+			b = check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey))
 		} else {
 			xs := append(m.LeftProofs[0].X, m.RightProofs[0].X...)
 			ys := append(m.LeftProofs[0].Y, m.RightProofs[0].Y...)
-			b = check(i, inf.VerifyShuffles(m.ShufProofs, xs, ys, inf.GroupKeys[i][group]))
-			b = b || check(i, inf.VerifyDecrypts(m.LeftProofs, m.Y[:half], inf.EncryptKeys[i][group][0]))
-			b = b || check(i, inf.VerifyDecrypts(m.RightProofs, m.Y[half:], inf.EncryptKeys[i][group][1]))
+			b = check(i, inf.VerifyShuffles(m.ShufProofs, xs, ys, groupKey))
+			b = b || check(i, inf.VerifyDecrypts(m.LeftProofs, m.Y[:half], encryptKey[0]))
+			b = b || check(i, inf.VerifyDecrypts(m.RightProofs, m.Y[half:], encryptKey[1]))
 		}
 		if b {
 			return nil
 		}
+		if m.NewX == nil {
+			m.NewX = make([]abstract.Point, len(m.X))
+			for x := range m.NewX {
+				m.NewX[x] = inf.Suite.Point().Null()
+			}
+		}
 		leftNewX, leftY, leftPrf, lerr :=
-			inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], i, inf.EncryptKeys[i][group][0])
+			inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], i, encryptKey[0])
 		rightNewX, rightY, rightPrf, rerr :=
-			inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[:half], i, inf.EncryptKeys[i][group][0])
+			inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[:half], i, encryptKey[0])
 		if check(i, lerr) || check(i, rerr) {
 			return nil
 		}
 		m.Y = append(leftY, rightY...)
-		m.NewX = append(leftNewX, rightNewX...)
 		m.ShufProofs = m.ShufProofs[1:]
 		m.LeftProofs = append(m.LeftProofs, leftPrf)
 		m.RightProofs = append(m.RightProofs, rightPrf)
 		m.NewX = append(leftNewX, rightNewX...)
 		m.Round = m.Round + 1
+		if subround == inf.NeffLen*2-1 {
+			m.X = m.NewX
+			m.NewX = nil
+		}
 
 	}
 	return m

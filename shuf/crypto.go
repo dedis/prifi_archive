@@ -1,6 +1,7 @@
 package shuf
 
 import (
+	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/proof"
 	"github.com/dedis/crypto/shuffle"
@@ -94,7 +95,7 @@ func (inf *Info) PublicKey(nodes []int) abstract.Point {
 func (inf *Info) VerifyShuffles(history []Proof,
 	x, y []abstract.Point, h abstract.Point) error {
 	for _, p := range history {
-		verifier := shuffle.Verifier(inf.Suite, nil, h, x, y, p.X, p.Y)
+		verifier := shuffle.Verifier(inf.Suite, nil, h, p.X, p.Y, x, y)
 		e := proof.HashVerify(inf.Suite, "PairShuffle", verifier, p.Proof)
 		if e != nil {
 			return e
@@ -103,6 +104,17 @@ func (inf *Info) VerifyShuffles(history []Proof,
 		x = p.X
 	}
 	return nil
+}
+
+// Perform a Neff shuffle and prove it
+func (inf *Info) Shuffle(x, y []abstract.Point, h abstract.Point, rnd abstract.Cipher) (
+	[]abstract.Point, []abstract.Point, Proof) {
+	xx, yy, prover := shuffle.Shuffle(inf.Suite, nil, h, x, y, rnd)
+	prf, err := proof.HashProve(inf.Suite, "PairShuffle", rnd, prover)
+	if err != nil {
+		fmt.Printf("Error creating proof: %s\n", err.Error())
+	}
+	return xx, yy, Proof{x, y, prf}
 }
 
 // Verify that the decrypt history from a node is correct
