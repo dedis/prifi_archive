@@ -165,7 +165,7 @@ func TestSmallConfigFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
 	suite := nist.NewAES128SHA256P256()
-	if err := runTreeSmallConfig(sign.MerkleTree, suite, 100, faultyNodes...); err != nil {
+	if err := runTreeSmallConfig(sign.MerkleTree, suite, 1, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -214,7 +214,7 @@ func runTreeSmallConfig(signType sign.Type, suite abstract.Suite, failureRate in
 	}
 	// Have root node initiate the signing protocol via a simple annoucement
 	hc.SNodes[0].LogTest = []byte("Hello World")
-	hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
+	hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 
 	return nil
 }
@@ -246,7 +246,7 @@ func TestTreeFromBigConfig(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("hello world")
-	err = hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
+	err = hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	if err != nil {
 		t.Error(err)
 	}
@@ -319,7 +319,7 @@ func TestTCPStaticConfig(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	hc.SNodes[0].LogTest = []byte("hello world")
-	hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
+	hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	log.Println("Test Done")
 	sign.RoundsPerView = aux
 
@@ -353,7 +353,7 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	N := 5
 	for i := 1; i <= N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
-		hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+		hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}
 	sign.RoundsPerView = aux
 }
@@ -382,7 +382,7 @@ func TestViewChangeChan(t *testing.T) {
 	N := 6
 	for i := 1; i <= N; i++ {
 		hc.SNodes[0].LogTest = []byte("Hello World" + strconv.Itoa(i))
-		err = hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+		err = hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 		if err == sign.ChangingViewError {
 			log.Println("Attempted round", i, "but received view change. waiting then retrying")
 			time.Sleep(3 * time.Second)
@@ -424,7 +424,7 @@ func TestViewChangeTCP(t *testing.T) {
 	N := 6
 	for i := 1; i <= N; i++ {
 		hc.SNodes[0].LogTest = []byte("hello world")
-		hc.SNodes[0].Announce(DefaultView, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+		hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}
 }
 

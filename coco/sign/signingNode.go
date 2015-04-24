@@ -319,6 +319,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
 	sn.VoteLog = NewVoteLog()
+	sn.Actions = make(map[int][]*Vote)
 	return sn
 }
 
@@ -343,6 +344,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
 	sn.VoteLog = NewVoteLog()
+	sn.Actions = make(map[int][]*Vote)
 	return sn
 }
 
