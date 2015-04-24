@@ -66,7 +66,7 @@ func main() {
 	}
 
 	// Create the info
-	inf := shuf.Info{
+	inf := shuf.MakeInfo(shuf.UserInfo{
 		Suite:        suite,
 		PrivKey:      privKeyFn,
 		PubKey:       pubKeys,
@@ -75,10 +75,9 @@ func main() {
 		NumRounds:    c.NumRounds,
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
 		MsgsPerGroup: c.MsgsPerGroup,
-	}
-	inf.CreateRoutes(c.Seed)
+	}, c.Seed)
 	var wg sync.WaitGroup
 	wg.Add(inf.NumClients)
-	ChanShuffle(&inf, messages, &wg)
+	ChanShuffle(inf, messages, &wg)
 	wg.Wait()
 }

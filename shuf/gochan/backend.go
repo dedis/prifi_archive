@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
 	"sync"
@@ -10,11 +9,11 @@ import (
 
 // A message with an ACK chan
 type wrapper struct {
-	m   shuf.Msg
+	m   *shuf.Msg
 	ack chan bool
 }
 
-func sendTo(c chan wrapper, m shuf.Msg) {
+func sendTo(inf *shuf.Info, c chan wrapper, m *shuf.Msg) {
 	w := wrapper{m, make(chan bool)}
 	for {
 		c <- w
@@ -29,28 +28,27 @@ func sendTo(c chan wrapper, m shuf.Msg) {
 func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 
 	// Fake internet
-	messages := make([]chan wraper, inf.NumNodes)
+	messages := make([]chan wrapper, inf.NumNodes)
 	results := make([]chan wrapper, inf.NumClients)
-	for i := range result {
-		results[i] = make(chan shuf.Msg)
+	for i := range results {
+		results[i] = make(chan wrapper)
 	}
 	for i := range messages {
-		messages[i] = make(chan shuf.Msg)
-		acks[i] = make(chan bool)
+		messages[i] = make(chan wrapper)
 	}
 
 	// Start the nodes
-	for i := range chans {
+	for i := range messages {
 
 		// For each round it's active, wait for a message
 		go func(i int) {
 			for round := range inf.Active[i] {
 				w := <-messages[i]
-				if cm.round != round {
+				if w.m.Round != round {
 					continue
 				}
 				w.ack <- true
-				m := inf.HandleRound(i, round, w.m)
+				m := inf.HandleRound(i, w.m)
 				to := inf.Routes[i][round]
 
 				// Forward the new message
@@ -58,13 +56,13 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 					switch {
 					case to == nil:
 						for _, cl := range results {
-							results[cl] <- m
+							cl <- wrapper{m, nil}
 						}
 					case len(to) == 1:
-						sendTo(messages[to[0]], m)
+						go sendTo(inf, messages[to[0]], m)
 					case len(to) == 2:
-						sendTo(messages[to[0]], shuf.GetLeft(m))
-						sendTo(messages[to[1]], shuf.GetRight(m))
+						go sendTo(inf, messages[to[0]], shuf.GetLeft(*m))
+						go sendTo(inf, messages[to[1]], shuf.GetRight(*m))
 					}
 				}
 			}
@@ -75,9 +73,8 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 	for i := range msgs {
 		go func(i int) {
 			X, Y, to := inf.Setup(msgs[i], i)
-			sendTo(messages[to], shuf.Msg{X: X, Y: Y})
+			go sendTo(inf, messages[to], &shuf.Msg{X: X, Y: Y})
 			w := <-results[i]
-			w.ack <- true
 			inf.HandleClient(i, w.m)
 			wg.Done()
 		}(i)

@@ -8,23 +8,23 @@ import (
 	"math/rand"
 )
 
-func GetRight(m Msg) Msg {
+func GetRight(m Msg) *Msg {
 	half := len(m.X) / 2
 	m.LeftProofs = nil
 	m.X = m.X[half:]
 	m.Y = m.Y[half:]
-	return m
+	return &m
 }
 
-func GetLeft(m Msg) Msg {
+func GetLeft(m Msg) *Msg {
 	half := len(m.X) / 2
 	m.RightProofs = nil
 	m.X = m.X[:half]
 	m.Y = m.Y[:half]
-	return m
+	return &m
 }
 
-func (inf *Info) HandleClient(i int, m Msg) {
+func (inf *Info) HandleClient(i int, m *Msg) {
 	inf.VerifyDecrypts(m.LeftProofs, m.Y, inf.Suite.Point().Null())
 	for _, val := range m.Y {
 		d, e := val.Data()
@@ -43,8 +43,9 @@ func (inf *Info) Setup(msg abstract.Point, client int) (
 	return x, y, n
 }
 
-func (inf *Info) CreateRoutes(seed int64) {
-
+func MakeInfo(uinf UserInfo, seed int64) *Info {
+	inf := new(Info)
+	inf.UserInfo = uinf
 	// Initialization
 	rand.Seed(seed)
 	inf.NumGroups = inf.NumClients / inf.MsgsPerGroup
@@ -93,6 +94,7 @@ func (inf *Info) CreateRoutes(seed int64) {
 			oldEnders[gi] = lst
 		}
 	}
+	return inf
 }
 
 func check(i int, e error) bool {
