@@ -170,6 +170,7 @@ func (n Node) handleConnection(conn net.Conn, collect chan msg,
 }
 
 // Start the collection thread
+// MAJOR BUGS HERE
 func (n Node) startCollection(setter chan msg, round chan int, callback func(msg)) {
 	X := make([]abstract.Point, 0)
 	Y := make([]abstract.Point, 0)

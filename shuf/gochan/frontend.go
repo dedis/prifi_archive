@@ -53,7 +53,6 @@ func main() {
 	privKeys := make([]abstract.Secret, c.NumNodes)
 	for i := range pubKeys {
 		privKeys[i] = suite.Secret().Pick(rand)
-		// privKeys[i] = suite.Secret().Zero()
 		pubKeys[i] = suite.Point().Mul(nil, privKeys[i])
 	}
 	privKeyFn := func(n int) abstract.Secret {
@@ -66,7 +65,7 @@ func main() {
 		messages[i], _ = suite.Point().Pick([]byte("Message "+strconv.Itoa(i)), rand)
 	}
 
-	// Perform the shuffle
+	// Create the info
 	inf := shuf.Info{
 		Suite:        suite,
 		PrivKey:      privKeyFn,
@@ -75,25 +74,11 @@ func main() {
 		NumClients:   c.NumClients,
 		NumRounds:    c.NumRounds,
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
-		MsgSize:      suite.Point().MarshalSize(),
-		MsgsPerGroup: c.MsgsPerGroup}
-
-	var s shuf.Shuffle
-	switch c.Shuffle {
-	case "id":
-		s = shuf.IdShuffle{}
-	case "dumb":
-		s = shuf.DumbShuffle{c.Seed}
-	case "neff":
-		s = shuf.NeffShuffle{}
-	case "subset":
-		s = shuf.NewSubsetShuffle(c.Seed, c.NumRounds, c.NumNodes)
-	case "butterfly":
-		s = shuf.NewButterfly(&inf, c.Seed)
+		MsgsPerGroup: c.MsgsPerGroup,
 	}
-
+	inf.CreateRoutes(c.Seed)
 	var wg sync.WaitGroup
 	wg.Add(inf.NumClients)
-	ChanShuffle(s, &inf, messages, &wg)
+	ChanShuffle(&inf, messages, &wg)
 	wg.Wait()
 }

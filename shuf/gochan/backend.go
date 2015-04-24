@@ -8,165 +8,78 @@ import (
 	"time"
 )
 
-// A message containing the newest shuffled order
-type msg struct {
-	pairs shuf.Elgamal
-	round int
-	h     abstract.Point
-	ack   *bool
+// A message with an ACK chan
+type wrapper struct {
+	m   shuf.Msg
+	ack chan bool
 }
 
-func ChanShuffle(s shuf.Shuffle, inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
+func sendTo(c chan wrapper, m shuf.Msg) {
+	w := wrapper{m, make(chan bool)}
+	for {
+		c <- w
+		select {
+		case <-w.ack:
+			break
+		case <-time.After(inf.ResendTime):
+		}
+	}
+}
+
+func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 
 	// Fake internet
-	chans := make([]chan msg, inf.NumNodes)
-	proofs := make([]chan shuf.Proof, inf.NumNodes)
-	result := make([]chan shuf.Elgamal, inf.NumClients)
-	cproofs := make([]chan shuf.Proof, inf.NumClients)
+	messages := make([]chan wraper, inf.NumNodes)
+	results := make([]chan wrapper, inf.NumClients)
 	for i := range result {
-		result[i] = make(chan shuf.Elgamal)
-		cproofs[i] = make(chan shuf.Proof)
+		results[i] = make(chan shuf.Msg)
 	}
-	for i := range chans {
-		chans[i] = make(chan msg)
-		proofs[i] = make(chan shuf.Proof)
+	for i := range messages {
+		messages[i] = make(chan shuf.Msg)
+		acks[i] = make(chan bool)
 	}
 
-	// Start the Shufflers
+	// Start the nodes
 	for i := range chans {
 
-		// Verification step
+		// For each round it's active, wait for a message
 		go func(i int) {
-			for {
-				p := <-proofs[i]
-				err := shuf.VerifyProof(inf, p)
-				if err != nil {
-					fmt.Printf("Node %v found a proof error: %s\n", i, err.Error())
-					for cl := range cproofs {
-						cproofs[cl] <- p
-					}
+			for round := range inf.Active[i] {
+				w := <-messages[i]
+				if cm.round != round {
+					continue
 				}
-			}
-		}(i)
+				w.ack <- true
+				m := inf.HandleRound(i, round, w.m)
+				to := inf.Routes[i][round]
 
-		// Collection step
-		go func(i int) {
-			for _, round := range s.ActiveRounds(i, inf) {
-				var xs, ys []abstract.Point
-				var H abstract.Point
-				for len(xs) < inf.MsgsPerGroup {
-					cm := <-chans[i]
-					if cm.round == round {
-						if xs == nil {
-							xs = cm.pairs.X
-							ys = cm.pairs.Y
-						} else {
-							xs = append(xs, cm.pairs.X...)
-							ys = append(ys, cm.pairs.Y...)
+				// Forward the new message
+				if m != nil {
+					switch {
+					case to == nil:
+						for _, cl := range results {
+							results[cl] <- m
 						}
-						H = cm.h
-						*(cm.ack) = true
-					}
-				}
-
-				// Shuffling step
-				oldpairs := shuf.Elgamal{xs, ys}
-				instr := s.ShuffleStep(oldpairs, i, round, inf, H)
-				if instr.ShufProof != nil && instr.DecryptProof != nil {
-					for cl := range proofs {
-						proofs[cl] <- shuf.Proof{
-							ShufProof:    instr.ShufProof,
-							DecryptProof: instr.DecryptProof,
-							PlainY:       instr.PlainY,
-							ShufPairs:    instr.ShufPairs,
-							OldPairs:     oldpairs,
-							H:            H,
-						}
-					}
-				}
-				if instr.To == nil {
-					for cl := range result {
-						result[cl] <- instr.NewPairs
-					}
-				} else {
-					chunk := len(instr.NewPairs.Y) / len(instr.To)
-					if chunk*len(instr.To) != len(instr.NewPairs.Y) {
-						fmt.Printf("Node %v round %v cannot divide cleanly\n", i, round+1)
-						chunk = len(instr.NewPairs.Y)
-					}
-					pairIdx := 0
-					for _, to := range instr.To {
-						go func(pairIdx int, to int) {
-							ack := false
-							gml := shuf.Elgamal{
-								instr.NewPairs.X[pairIdx : pairIdx+chunk],
-								instr.NewPairs.Y[pairIdx : pairIdx+chunk],
-							}
-							m := msg{gml, round + 1, instr.H, &ack}
-							for !ack {
-								chans[to] <- m
-								time.Sleep(inf.ResendTime)
-								if !ack {
-									fmt.Printf("Node %v round %v not yet ACKed; retrying\n", i, round+1)
-								}
-							}
-						}(pairIdx, to)
-						pairIdx += chunk
+					case len(to) == 1:
+						sendTo(messages[to[0]], m)
+					case len(to) == 2:
+						sendTo(messages[to[0]], shuf.GetLeft(m))
+						sendTo(messages[to[1]], shuf.GetRight(m))
 					}
 				}
 			}
 		}(i)
 	}
 
-	// All clients send their messages
+	// All clients send and receive their messages
 	for i := range msgs {
 		go func(i int) {
-			ack := false
-			pairs, H, sendTo := s.Setup(msgs[i], i, inf)
-			m := msg{pairs, 0, H, &ack}
-			for !ack {
-				chans[sendTo] <- m
-				time.Sleep(inf.ResendTime)
-				if !ack {
-					fmt.Printf("Client %v not ACKed\n", i)
-				}
-			}
+			X, Y, to := inf.Setup(msgs[i], i)
+			sendTo(messages[to], shuf.Msg{X: X, Y: Y})
+			w := <-results[i]
+			w.ack <- true
+			inf.HandleClient(i, w.m)
+			wg.Done()
 		}(i)
 	}
-
-	for i := range cproofs {
-		done := false
-
-		// All clients check for proofs of false shuffles
-		go func(i int, done *bool) {
-			for !(*done) {
-				p := <-cproofs[i]
-				err := shuf.VerifyProof(inf, p)
-				if err != nil {
-					fmt.Printf("Client %v found a proof error: %s\n", i, err.Error())
-					*done = true
-				}
-			}
-		}(i, &done)
-
-		// Print out the order as it comes in
-		go func(i int, done *bool) {
-			counter := 0
-			for counter < inf.NumClients && !(*done) {
-				finalGamal := <-result[i]
-				counter += len(finalGamal.Y)
-				for _, val := range finalGamal.Y {
-					d, e := val.Data()
-					if e != nil {
-						fmt.Printf("Client %v: Data got corrupted\n", i)
-					} else {
-						fmt.Printf("Client %v: %v\n", i, string(d))
-					}
-				}
-			}
-			*done = true
-			wg.Done()
-		}(i, &done)
-	}
-
 }
