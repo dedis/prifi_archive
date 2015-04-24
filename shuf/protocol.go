@@ -50,7 +50,7 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 	rand.Seed(seed)
 	inf.NumGroups = inf.NumClients / inf.MsgsPerGroup
 	inf.NeffLen = inf.NumNodes / inf.NumGroups
-	numLevels := inf.NumRounds / inf.NeffLen
+	numLevels := inf.NumRounds / (2 * inf.NeffLen)
 	inf.Routes = make([][][]int, inf.NumNodes)
 	inf.EncryptKeys = make([][][2]abstract.Point, inf.NumNodes)
 	inf.GroupKeys = make([][]abstract.Point, inf.NumNodes)
@@ -82,7 +82,6 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 
 		// Fix the directions within each group
 		for gi, g := range groups {
-			inf.Active[g[0]] = append(inf.Active[g[0]], level*2*inf.NeffLen)
 			for i := range g {
 				inf.GroupKeys[g[i]][level] = inf.PublicKey(g)
 				inf.Active[g[i]] = append(inf.Active[g[i]], level*2*inf.NeffLen+i)
@@ -101,12 +100,16 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 			oldEnders[gi] = lst
 		}
 	}
+	// need to set encryptkeys for the last level to be for null
+	// can't just set encryptkeys for oldEnders. set it for everyone.
+	// wasted space... is there a way not to?
+	// yes: map node to groupid, then groupid to key
 	return inf
 }
 
 func check(i int, e error) bool {
 	if e != nil {
-		fmt.Printf("Node %v: %s", e.Error())
+		fmt.Printf("Node %v: %s\n", i, e.Error())
 		return true
 	}
 	return false
@@ -149,10 +152,13 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 			inf.Cache.Proofs = proofs
 			return nil
 		} else {
+			fmt.Printf("Done collecting for round %d\n", m.Round)
 			var prf Proof
-			m.X, m.Y, prf = inf.shuffle(m.X, m.Y, inf.GroupKeys[i][m.Round], rnd)
-			m.LeftProofs = inf.Cache.Proofs[1:]
-			m.RightProofs = proofs[1:]
+			m.X, m.Y, prf = inf.shuffle(inf.Cache.X, inf.Cache.Y, inf.GroupKeys[i][m.Round], rnd)
+			if inf.Cache.Proofs != nil {
+				m.LeftProofs = inf.Cache.Proofs[1:]
+				m.RightProofs = proofs[1:]
+			}
 			m.ShufProofs = []Proof{prf}
 			m.Round = m.Round + 1
 			return m
@@ -161,8 +167,9 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 	// Is it the first part of a cycle?
 	case subround < inf.NeffLen:
 		if check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, inf.GroupKeys[i][group])) ||
-			check(i, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], inf.GroupKeys[i][group])) ||
-			check(i, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], inf.GroupKeys[i][group])) {
+			(m.LeftProofs != nil &&
+				(check(i, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], inf.GroupKeys[i][group])) ||
+					check(i, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], inf.GroupKeys[i][group])))) {
 			return nil
 		}
 		var prf Proof
@@ -174,10 +181,19 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 
 	// Verify a part of the second cycle
 	case subround >= inf.NeffLen:
-		if check(i, inf.VerifyShuffles(m.ShufProofs, append(m.LeftProofs[0].X, m.RightProofs[0].X...),
-			append(m.LeftProofs[0].Y, m.RightProofs[0].Y...), inf.GroupKeys[i][group])) ||
-			check(i, inf.VerifyDecrypts(m.LeftProofs, m.Y[:half], inf.EncryptKeys[i][group][0])) ||
-			check(i, inf.VerifyDecrypts(m.RightProofs, m.Y[half:], inf.EncryptKeys[i][group][1])) {
+		var b bool
+		if m.LeftProofs == nil || m.RightProofs == nil {
+			m.LeftProofs = []Proof{}
+			m.RightProofs = []Proof{}
+			b = check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, inf.GroupKeys[i][group]))
+		} else {
+			xs := append(m.LeftProofs[0].X, m.RightProofs[0].X...)
+			ys := append(m.LeftProofs[0].Y, m.RightProofs[0].Y...)
+			b = check(i, inf.VerifyShuffles(m.ShufProofs, xs, ys, inf.GroupKeys[i][group]))
+			b = b || check(i, inf.VerifyDecrypts(m.LeftProofs, m.Y[:half], inf.EncryptKeys[i][group][0]))
+			b = b || check(i, inf.VerifyDecrypts(m.RightProofs, m.Y[half:], inf.EncryptKeys[i][group][1]))
+		}
+		if b {
 			return nil
 		}
 		leftNewX, leftY, leftPrf, lerr :=
@@ -193,6 +209,7 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 		m.LeftProofs = append(m.LeftProofs, leftPrf)
 		m.RightProofs = append(m.RightProofs, rightPrf)
 		m.NewX = append(leftNewX, rightNewX...)
+		m.Round = m.Round + 1
 
 	}
 	return m

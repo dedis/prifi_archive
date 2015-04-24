@@ -27,6 +27,7 @@ type cFile struct {
 	MsgsPerGroup int
 	Shuffle      string
 	Seed         int64
+	Timeout      int
 }
 
 func main() {
@@ -75,6 +76,7 @@ func main() {
 		NumRounds:    c.NumRounds,
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
 		MsgsPerGroup: c.MsgsPerGroup,
+		Timeout:      time.Second * time.Duration(c.Timeout),
 	}, c.Seed)
 	var wg sync.WaitGroup
 	wg.Add(inf.NumClients)
