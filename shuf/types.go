@@ -48,10 +48,7 @@ type Proof struct {
 }
 
 type Cache struct {
-	LeftX       []abstract.Point
-	LeftY       []abstract.Point
-	RightX      []abstract.Point
-	RightY      []abstract.Point
-	LeftProofs  []Proof
-	RightProofs []Proof
+	X      []abstract.Point
+	Y      []abstract.Point
+	Proofs []Proof
 }

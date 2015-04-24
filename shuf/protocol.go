@@ -44,15 +44,20 @@ func (inf *Info) Setup(msg abstract.Point, client int) (
 }
 
 func MakeInfo(uinf UserInfo, seed int64) *Info {
+	// Initialization
 	inf := new(Info)
 	inf.UserInfo = uinf
-	// Initialization
 	rand.Seed(seed)
 	inf.NumGroups = inf.NumClients / inf.MsgsPerGroup
 	inf.NeffLen = inf.NumNodes / inf.NumGroups
+	numLevels := inf.NumRounds / inf.NeffLen
 	inf.Routes = make([][][]int, inf.NumNodes)
+	inf.EncryptKeys = make([][][2]abstract.Point, inf.NumNodes)
+	inf.GroupKeys = make([][]abstract.Point, inf.NumNodes)
 	for n := range inf.Routes {
 		inf.Routes[n] = make([][]int, inf.NumRounds)
+		inf.EncryptKeys[n] = make([][2]abstract.Point, numLevels)
+		inf.GroupKeys[n] = make([]abstract.Point, numLevels)
 	}
 	inf.Active = make([][]int, inf.NumNodes)
 	for n := range inf.Active {
@@ -60,16 +65,18 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 	}
 
 	oldEnders := make([]int, inf.NumGroups)
-	for level := 0; level < inf.NumRounds/inf.NeffLen; level++ {
+	for level := 0; level < numLevels; level++ {
 		groups := chunks(rand.Perm(inf.NumNodes), inf.NeffLen)
 		p := rand.Perm(inf.NumGroups)
 
 		// Establish the cross-connections between Neff Shuffle groups
-		for i, e := range oldEnders {
-			inf.Routes[e][(level+1)*2*inf.NeffLen-1] = []int{groups[i][0], groups[p[i]][0]}
-			inf.EncryptKeys[e][level] = [2]abstract.Point{
-				inf.PublicKey(groups[i]),
-				inf.PublicKey(groups[p[i]]),
+		if level != 0 {
+			for i, e := range oldEnders {
+				inf.Routes[e][(level+1)*2*inf.NeffLen-1] = []int{groups[i][0], groups[p[i]][0]}
+				inf.EncryptKeys[e][level] = [2]abstract.Point{
+					inf.PublicKey(groups[i]),
+					inf.PublicKey(groups[p[i]]),
+				}
 			}
 		}
 
@@ -115,6 +122,14 @@ func (inf *Info) shuffle(x, y []abstract.Point, h abstract.Point, rnd abstract.C
 	return xx, yy, Proof{x, y, prf}
 }
 
+func nonNil(left, right []Proof) []Proof {
+	if left == nil {
+		return right
+	} else {
+		return left
+	}
+}
+
 func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 	subround := m.Round % (2 * inf.NeffLen)
 	group := m.Round / (2 * inf.NeffLen)
@@ -124,32 +139,23 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 
 	// Is it a collection round?
 	case subround == 0:
-		if m.LeftProofs != nil {
-			if check(i, inf.VerifyDecrypts(m.LeftProofs, m.Y, inf.GroupKeys[i][group])) {
-				return nil
-			}
-			inf.Cache.LeftX = m.X
-			inf.Cache.LeftY = m.Y
-			inf.Cache.LeftProofs = m.LeftProofs
-		} else {
-			if check(i, inf.VerifyDecrypts(m.RightProofs, m.Y, inf.GroupKeys[i][group])) {
-				return nil
-			}
-			inf.Cache.RightX = m.X
-			inf.Cache.RightY = m.Y
-			inf.Cache.RightProofs = m.RightProofs
+		inf.Cache.X = append(inf.Cache.X, m.X...)
+		inf.Cache.Y = append(inf.Cache.Y, m.Y...)
+		proofs := nonNil(m.LeftProofs, m.RightProofs)
+		if proofs != nil && check(i, inf.VerifyDecrypts(proofs, m.Y, inf.GroupKeys[i][group])) {
+			return nil
 		}
-		if inf.Cache.LeftX != nil && inf.Cache.RightX != nil {
-			m.X = append(inf.Cache.LeftX, inf.Cache.RightX...)
-			m.Y = append(inf.Cache.LeftY, inf.Cache.RightY...)
+		if len(inf.Cache.X) < inf.NumClients {
+			inf.Cache.Proofs = proofs
+			return nil
+		} else {
 			var prf Proof
 			m.X, m.Y, prf = inf.shuffle(m.X, m.Y, inf.GroupKeys[i][m.Round], rnd)
-			m.LeftProofs = inf.Cache.LeftProofs[1:]
-			m.RightProofs = inf.Cache.RightProofs[1:]
+			m.LeftProofs = inf.Cache.Proofs[1:]
+			m.RightProofs = proofs[1:]
 			m.ShufProofs = []Proof{prf}
 			m.Round = m.Round + 1
-		} else {
-			return nil
+			return m
 		}
 
 	// Is it the first part of a cycle?
