@@ -292,8 +292,6 @@ func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, serverList
 }
 
 /******************************** Request Method ******************************/
-// These are methods that are send data to other nodes.
-
 
 /* This method is responsible for certifying a promise. It sends requests out
  * to the insurers and then waits for the promise to be certified.
@@ -398,7 +396,8 @@ func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, 
 	return nil
 }
 
-/* This method sends a promise to another server.
+/* This method sends a promise to another server. Promises must be certified before
+ * they can be sent
  *
  * Arguments:
  *   clientKey    = the long term public key of the client to send the promise to
@@ -494,8 +493,7 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 }
 
 
-/******************************** Receive Method ******************************/
-// These are methods responsible for handling mesges that come into the system.
+/******************************** Receive Methods *****************************/
 
 /* This function processes policy messages received over the internet and updates
  * the life policy appropriately.
