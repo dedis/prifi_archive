@@ -51,10 +51,13 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 	inf.Routes = make([][][]int, inf.NumNodes)
 	inf.EncryptKeys = make([][][2]abstract.Point, inf.NumGroups)
 	inf.GroupKeys = make([][]abstract.Point, inf.NumGroups)
-	inf.NodeGroup = make([]int, inf.NumNodes)
+	inf.NodeGroup = make([][]int, inf.NumNodes)
 	inf.StartNodes = make([]int, inf.NumGroups)
 	for n := range inf.Routes {
 		inf.Routes[n] = make([][]int, inf.NumRounds)
+	}
+	for n := range inf.NodeGroup {
+		inf.NodeGroup[n] = make([]int, numLevels)
 	}
 	for n := range inf.EncryptKeys {
 		inf.EncryptKeys[n] = make([][2]abstract.Point, numLevels)
@@ -89,7 +92,7 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 		for gi, g := range groups {
 			inf.GroupKeys[gi][level] = inf.PublicKey(g)
 			for i := range g {
-				inf.NodeGroup[g[i]] = gi
+				inf.NodeGroup[g[i]][level] = gi
 				inf.Active[g[i]] = append(inf.Active[g[i]], level*2*inf.NeffLen+i)
 				if i < len(g)-1 {
 					inf.Routes[g[i]][level*2*inf.NeffLen+i] = []int{g[i+1]}
@@ -142,7 +145,7 @@ func clearCache(cache *Cache) {
 func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	subround := m.Round % (2 * inf.NeffLen)
 	level := m.Round / (2 * inf.NeffLen)
-	groupKey := inf.GroupKeys[inf.NodeGroup[i]][level]
+	groupKey := inf.GroupKeys[inf.NodeGroup[i][level]][level]
 	half := len(m.X) / 2
 	rnd := inf.Suite.Cipher(nil)
 	switch {
@@ -161,6 +164,8 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		} else {
 			var prf Proof
 			m.X, m.Y, prf = inf.Shuffle(cache.X, cache.Y, groupKey, rnd)
+			inf.VerifyShuffles([]Proof{prf}, m.X, m.Y, groupKey)
+
 			if len(cache.Proofs) > 0 {
 				m.LeftProofs = cache.Proofs[1:]
 				m.RightProofs = proofs[1:]
@@ -190,7 +195,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 
 	// Verify a part of the second cycle
 	case subround >= inf.NeffLen:
-		encryptKey := inf.EncryptKeys[inf.NodeGroup[i]][level]
+		encryptKey := inf.EncryptKeys[inf.NodeGroup[i][level]][level]
 		var b bool
 		if len(m.LeftProofs) < 1 || len(m.RightProofs) < 1 {
 			b = check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey))

@@ -38,7 +38,7 @@ type Info struct {
 	EncryptKeys [][][2]abstract.Point // (groupid, level) -> left+right pubkeys
 	GroupKeys   [][]abstract.Point    // (groupid, level) -> group key
 	StartNodes  []int                 // client % numgroups -> node
-	NodeGroup   []int                 // node -> groupid
+	NodeGroup   [][]int               // (node, level) -> groupid
 	NumGroups   int
 	NeffLen     int
 }
