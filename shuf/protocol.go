@@ -126,7 +126,7 @@ func check(i, r int, e error) bool {
 }
 
 func nonNil(left, right []Proof) []Proof {
-	if left == nil {
+	if len(left) < 1 {
 		return right
 	} else {
 		return left
@@ -204,7 +204,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		if b {
 			return nil
 		}
-		if m.NewX == nil {
+		if len(m.NewX) < 1 {
 			m.NewX = make([]abstract.Point, len(m.X))
 			for x := range m.NewX {
 				m.NewX[x] = inf.Suite.Point().Null()
@@ -213,7 +213,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		leftNewX, leftY, leftPrf, lerr :=
 			inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], i, encryptKey[0])
 		rightNewX, rightY, rightPrf, rerr :=
-			inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[:half], i, encryptKey[1])
+			inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], i, encryptKey[1])
 		if check(i, m.Round, lerr) || check(i, m.Round, rerr) {
 			return nil
 		}
