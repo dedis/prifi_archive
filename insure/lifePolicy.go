@@ -645,21 +645,6 @@ func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, m
  *
  * Returns:
  *	nil if the PromiseResponse was added to the state, err otherwise.
- *
- * TODO Change promise.AddResponse so that it verifies that the response is
- *      well-formed and returns an error status.
- *
- * TODO Alter promise.AddResponse to keep track of the number of valid responses
- *      it has received. To do so:
- *
- *          - Only add valid responses
- *          - Increment a counter each time a valid response is added.
- *          - If a valid response replaces another valid response, update the
- *            array but don't change the counter
- *          - Once a validly produced blameProof is found, set a flag to permanently
- *            denote the promise as invalid
- *          - Perhaps also prevent any new promises from being added to prevent
- *            overwritting the blameproof?
  */
 func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMessage) error {
 	// If the promise was created by the server, add the response to the
@@ -667,16 +652,14 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 	// promise is the same as the server's long term public key.
 	state, ok := lp.promises[msg.Id];
 	if  ok && msg.PromiserId == lp.serverId {
-		state.AddResponse(msg.ShareIndex, msg.Response)
-		return nil
+		return state.AddResponse(msg.ShareIndex, msg.Response)
 	}
 
 	// Otherwise, the server was requesting a certificate for a promise
 	// from another server.
 	state, ok = lp.serverPromises[msg.PromiserId][msg.Id];	
 	if ok {
-		state.AddResponse(msg.ShareIndex, msg.Response)
-		return nil
+		return state.AddResponse(msg.ShareIndex, msg.Response)
 	}
 	return errors.New("Promise does not exist.")
 }

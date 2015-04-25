@@ -880,6 +880,12 @@ func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
 	if err != nil {
 		t.Error("Response should have been added to Promise", err)
 	}
+	
+	// Verify adding a message twice produces an error.
+	err = policy.handlePromiseResponseMessage(responseMsg)
+	if err == nil {
+		t.Error("Added a response twice should produce an error.")
+	}
 
 	// Test that a response for an unknown promise produces an error.
 	msg = new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
@@ -899,6 +905,12 @@ func TestLifePolicyModuleHandlePromiseResponseMessage(t *testing.T) {
 	err = policy.handlePromiseResponseMessage(responseMsg)
 	if err != nil {
 		t.Error("Response should have been added to Promise", err)
+	}
+
+	// Verify adding a message twice produces an error.
+	err = policy.handlePromiseResponseMessage(responseMsg)
+	if err == nil {
+		t.Error("Added a response twice should produce an error.")
 	}
 }
 
