@@ -394,15 +394,23 @@ func (lp *LifePolicyModule) CertifyPromise(serverKey, promiseKey abstract.Point)
  *   verification must be done before the call to this function.
  */
 func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, clientKey abstract.Point) error {
-	// A promise must be certified before a share can be revealed.
-	if state.PromiseCertified() != nil {
-		err := lp.certifyPromise(state)
-		if err != nil {
+	// A promise must have a sufficient number of signatures before a share
+	// can be revealed. SufficientSignatures is used here rather than
+	// PromiseCertified to prevent a malicious server and insurer from
+	// conspiring together by having the insurer wait to send a valid
+	// blameProof after the server goes down so no one can reconstruct the
+	// secret.
+	if state.SufficientSignatures() != nil {
+		lp.certifyPromise(state)
+		if err := state.SufficientSignatures(); err != nil {
 			return err
 		}
 	}
 
-	share := state.RevealShare(shareIndex, lp.keyPair)
+	share, err := state.RevealShare(shareIndex, lp.keyPair)
+	if err != nil {
+		return err
+	}
 	responseMsg := new(PromiseShareMessage).createResponseMessage(
 		shareIndex, state.Promise, share)
 	lp.cman.Put(clientKey, new(PolicyMessage).createSRSPMessage(responseMsg))

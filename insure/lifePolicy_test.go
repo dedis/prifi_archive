@@ -693,7 +693,7 @@ func sendRevealShareResponses(t *testing.T, i int, state *promise.State,  cm con
 		cm.Get(keyPairT.Public, msg)
 
 		if msg.Type == ShareRevealRequest {
-			share := state.RevealShare(i, serverKeys[i])
+			share, _ := state.RevealShare(i, serverKeys[i])
 			responseMsg := new(PromiseShareMessage).createResponseMessage(
 				i, state.Promise, share)
 			cm.Put(keyPairT.Public, new(PolicyMessage).createSRSPMessage(responseMsg))
@@ -1061,7 +1061,7 @@ func TestLifePolicyModuleHandleRevealShareRequestMessage(t *testing.T) {
 func sendRevealShareResponseMessageBasic(t *testing.T, i int, state1, state2 *promise.State, cm connMan.ConnManager) {
 
 	// First, send the promise a response to a promise it has.
-	response := state1.RevealShare(i, serverKeys[i])
+	response, _ := state1.RevealShare(i, serverKeys[i])
 	responseMsg := new(PromiseShareMessage).createResponseMessage(i,
 		state1.Promise, response)
 	policyMsg  := new(PolicyMessage).createSRSPMessage(responseMsg)
