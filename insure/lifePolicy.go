@@ -77,8 +77,6 @@ type LifePolicyModule struct {
 	//
 	// Refer to the crypto promise.Promise documentation for more information
 	// about how they are used.
-	//
-	// TODO Make sure the system behaves properly if these values differ.
 	t, r, n int
 
 	// This hash contains promises the server has created. The hash is of
@@ -228,7 +226,7 @@ func (lp *LifePolicyModule) verifyServerAliveDefault(reason string,
 		msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
 				lp.keyPair.Suite)
 		lp.cman.Get(serverKey, msg)
-		msgType, err := lp.handlePolicyMessage(serverKey, msg)
+		msgType, err := lp.HandlePolicyMessage(serverKey, msg)
 		if msgType == ServerAliveResponse && err == nil {
 			break
 		}
@@ -349,7 +347,7 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 		for i := 0; i < lp.n; i++ {
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
-			msgType, err := lp.handlePolicyMessage(insurersList[i], msg)
+			msgType, err := lp.HandlePolicyMessage(insurersList[i], msg)
 			if err != nil {
 				log.Println("Message Type = ", msgType, ":", err)
 			}
@@ -508,7 +506,7 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
 				lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
-			msgType, err := lp.handlePolicyMessage(insurersList[i], msg)
+			msgType, err := lp.HandlePolicyMessage(insurersList[i], msg)
 			if err == nil &&
 			   seenBefore[i] == false &&
 			   msgType == ShareRevealResponse {
@@ -542,7 +540,7 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
  * Note: In the case of ServerAliveResponse, nothing needs to be done. Simply
  * inform the caller that the sender is alive.
  */
-func (lp *LifePolicyModule) handlePolicyMessage(pubKey abstract.Point, msg *PolicyMessage) (PolicyMessageType, error) {
+func (lp *LifePolicyModule) HandlePolicyMessage(pubKey abstract.Point, msg *PolicyMessage) (PolicyMessageType, error) {
 	switch msg.Type {
 		case CertifyPromise:
 			return CertifyPromise, lp.handleCertifyPromiseMessage(pubKey, msg.getCPM())

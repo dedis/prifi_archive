@@ -999,7 +999,7 @@ func TestLifePolicyModuleHandleRevealShareRequestMessage(t *testing.T) {
 	// The insure sent a certify message to itself. Make sure to handle it.
 	msg  := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, serverKeys[i].Suite)
 	policy.cman.Get(serverKeys[i].Public, msg)
-	policy.handlePolicyMessage(serverKeys[i].Public, msg)
+	policy.HandlePolicyMessage(serverKeys[i].Public, msg)
 
 	reasonTest := "test"
 	go sendRevealShareRequestMessageBasic(t, i, reasonTest, state, state2)
@@ -1265,7 +1265,7 @@ func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager,
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(keyPairT.Public, msg)
-		msgTyp, err := policy.handlePolicyMessage(keyPairT.Public, msg)
+		msgTyp, err := policy.HandlePolicyMessage(keyPairT.Public, msg)
 		if msgTyp == CertifyPromise && err == nil {
 			break
 		}
@@ -1275,7 +1275,7 @@ func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager,
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(clientT.Public, msg)
-		msgTyp, err := policy.handlePolicyMessage(clientT.Public, msg)
+		msgTyp, err := policy.HandlePolicyMessage(clientT.Public, msg)
 		if msgTyp == CertifyPromise && err == nil {
 			break
 		}
@@ -1292,7 +1292,7 @@ func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager,
 			for true {
 				msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 				cm.Get(serverKeys[i].Public, msg)
-				msgTyp, err := policy.handlePolicyMessage(serverKeys[i].Public, msg)
+				msgTyp, err := policy.HandlePolicyMessage(serverKeys[i].Public, msg)
 				if msgTyp == CertifyPromise && err == nil {
 					break
 				}
@@ -1304,7 +1304,7 @@ func insurersFunctional(t *testing.T, k *config.KeyPair, cm connMan.ConnManager,
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(clientT.Public, msg)
-		msgTyp, err := policy.handlePolicyMessage(clientT.Public, msg)
+		msgTyp, err := policy.HandlePolicyMessage(clientT.Public, msg)
 		if msgTyp == ShareRevealRequest && err == nil {
 			break
 		}
@@ -1319,7 +1319,7 @@ func clientFunctional(t *testing.T, finished *sync.WaitGroup) {
 	// Phase 2: Send the Promise to a Client
 	msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, clientT.Suite)
 	clientConn.Get(keyPairT.Public, msg)
-	msgTyp, err := policy.handlePolicyMessage(keyPairT.Public, msg)	
+	msgTyp, err := policy.HandlePolicyMessage(keyPairT.Public, msg)	
 
 	if msgTyp != PromiseToClient || err != nil {
 		panic("Expected to receive a promise from the server")
