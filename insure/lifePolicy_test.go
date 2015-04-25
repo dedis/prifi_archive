@@ -299,6 +299,21 @@ func insurersBasic(t *testing.T, k, returnKey *config.KeyPair,  cm connMan.ConnM
 	}
 }
 
+// Used to test timeouts, this sends a dummy ServerAliveRequest to the server. 
+func insurersNoResponse(t *testing.T, k, returnKey *config.KeyPair,  cm connMan.ConnManager) {
+
+	for true {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
+		cm.Get(returnKey.Public, msg)
+
+		// If a CertifyPromiseMessage, exit
+		if msg.Type == CertifyPromise {
+			cm.Put(returnKey.Public, new(PolicyMessage).createSAREQMessage())
+			return
+		}
+	}
+}
+
 // Verifies that certifyPromise can properly communicate with other servers.
 func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 
@@ -325,6 +340,30 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 	err = policy.certifyPromise(finalState)
 	if err != nil {
 		t.Error("The promise failed to be certified: ", err)
+	}
+	
+	// Test that an error is produced if the timeout is exceeded
+	for i := 0; i < numServers; i++ {
+		go insurersNoResponse(t, serverKeys[i], keyPairT, connectionManagers[i])
+	}	
+
+	policy, state = produceNewServerPolicyWithPromise()
+	policy.defaultTimeout = 0
+	err = policy.certifyPromise(state)
+	if err == nil {
+		t.Error("Certify promise should have timed out.")
+	}
+
+	// The server will have sent a server alive response. Clear it from the
+	// insurer's channel so as not to affect other tests.
+	for i := 0; i < numServers; i++ {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+		connectionManagers[i].Get(keyPairT.Public, msg)
+
+		// If a CertifyPromiseMessage, exit
+		if msg.Type != ServerAliveResponse {
+			t.Error("Alive response should have been sent")
+		}
 	}
 }
 

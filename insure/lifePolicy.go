@@ -320,13 +320,21 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
 
-	// TODO: Add a timeout so that this process will end after a certain
-	// amount of time.
-	//
 	// TODO: Consider the case for invalid promises due to a valid blameProof.
-	
+
+	// Setup the timeout.	
+	timeoutChan  := make(chan bool, 1)
+	go handleTimeout(lp.defaultTimeout, timeoutChan)
+
 	// Wait for responses
 	for state.PromiseCertified() != nil {
+		select {
+			case result := <- timeoutChan:
+				if result == true {
+					return errors.New("Certification timed out.")
+				}
+			default:
+		}
 		for i := 0; i < lp.n; i++ {
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
