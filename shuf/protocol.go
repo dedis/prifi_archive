@@ -73,7 +73,7 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 		// Establish the cross-connections between Neff Shuffle groups
 		if level != 0 {
 			for i, e := range oldEnders {
-				inf.Routes[e][(level+1)*2*inf.NeffLen-1] = []int{groups[i][0], groups[p[i]][0]}
+				inf.Routes[e][level*2*inf.NeffLen-1] = []int{groups[i][0], groups[p[i]][0]}
 				inf.EncryptKeys[i][level-1] = [2]abstract.Point{
 					inf.PublicKey(groups[i]),
 					inf.PublicKey(groups[p[i]]),
@@ -117,9 +117,9 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 	return inf
 }
 
-func check(i int, e error) bool {
+func check(i, r int, e error) bool {
 	if e != nil {
-		fmt.Printf("Node %v: %s\n", i, e.Error())
+		fmt.Printf("Node %v, round %d: %s\n", i, r, e.Error())
 		return true
 	}
 	return false
@@ -133,7 +133,13 @@ func nonNil(left, right []Proof) []Proof {
 	}
 }
 
-func (inf *Info) HandleRound(i int, m *Msg) *Msg {
+func clearCache(cache *Cache) {
+	cache.X = nil
+	cache.Y = nil
+	cache.Proofs = nil
+}
+
+func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	subround := m.Round % (2 * inf.NeffLen)
 	level := m.Round / (2 * inf.NeffLen)
 	groupKey := inf.GroupKeys[inf.NodeGroup[i]][level]
@@ -143,34 +149,34 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 
 	// Is it a collection round?
 	case subround == 0:
-		inf.Cache.X = append(inf.Cache.X, m.X...)
-		inf.Cache.Y = append(inf.Cache.Y, m.Y...)
+		cache.X = append(cache.X, m.X...)
+		cache.Y = append(cache.Y, m.Y...)
 		proofs := nonNil(m.LeftProofs, m.RightProofs)
-		if proofs != nil && check(i, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
+		if proofs != nil && check(i, m.Round, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
 			return nil
 		}
-		if len(inf.Cache.X) < inf.NumClients {
-			inf.Cache.Proofs = proofs
+		if len(cache.X) < inf.MsgsPerGroup {
+			cache.Proofs = proofs
 			return nil
 		} else {
-			fmt.Printf("Node %d: done collecting for round %d\n", i, m.Round)
 			var prf Proof
-			m.X, m.Y, prf = inf.Shuffle(inf.Cache.X, inf.Cache.Y, groupKey, rnd)
-			if inf.Cache.Proofs != nil {
-				m.LeftProofs = inf.Cache.Proofs[1:]
+			m.X, m.Y, prf = inf.Shuffle(cache.X, cache.Y, groupKey, rnd)
+			if cache.Proofs != nil {
+				m.LeftProofs = cache.Proofs[1:]
 				m.RightProofs = proofs[1:]
 			}
 			m.ShufProofs = []Proof{prf}
 			m.Round = m.Round + 1
+			clearCache(cache)
 			return m
 		}
 
 	// Is it the first part of a cycle?
 	case subround < inf.NeffLen:
-		if check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey)) ||
+		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey)) ||
 			m.LeftProofs != nil &&
-				(check(i, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], groupKey)) ||
-					check(i, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], groupKey))) {
+				(check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], groupKey)) ||
+					check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], groupKey))) {
 			return nil
 		}
 		var prf Proof
@@ -186,16 +192,14 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 	case subround >= inf.NeffLen:
 		encryptKey := inf.EncryptKeys[inf.NodeGroup[i]][level]
 		var b bool
-		if m.LeftProofs == nil || m.RightProofs == nil {
-			m.LeftProofs = []Proof{}
-			m.RightProofs = []Proof{}
-			b = check(i, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey))
+		if len(m.LeftProofs) < 1 || len(m.RightProofs) < 1 {
+			b = check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey))
 		} else {
 			xs := append(m.LeftProofs[0].X, m.RightProofs[0].X...)
 			ys := append(m.LeftProofs[0].Y, m.RightProofs[0].Y...)
-			b = check(i, inf.VerifyShuffles(m.ShufProofs, xs, ys, groupKey))
-			b = b || check(i, inf.VerifyDecrypts(m.LeftProofs, m.Y[:half], encryptKey[0]))
-			b = b || check(i, inf.VerifyDecrypts(m.RightProofs, m.Y[half:], encryptKey[1]))
+			b = check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, xs, ys, groupKey))
+			b = b || check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.Y[:half], encryptKey[0]))
+			b = b || check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.Y[half:], encryptKey[1]))
 		}
 		if b {
 			return nil
@@ -209,8 +213,8 @@ func (inf *Info) HandleRound(i int, m *Msg) *Msg {
 		leftNewX, leftY, leftPrf, lerr :=
 			inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], i, encryptKey[0])
 		rightNewX, rightY, rightPrf, rerr :=
-			inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[:half], i, encryptKey[0])
-		if check(i, lerr) || check(i, rerr) {
+			inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[:half], i, encryptKey[1])
+		if check(i, m.Round, lerr) || check(i, m.Round, rerr) {
 			return nil
 		}
 		m.Y = append(leftY, rightY...)

@@ -70,6 +70,7 @@ func main() {
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
 		MsgSize:      suite.Point().MarshalSize(),
 		MsgsPerGroup: c.MsgsPerGroup,
+		Timeout:      time.Second * time.Duration(c.Timeout),
 	}
 
 	// Read the clients file

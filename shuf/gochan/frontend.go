@@ -54,6 +54,7 @@ func main() {
 	privKeys := make([]abstract.Secret, c.NumNodes)
 	for i := range pubKeys {
 		privKeys[i] = suite.Secret().Pick(rand)
+		// privKeys[i] = suite.Secret().Zero()
 		pubKeys[i] = suite.Point().Mul(nil, privKeys[i])
 	}
 	privKeyFn := func(n int) abstract.Secret {

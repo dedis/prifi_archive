@@ -41,7 +41,6 @@ type Info struct {
 	NodeGroup   []int                 // node -> groupid
 	NumGroups   int
 	NeffLen     int
-	Cache       Cache
 }
 
 // Proof of either a shuffle, decryption, or encryption

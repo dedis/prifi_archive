@@ -43,25 +43,23 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 
 		// For each round it's active, wait for a message
 		go func(i int) {
+			cache := new(shuf.Cache)
 			for ridx := 0; ridx < len(inf.Active[i]); {
 				round := inf.Active[i][ridx]
-				fmt.Printf("Node %d: on round %d\n", i, round)
 				w := <-messages[i]
 				fmt.Printf("Node %d: got message with round %d on round %d\n", i, w.m.Round, round)
 				w.ack <- true
 				if w.m.Round != round {
 					continue
 				}
-				m := inf.HandleRound(i, w.m)
+				m := inf.HandleRound(i, w.m, cache)
 				to := inf.Routes[i][round]
 
 				// Forward the new message
 				if m != nil {
 					ridx++
-					fmt.Printf("Node %d: shuffle succeeded\n", i)
 					switch {
 					case to == nil:
-						fmt.Printf("Going home\n")
 						for _, cl := range results {
 							cl <- wrapper{m, nil}
 						}
@@ -70,10 +68,10 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 						go sendTo(inf, messages[to[0]], m)
 					case len(to) == 2:
 						fmt.Printf("Node %d: jumping to a new group\n", i)
-						go sendTo(inf, messages[to[0]], shuf.GetLeft(*m))
-						go sendTo(inf, messages[to[1]], shuf.GetRight(*m))
-					default:
-						fmt.Printf("Node %d: something went wrong\n", i)
+						leftMsg := shuf.GetLeft(*m)
+						rightMsg := shuf.GetRight(*m)
+						go sendTo(inf, messages[to[0]], leftMsg)
+						go sendTo(inf, messages[to[1]], rightMsg)
 					}
 				}
 			}

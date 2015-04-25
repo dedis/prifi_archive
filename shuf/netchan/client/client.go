@@ -49,7 +49,7 @@ func main() {
 	privKeyFn := func(i int) abstract.Secret { panic("Cannot lookup key") }
 
 	// Create the info
-	inf := shuf.Info{
+	inf := shuf.MakeInfo(shuf.UserInfo{
 		Suite:      suite,
 		PrivKey:    privKeyFn,
 		PubKey:     pubKeys,
@@ -58,7 +58,8 @@ func main() {
 		NumRounds:  c.NumRounds,
 		ResendTime: time.Millisecond * time.Duration(c.ResendTime),
 		MsgSize:    suite.Point().MarshalSize(),
-	}
+		Timeout:    time.Second * time.Duration(c.Timeout),
+	}, c.Seed)
 
 	// Read the nodes file
 	nodes := make([]string, c.NumNodes)
@@ -70,12 +71,6 @@ func main() {
 		nodes[i] = l
 	}
 
-	// Start the client
-	var s shuf.Shuffle
-	switch c.Shuffle {
-	case "id":
-		s = shuf.IdShuffle{}
-	}
-	n := netchan.Node{&inf, s, id}
+	n := netchan.Node{&inf, id}
 	n.StartClient(nodes, message, c.Port)
 }

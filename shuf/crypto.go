@@ -60,12 +60,11 @@ func (inf *Info) Encrypt(msgs []abstract.Point, h abstract.Point) (x, y []abstra
 // Decrypt a list of pairs with associated proof, potentially adding new encryption
 func (inf *Info) Decrypt(x, y, newX []abstract.Point, node int,
 	encryptFor abstract.Point) ([]abstract.Point, []abstract.Point, Proof, error) {
-
-	// Initialize
 	rnd := inf.Suite.Cipher(abstract.RandomKey)
 	newY := make([]abstract.Point, len(y))
 	negKey := inf.Suite.Secret().Neg(inf.PrivKey(node))
 	r := inf.Suite.Secret().Pick(rnd)
+	// r := inf.Suite.Secret().Zero()
 
 	// Create the Predicate and new pairs
 	sec := map[string]abstract.Secret{"-h": negKey, "1": inf.Suite.Secret().One(), "r": r}
@@ -82,11 +81,11 @@ func (inf *Info) Decrypt(x, y, newX []abstract.Point, node int,
 	return newX, newY, Proof{x, y, proof}, proofErr
 }
 
-// The the combined public key for a bunch of nodes
+// The combined public key for a bunch of nodes
 func (inf *Info) PublicKey(nodes []int) abstract.Point {
 	h := inf.Suite.Point().Null()
-	for i := len(nodes) - 1; i >= 0; i-- {
-		h = inf.Suite.Point().Add(inf.PubKey[nodes[i]], h)
+	for _, i := range nodes {
+		h = inf.Suite.Point().Add(inf.PubKey[i], h)
 	}
 	return h
 }
