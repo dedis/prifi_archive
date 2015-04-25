@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync/atomic"
 
 	"golang.org/x/net/context"
 
@@ -20,8 +21,8 @@ func (sn *Node) SetupProposal(view int, am *AnnouncementMessage, from string) er
 			return errors.New("view change attempt on view != received view")
 		}
 		// ensure that we are caught up
-		if int(sn.LastAppliedVote) != sn.LastSeenVote {
-			log.Errorln(sn.Name(), "received vote: but not up to date: need to catch up", sn.LastAppliedVote, sn.LastSeenVote)
+		if atomic.LoadInt64(&sn.LastSeenVote) != atomic.LoadInt64(&sn.LastAppliedVote) {
+			log.Errorln(sn.Name(), "received vote: but not up to date: need to catch up")
 			return errors.New("not up to date: need to catch up")
 		}
 		if sn.RootFor(am.Vote.Vcv.View) != am.Vote.Vcv.Root {
@@ -81,7 +82,7 @@ func (sn *Node) Propose(view int, am *AnnouncementMessage, from string) error {
 		sm := SigningMessage{
 			Type:         Announcement,
 			View:         view,
-			LastSeenVote: sn.LastSeenVote,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 			Am:           am}
 		messgs[i] = &sm
 	}
@@ -161,7 +162,7 @@ func (sn *Node) actOnPromises(view, Round int) error {
 		err = sn.PutUp(ctx, view, &SigningMessage{
 			View:         view,
 			Type:         Commitment,
-			LastSeenVote: sn.LastSeenVote,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 			Com:          com})
 	}
 	return err
@@ -230,7 +231,7 @@ func (sn *Node) Accepted(view, Round int, sm *SigningMessage) error {
 		return sn.PutUp(ctx, view, &SigningMessage{
 			Type:         Response,
 			View:         view,
-			LastSeenVote: sn.LastSeenVote,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 			Rm:           rm})
 	}
 

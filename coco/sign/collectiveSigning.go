@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"sync/atomic"
 
 	log "github.com/Sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -69,7 +70,7 @@ func (sn *Node) get() error {
 
 			// don't act on future view if not caught up, must be done after updating vote index
 			if sm.View > sn.ViewNo {
-				if sn.LastSeenVote != int(sn.LastAppliedVote) {
+				if atomic.LoadInt64(&sn.LastSeenVote) != atomic.LoadInt64(&sn.LastAppliedVote) {
 					log.Warnln("not caught up for view change", sn.LastSeenVote, sn.LastAppliedVote)
 					return errors.New("not caught up for view change")
 				}
@@ -153,7 +154,7 @@ func (sn *Node) get() error {
 					&SigningMessage{
 						From:         sn.Name(),
 						Type:         CatchUpResp,
-						LastSeenVote: sn.LastSeenVote,
+						LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 						Curesp:       &CatchUpResponse{Vote: v}})
 			case CatchUpResp:
 				if sm.Curesp.Vote == nil || sn.VoteLog.Get(sm.Curesp.Vote.Index) != nil {
@@ -190,7 +191,7 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 		sm := SigningMessage{
 			Type:         Announcement,
 			View:         view,
-			LastSeenVote: sn.LastSeenVote,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 			Am:           am}
 		messgs[i] = &sm
 	}
@@ -294,7 +295,7 @@ func (sn *Node) actOnCommits(view, Round int) error {
 		err = sn.PutUp(ctx, view, &SigningMessage{
 			View:         view,
 			Type:         Commitment,
-			LastSeenVote: sn.LastSeenVote,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 			Com:          com})
 	}
 	return err
@@ -454,7 +455,7 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 		err = sn.PutUp(ctx, view, &SigningMessage{
 			Type:         Response,
 			View:         view,
-			LastSeenVote: sn.LastSeenVote,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 			Rm:           rm})
 	}
 
@@ -589,7 +590,7 @@ func (sn *Node) PutUpError(view int, err error) {
 	sn.PutUp(ctx, view, &SigningMessage{
 		Type:         Error,
 		View:         view,
-		LastSeenVote: sn.LastSeenVote,
+		LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 		Err:          &ErrorMessage{Err: err.Error()}})
 }
 

@@ -3,6 +3,7 @@ package sign
 import (
 	"errors"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -217,12 +218,19 @@ func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
 }
 
 func (sn *Node) updateLastSeenVote(hv int, from string) {
-	if sn.LastSeenVote < hv {
-		sn.LastSeenVote = hv
+	if int(atomic.LoadInt64(&sn.LastSeenVote)) < hv {
+		atomic.StoreInt64(&sn.LastSeenVote, int64(hv))
 	}
 }
 
 func max(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func maxint64(a int64, b int64) int64 {
 	if a > b {
 		return a
 	}

@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/context"
@@ -92,7 +93,7 @@ type Node struct {
 	// Actions     []*VoteRequest
 
 	VoteLog         *VoteLog // log of all confirmed votes, useful for replay
-	LastSeenVote    int      // max of all Highest Votes we've seen, and our last commited vote
+	LastSeenVote    int64    // max of all Highest Votes we've seen, and our last commited vote
 	LastAppliedVote int64    // last vote we have committed to our log
 
 	Actions map[int][]*Vote
@@ -263,7 +264,7 @@ func (sn *Node) StartVotingRound(v *Vote) error {
 
 	sn.nRounds++
 	v.Round = sn.nRounds
-	v.Index = sn.LastSeenVote + 1
+	v.Index = int(atomic.LoadInt64(&sn.LastSeenVote)) + 1
 	v.Count = &Count{}
 	v.Confirmed = false
 	// only default fill-in view numbers when not prefilled

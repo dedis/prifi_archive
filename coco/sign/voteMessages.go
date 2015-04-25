@@ -2,6 +2,7 @@ package sign
 
 import (
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/dedis/crypto/abstract"
@@ -106,9 +107,14 @@ func (v *Vote) UnmarshalBinary(data []byte) error {
 type VoteLog struct {
 	Entries []*Vote
 	Last    int // last set entry
+
+	mu sync.Mutex
 }
 
 func (vl *VoteLog) Put(index int, v *Vote) {
+	vl.mu.Lock()
+	defer vl.mu.Unlock()
+
 	for index >= len(vl.Entries) {
 		buf := make([]*Vote, len(vl.Entries)+1)
 		vl.Entries = append(vl.Entries, buf...)
@@ -136,7 +142,10 @@ func (vl *VoteLog) Stream() chan *Vote {
 
 		i := 1
 		for {
-			if v := vl.Get(i); v != nil {
+			vl.mu.Lock()
+			v := vl.Get(i)
+			vl.mu.Unlock()
+			if v != nil {
 				ch <- v
 				i++
 			} else {
