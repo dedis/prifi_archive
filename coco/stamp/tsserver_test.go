@@ -46,69 +46,56 @@ func TestTSSIntegrationFaulty(t *testing.T) {
 	}
 
 	// not mixing view changes with faults
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	RoundsPerView := 100
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTSSIntegration(4, 4, 20, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
+	if err := runTSSIntegration(RoundsPerView, 4, 4, 20, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
-
-	sign.RoundsPerView = aux
 }
 
 func TestTSSViewChange1(t *testing.T) {
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 2
+	RoundsPerView := 2
 	nRounds := 12
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
 
-	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+	if err := runTSSIntegration(RoundsPerView, 1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
-
-	sign.RoundsPerView = aux
 }
 
 func TestTSSViewChange2(t *testing.T) {
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 3
+	RoundsPerView := 3
 	nRounds := 8
 	failAsRootEvery := 0     // never fail on announce
 	failAsFollowerEvery := 0 // never fail on commit or response
 
-	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+	if err := runTSSIntegration(RoundsPerView, 1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
-
-	sign.RoundsPerView = aux
 }
 
 // Each View Root fails on its 3rd round of being root
 // View Change is initiated as a result
 // RoundsPerView very large to avoid other reason for ViewChange
 func TestTSSViewChangeOnRootFailure(t *testing.T) {
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 1000
+	RoundsPerView := 1000
 	nRounds := 12
 	failAsRootEvery := 3     // fail on announce every 3rd round
 	failAsFollowerEvery := 0 // never fail on commit or response
 
-	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
+	if err := runTSSIntegration(RoundsPerView, 1, nRounds, 0, failAsRootEvery, failAsFollowerEvery); err != nil {
 		t.Fatal(err)
 	}
-
-	sign.RoundsPerView = aux
 }
 
 // Faulty Followers fail every 3rd round
 func TestTSSViewChangeOnFollowerFailureNoRate(t *testing.T) {
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 1000
+	RoundsPerView := 1000
 	nRounds := 12
 	failAsRootEvery := 0 // never fail on announce
 	// selected faultyNodes will fail on commit and response every 3 rounds
@@ -117,17 +104,14 @@ func TestTSSViewChangeOnFollowerFailureNoRate(t *testing.T) {
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 3)
-	if err := runTSSIntegration(1, nRounds, 0, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
+	if err := runTSSIntegration(RoundsPerView, 1, nRounds, 0, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
-
-	sign.RoundsPerView = aux
 }
 
 // Faulty Followers fail every 3rd round, with probability failureRate%
 func TestTSSViewChangeOnFollowerFailureWithRate(t *testing.T) {
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 1000
+	RoundsPerView := 1000
 	nRounds := 12
 	failAsRootEvery := 0 // never fail on announce
 	failureRate := 10
@@ -137,15 +121,13 @@ func TestTSSViewChangeOnFollowerFailureWithRate(t *testing.T) {
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 3)
-	if err := runTSSIntegration(1, nRounds, failureRate, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
+	if err := runTSSIntegration(RoundsPerView, 1, nRounds, failureRate, failAsRootEvery, failAsFollowerEvery, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
-
-	sign.RoundsPerView = aux
 }
 
 // # Messages per round, # rounds, failure rate[0..100], list of faulty nodes
-func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsFollowerEvery int, faultyNodes ...int) error {
+func runTSSIntegration(RoundsPerView, nMessages, nRounds, failureRate, failAsRootEvery, failAsFollowerEvery int, faultyNodes ...int) error {
 	//stamp.ROUND_TIME = 1 * time.Second
 	var hostConfig *oldconfig.HostConfig
 	var err error
@@ -178,6 +160,10 @@ func runTSSIntegration(nMessages, nRounds, failureRate, failAsRootEvery, failAsF
 	// set followerfailures
 	for _, f := range faultyNodes {
 		hostConfig.SNodes[f].FailAsFollowerEvery = failAsFollowerEvery
+	}
+
+	for _, n := range hostConfig.SNodes {
+		n.RoundsPerView = RoundsPerView
 	}
 
 	err = hostConfig.Run(true, sign.MerkleTree)
@@ -244,6 +230,10 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 		log.Fatal(err)
 	}
 
+	for _, n := range hc.SNodes {
+		n.RoundsPerView = 1000
+	}
+
 	for _, s := range stampers[1:] {
 		go s.Run("regular", nRounds)
 		go s.ListenToClients()
@@ -289,13 +279,15 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 }
 
 func TestTCPTimestampFromConfigViewChange(t *testing.T) {
-	if err := runTCPTimestampFromConfig(sign.MerkleTree, 1, 1, 5, 0); err != nil {
+	RoundsPerView := 5
+	if err := runTCPTimestampFromConfig(RoundsPerView, sign.MerkleTree, 1, 1, 5, 0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestTCPTimestampFromConfigHealthy(t *testing.T) {
-	if err := runTCPTimestampFromConfig(sign.MerkleTree, 1, 1, 5, 0); err != nil {
+	RoundsPerView := 5
+	if err := runTCPTimestampFromConfig(RoundsPerView, sign.MerkleTree, 1, 1, 5, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -306,15 +298,14 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 	}
 
 	// not mixing view changes with faults
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	RoundsPerView := 100
 	// not mixing view changes with faults
 	aux2 := sign.HEARTBEAT
 	sign.HEARTBEAT = 4 * sign.ROUND_TIME
 
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
-	if err := runTCPTimestampFromConfig(sign.MerkleTree, 1, 1, 5, 20, faultyNodes...); err != nil {
+	if err := runTCPTimestampFromConfig(RoundsPerView, sign.MerkleTree, 1, 1, 5, 20, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 
@@ -324,21 +315,19 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 
 func TestTCPTimestampFromConfigVote(t *testing.T) {
 	// not mixing view changes with faults
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	RoundsPerView := 100
 	// not mixing view changes with faults
 	aux2 := sign.HEARTBEAT
 	sign.HEARTBEAT = 4 * sign.ROUND_TIME
 
-	if err := runTCPTimestampFromConfig(sign.Voter, 0, 0, 5, 0); err != nil {
+	if err := runTCPTimestampFromConfig(RoundsPerView, sign.Voter, 0, 0, 5, 0); err != nil {
 		t.Fatal(err)
 	}
 
-	sign.RoundsPerView = aux
 	sign.HEARTBEAT = aux2
 }
 
-func runTCPTimestampFromConfig(signType, nMessages, nClients, nRounds, failureRate int, faultyNodes ...int) error {
+func runTCPTimestampFromConfig(RoundsPerView int, signType, nMessages, nClients, nRounds, failureRate int, faultyNodes ...int) error {
 	var hc *oldconfig.HostConfig
 	var err error
 	oldconfig.StartConfigPort += 2010
@@ -358,6 +347,10 @@ func runTCPTimestampFromConfig(signType, nMessages, nClients, nRounds, failureRa
 		for i := range hc.SNodes {
 			hc.SNodes[i].FailureRate = failureRate
 		}
+	}
+
+	for _, n := range sn.SNodes {
+		n.RoundsPerView = RoundsPerView
 	}
 
 	err = hc.Run(true, sign.Type(signType))
@@ -418,7 +411,7 @@ func runTCPTimestampFromConfig(signType, nMessages, nClients, nRounds, failureRa
 
 	// give it some time before closing the connections
 	// so that no essential messages are denied passing through the network
-	time.Sleep(10 * time.Second)
+	time.Sleep(1 * time.Second)
 	for _, h := range hc.SNodes {
 		h.Close()
 	}

@@ -31,13 +31,13 @@ import (
 //    / \
 //   2   3
 func TestStaticMerkle(t *testing.T) {
-	if err := runStaticTest(sign.MerkleTree); err != nil {
+	if err := runStaticTest(sign.MerkleTree, 100); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestStaticPubKey(t *testing.T) {
-	if err := runStaticTest(sign.PubKey); err != nil {
+	if err := runStaticTest(sign.PubKey, 100); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -46,14 +46,14 @@ func TestStaticFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 1)
 
-	if err := runStaticTest(sign.PubKey, faultyNodes...); err != nil {
+	if err := runStaticTest(sign.PubKey, 100, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
 
 var DefaultView = 0
 
-func runStaticTest(signType sign.Type, faultyNodes ...int) error {
+func runStaticTest(signType sign.Type, RoundsPerView int, faultyNodes ...int) error {
 	// Crypto setup
 	suite := nist.NewAES128SHA256P256()
 	rand := suite.Cipher([]byte("example"))
@@ -88,6 +88,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 		nodes[i] = sign.NewNode(h[i], suite, rand)
 		nodes[i].Type = signType
 		nodes[i].GenSetPool()
+		nodes[i].RoundsPerView = RoundsPerView
 		defer nodes[i].Close()
 
 		h[i].SetPubKey(nodes[i].PubKey)
@@ -138,21 +139,24 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 //   2   3   5
 func TestSmallConfigHealthy(t *testing.T) {
 	suite := nist.NewAES128SHA256P256()
-	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
+	RoundsPerView := 100
+	if err := runTreeSmallConfig(sign.MerkleTree, RoundsPerView, suite, 0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSmallConfigHealthyNistQR512(t *testing.T) {
 	suite := nist.NewAES128SHA256QR512()
-	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
+	RoundsPerView := 100
+	if err := runTreeSmallConfig(sign.MerkleTree, RoundsPerView, suite, 0); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestSmallConfigHealthyEd25519(t *testing.T) {
 	suite := ed25519.NewAES128SHA256Ed25519(true)
-	if err := runTreeSmallConfig(sign.MerkleTree, suite, 0); err != nil {
+	RoundsPerView := 100
+	if err := runTreeSmallConfig(sign.MerkleTree, RoundsPerView, suite, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -161,7 +165,8 @@ func TestSmallConfigFaulty(t *testing.T) {
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 2, 5)
 	suite := nist.NewAES128SHA256P256()
-	if err := runTreeSmallConfig(sign.MerkleTree, suite, 1, faultyNodes...); err != nil {
+	RoundsPerView := 100
+	if err := runTreeSmallConfig(sign.MerkleTree, RoundsPerView, suite, 1, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -170,13 +175,14 @@ func TestSmallConfigFaulty2(t *testing.T) {
 	failureRate := 15
 	faultyNodes := make([]int, 0)
 	faultyNodes = append(faultyNodes, 1, 2, 3, 4, 5)
+	RoundsPerView := 100
 	suite := nist.NewAES128SHA256P256()
-	if err := runTreeSmallConfig(sign.MerkleTree, suite, failureRate, faultyNodes...); err != nil {
+	if err := runTreeSmallConfig(sign.MerkleTree, RoundsPerView, suite, failureRate, faultyNodes...); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func runTreeSmallConfig(signType sign.Type, suite abstract.Suite, failureRate int, faultyNodes ...int) error {
+func runTreeSmallConfig(signType sign.Type, RoundsPerView int, suite abstract.Suite, failureRate int, faultyNodes ...int) error {
 	var hc *oldconfig.HostConfig
 	var err error
 	opts := oldconfig.ConfigOptions{Suite: suite}
@@ -203,6 +209,9 @@ func runTreeSmallConfig(signType sign.Type, suite abstract.Suite, failureRate in
 			hc.SNodes[i].FailureRate = failureRate
 		}
 	}
+	for _, sn := range hc.SNodes {
+		sn.RoundsPerView = RoundsPerView
+	}
 
 	err = hc.Run(false, signType)
 	if err != nil {
@@ -224,12 +233,14 @@ func TestTreeFromBigConfig(t *testing.T) {
 	return
 
 	// not mixing view changes in
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	RoundsPerView := 100
 
 	hc, err := oldconfig.LoadConfig("../test/data/exwax.json")
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, sn := range hc.SNodes {
+		sn.RoundsPerView = RoundsPerView
 	}
 	err = hc.Run(false, sign.MerkleTree)
 	if err != nil {
@@ -250,8 +261,6 @@ func TestTreeFromBigConfig(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
-	sign.RoundsPerView = aux
 }
 
 // tree from configuration file data/exconf.json
@@ -260,13 +269,15 @@ func TestMultipleRounds(t *testing.T) {
 		t.Skip("skipping test in short mode.")
 	}
 	// not mixing view changes in
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	RoundsPerView := 100
 	hc, err := oldconfig.LoadConfig("../test/data/exconf.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	N := 5
+	for _, sn := range hc.SNodes {
+		sn.RoundsPerView = RoundsPerView
+	}
 	err = hc.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
@@ -279,7 +290,7 @@ func TestMultipleRounds(t *testing.T) {
 	}()
 
 	// give it some time to set up
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// Have root node initiate the signing protocol
 	// via a simple annoucement
@@ -290,18 +301,18 @@ func TestMultipleRounds(t *testing.T) {
 			t.Error(err)
 		}
 	}
-
-	sign.RoundsPerView = aux
 }
 
 func TestTCPStaticConfig(t *testing.T) {
 	// not mixing view changes in
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	RoundsPerView := 100
 	time.Sleep(5 * time.Second)
 	hc, err := oldconfig.LoadConfig("../test/data/extcpconf.json", oldconfig.ConfigOptions{ConnType: "tcp", GenHosts: true})
 	if err != nil {
 		t.Error(err)
+	}
+	for _, n := range hc.SNodes {
+		n.RoundsPerView = RoundsPerView
 	}
 	defer func() {
 		for _, n := range hc.SNodes {
@@ -326,8 +337,7 @@ func TestTCPStaticConfig(t *testing.T) {
 
 func TestTCPStaticConfigRounds(t *testing.T) {
 	// not mixing view changes in
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
+	RoundsPerView := 100
 	time.Sleep(5 * time.Second)
 	if testing.Short() {
 		t.Skip("skipping test in short mode.")
@@ -336,6 +346,11 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 	if err != nil {
 		t.Fatal("error loading configuration: ", err)
 	}
+
+	for _, n := range hc.SNodes {
+		n.RoundsPerView = RoundsPerView
+	}
+
 	defer func() {
 		for _, n := range hc.SNodes {
 			n.Close()
@@ -354,7 +369,6 @@ func TestTCPStaticConfigRounds(t *testing.T) {
 		hc.SNodes[0].LogTest = []byte("hello world")
 		hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}
-	sign.RoundsPerView = aux
 }
 
 // Tests the integration of View Change with Signer (ability to reach consensus on a view change)
