@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"hash/fnv"
-	"io"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -70,10 +69,10 @@ type Node struct {
 	LogTest   []byte                    // for testing purposes
 	peerKeys  map[string]abstract.Point // map of all peer public keys
 
-	closing     chan bool  // inner channel to stop getting message when closing
 	closed      chan error // error sent when connection closed
-	done        chan int   // round number sent when round done
-	commitsDone chan int   // round number sent when announce/commit phase done
+	isclosed    bool
+	done        chan int // round number sent when round done
+	commitsDone chan int // round number sent when announce/commit phase done
 
 	// "root" or "regular" are sent on this channel to
 	// notify the maker of the sn what role sn plays in the new view
@@ -114,11 +113,13 @@ func (sn *Node) Close() {
 		sn.heartbeat = nil
 		log.Println("after close", sn.Name(), "has heartbeat=", sn.heartbeat)
 	}
-	sn.hbLock.Unlock()
-	sn.closed <- io.EOF
-	sn.closing <- true
-	log.Printf("signing node: closing: %s", sn.Name())
-	sn.Host.Close()
+	if !sn.isclosed {
+		sn.hbLock.Unlock()
+		close(sn.closed)
+		log.Printf("signing node: closing: %s", sn.Name())
+		sn.Host.Close()
+	}
+	sn.isclosed = true
 }
 
 func (sn *Node) ViewChangeCh() chan string {
@@ -222,8 +223,8 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 		firstRoundTime = time.Since(first)
 		sn.logFirstPhase(firstRoundTime)
 		break
-	case err := <-sn.closed:
-		return err
+	case <-sn.closed:
+		return errors.New("closed")
 	case <-ctx.Done():
 		log.Errorln(ctx.Err())
 		if ctx.Err() == context.Canceled {
@@ -240,8 +241,8 @@ func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
 		sn.logSecondPhase(totalTime - firstRoundTime)
 		sn.logTotalTime(totalTime)
 		return nil
-	case err := <-sn.closed:
-		return err
+	case <-sn.closed:
+		return errors.New("closed")
 	case <-ctx.Done():
 		log.Errorln(ctx.Err())
 		if ctx.Err() == context.Canceled {
@@ -307,7 +308,6 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.Rounds = make(map[int]*Round)
 
 	sn.closed = make(chan error, 20)
-	sn.closing = make(chan bool, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
 	sn.viewChangeCh = make(chan string, 0)
@@ -331,7 +331,6 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.peerKeys = make(map[string]abstract.Point)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closing = make(chan bool, 20)
 	sn.closed = make(chan error, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)

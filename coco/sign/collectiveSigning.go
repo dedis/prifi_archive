@@ -41,7 +41,7 @@ func (sn *Node) get() error {
 
 	for {
 		select {
-		case <-sn.closing:
+		case <-sn.closed:
 			sn.StopHeartbeat()
 			return nil
 		default:
