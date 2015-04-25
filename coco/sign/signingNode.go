@@ -109,6 +109,14 @@ func (sn *Node) Listen() error {
 	return err
 }
 
+// func (sn *Node) CheckRoundTypes(rts []RoundType) error {
+// 	if len(rts) != len(sn.RoundTypes)
+// 	for i := range sn.RoundTypes {
+//
+//
+// 	}
+// }
+//
 func (sn *Node) printRoundTypes() {
 	for i, rt := range sn.RoundTypes {
 		if i > sn.LastSeenRound {
