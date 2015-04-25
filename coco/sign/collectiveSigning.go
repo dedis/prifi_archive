@@ -575,7 +575,7 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 
 func (sn *Node) TimeForViewChange() bool {
 	// if this round is last one for this view
-	if sn.LastSeenRound%RoundsPerView == 0 {
+	if sn.LastSeenRound%sn.RoundsPerView == 0 {
 		// log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)
 		return true
 	}

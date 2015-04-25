@@ -74,6 +74,7 @@ type Node struct {
 	done        chan int // round number sent when round done
 	commitsDone chan int // round number sent when announce/commit phase done
 
+	RoundsPerView int
 	// "root" or "regular" are sent on this channel to
 	// notify the maker of the sn what role sn plays in the new view
 	viewChangeCh chan string
@@ -320,6 +321,7 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.Host.SetSuite(suite)
 	sn.VoteLog = NewVoteLog()
 	sn.Actions = make(map[int][]*Vote)
+	sn.RoundsPerView = 100
 	return sn
 }
 
@@ -344,6 +346,7 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.Host.SetSuite(suite)
 	sn.VoteLog = NewVoteLog()
 	sn.Actions = make(map[int][]*Vote)
+	sn.RoundsPerView = 100
 	return sn
 }
 
