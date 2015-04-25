@@ -221,6 +221,9 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, n := range hc.SNodes {
+		n.RoundsPerView = 1000
+	}
 	err = hc.Run(true, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)
@@ -229,10 +232,6 @@ func TestGoConnTimestampFromConfig(t *testing.T) {
 	stampers, clients, err := hc.RunTimestamper(nClients)
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	for _, n := range hc.SNodes {
-		n.RoundsPerView = 1000
 	}
 
 	for _, s := range stampers[1:] {

@@ -332,7 +332,6 @@ func TestTCPStaticConfig(t *testing.T) {
 	hc.SNodes[0].LogTest = []byte("hello world")
 	hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	log.Println("Test Done")
-	sign.RoundsPerView = aux
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {
