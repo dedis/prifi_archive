@@ -406,16 +406,18 @@ func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, 
  *
  * Returns:
  *   nil if the message is sent, an error otherwise.
- *
- * TODO: Only allow server to send certified promises.
  */
 func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Point) error {
-	if state, assigned := lp.promises[secretKey.String()]; assigned {
-		policyMsg := new(PolicyMessage).createPTCMessage(&state.Promise)
-		lp.cman.Put(clientKey, policyMsg)	
-		return nil
+	state, assigned := lp.promises[secretKey.String()]
+	if !assigned {
+		return errors.New("Promise does not exist")
 	}
-	return errors.New("Promise does not exist")
+	if state.PromiseCertified() != nil {
+		return errors.New("Promise must be certified.")
+	}
+	policyMsg := new(PolicyMessage).createPTCMessage(&state.Promise)
+	lp.cman.Put(clientKey, policyMsg)	
+	return nil
 }
 
 /* Clients can use this function to reconstruct a promised secret that

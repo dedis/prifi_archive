@@ -548,16 +548,31 @@ func receivePromiseBasic(t *testing.T, k *config.KeyPair, cm connMan.ConnManager
 // Verifies that a sever can properly take out a policy.
 func TestLifePolicyModuleSendPromiseToClient(t *testing.T) {
 
-	// Start up the other insurer.
-	policy, state := produceNewServerPolicyWithPromise()
+	// Verify a certified promise can be sent and received.
+	for i := 0; i< numServers; i++ {
+		go insurersBasic(t, serverKeys[i], keyPairT, connectionManagers[i])
+	}
 
-	i := 0
-	go receivePromiseBasic(t, serverKeys[i], connectionManagers[i], state.Promise)
+	policy := produceBasicPolicy(keyPairT, goConn, 3)
+	policy.TakeOutPolicy(secretKeyT, insurerListT, nil)
 	
-	// Send the promise off
+	i := 0
+	go receivePromiseBasic(t, serverKeys[i], connectionManagers[i], 
+		policy.promises[secretKeyT.Public.String()].Promise)
+	
+	
 	err := policy.SendPromiseToClient(serverKeys[i].Public, secretKeyT.Public)
 	if err != nil {
 		t.Error("The promise should have been sent.")
+	}
+
+
+	// Error handling
+	policy, _ = produceNewServerPolicyWithPromise()
+
+	err = policy.SendPromiseToClient(serverKeys[i].Public, secretKeyT.Public)
+	if err == nil {
+		t.Error("Promise is not certified")
 	}
 
 	err = policy.SendPromiseToClient(serverKeys[i].Public, keyPairT.Public)
