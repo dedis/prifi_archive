@@ -333,8 +333,6 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
 
-	// TODO: Consider the case for invalid promises due to a valid blameProof.
-
 	// Setup the timeout.	
 	timeoutChan  := make(chan bool, 1)
 	go handleTimeout(lp.defaultTimeout, timeoutChan)
