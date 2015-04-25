@@ -39,6 +39,7 @@ func TestStaticMerkle(t *testing.T) {
 	}
 
 	sign.RoundsPerView = aux
+
 }
 
 func TestStaticPubKey(t *testing.T) {
@@ -93,6 +94,7 @@ func runStaticTest(signType sign.Type, faultyNodes ...int) error {
 		nodes[i] = sign.NewNode(h[i], suite, rand)
 		nodes[i].Type = signType
 		nodes[i].GenSetPool()
+		defer nodes[i].Close()
 
 		h[i].SetPubKey(nodes[i].PubKey)
 		// To test the already keyed signing node, uncomment
@@ -211,6 +213,10 @@ func runTreeSmallConfig(signType sign.Type, suite abstract.Suite, failureRate in
 	err = hc.Run(false, signType)
 	if err != nil {
 		return err
+	}
+
+	for _, sn := range hc.SNodes {
+		defer sn.Close()
 	}
 	// Have root node initiate the signing protocol via a simple annoucement
 	hc.SNodes[0].LogTest = []byte("Hello World")
@@ -370,6 +376,13 @@ func TestViewChangeChan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		for _, n := range hc.SNodes {
+			n.Close()
+		}
+		time.Sleep(1 * time.Second)
+	}()
+
 	err = hc.Run(false, sign.MerkleTree)
 	if err != nil {
 		t.Fatal(err)

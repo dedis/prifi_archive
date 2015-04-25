@@ -112,14 +112,21 @@ func (sn *Node) CatchUp(vi int, from string) {
 func (sn *Node) StartGossip() {
 	go func() {
 		t := time.Tick(GOSSIP_TIME)
-		for _ = range t {
-			c := sn.HostListOn(sn.ViewNo)
-			if len(c) == 0 {
-				log.Errorln(sn.Name(), "StartGossip: none in hostlist for view: ", len(c))
-				continue
+		for {
+			select {
+			case <-t:
+				c := sn.HostListOn(sn.ViewNo)
+				if len(c) == 0 {
+					log.Errorln(sn.Name(), "StartGossip: none in hostlist for view: ", sn.ViewNo, len(c))
+					continue
+				}
+				from := c[sn.Rand.Int()%len(c)]
+				log.Errorln("Gossiping with: ", from)
+				sn.CatchUp(int(atomic.LoadInt64(&sn.LastAppliedVote)+1), from)
+			case <-sn.closed:
+				log.Warnln("stopping gossip: closed")
+				return
 			}
-			from := c[sn.Rand.Int()%len(c)]
-			sn.CatchUp(int(atomic.LoadInt64(&sn.LastAppliedVote)+1), from)
 		}
 	}()
 }
