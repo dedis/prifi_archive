@@ -278,6 +278,18 @@ func TestHandleTimeout(t * testing.T) {
 	}
 }
 
+// Verifies the checkTimelimit function works.
+func TestCheckTimeLimit(t * testing.T) {
+	timeoutChan  := make(chan bool, 1)
+	if checkTimelimit(timeoutChan) != nil {
+		t.Error("Timelimit has not expired. No error expected")
+	}
+	timeoutChan <- true
+	if checkTimelimit(timeoutChan) == nil {
+		t.Error("Timelimit has now expired. Error expected.")
+	}
+}
+
 
 
 // This is a helper method to be run by gochan's simulating insurers.

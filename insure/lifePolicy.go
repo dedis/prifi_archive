@@ -180,6 +180,27 @@ func handleTimeout(timeout int, timeoutChan chan<- bool) {
 	timeoutChan <- true
 }
 
+/* This is a simple helper function for timeouts. It checks if the timelimit has
+ * expired and reports the error status.
+ *
+ * Arguments:
+ *   timeoutChan = the channel to listen to
+ *
+ * Returns:
+ *   err if the timeout has expired, nil otherwise.
+ *
+ */
+func checkTimelimit(timeoutChan chan bool) error {
+	select {
+		case result := <- timeoutChan:
+			if result == true {
+				return errors.New("Server failed to respond in time.")
+			}
+		default:
+	}
+	return nil
+}
+
 /* This private method is the default for determining if a server is alive. It
  * simply pings the server to see if it will respond within a given timelimit.
  * If so, it is alive. Otherwise, it is dead.
@@ -200,12 +221,8 @@ func (lp *LifePolicyModule) verifyServerAliveDefault(reason string,
 	
 	// Wait for the response
 	for true {
-		select {
-			case result := <- timeoutChan:
-				if result == true {
-					return errors.New("Server failed to respond in time.")
-				}
-			default:
+		if err := checkTimelimit(timeoutChan); err != nil {
+			return err
 		}
 
 		msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
@@ -326,12 +343,8 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 
 	// Wait for responses
 	for state.PromiseCertified() != nil {
-		select {
-			case result := <- timeoutChan:
-				if result == true {
-					return errors.New("Certification timed out.")
-				}
-			default:
+		if err := checkTimelimit(timeoutChan); err != nil {
+			return err
 		}
 		for i := 0; i < lp.n; i++ {
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
@@ -480,12 +493,8 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 	
 	// Wait for responses
 	for sharesRetrieved < lp.t {
-		select {
-			case result := <- timeoutChan:
-				if result == true {
-					return nil, errors.New("Server failed to respond in time.")
-				}
-			default:
+		if err := checkTimelimit(timeoutChan); err != nil {
+			return nil, err
 		}
 		for i := 0; i < lp.n; i++ {	
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
