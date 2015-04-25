@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/edwards/ed25519"
 	"github.com/dedis/prifi/shuf"
@@ -16,7 +17,7 @@ import (
 func main() {
 
 	if len(os.Args) < 6 {
-		fmt.Printf("Usage: client id [configFile] [nodeURIs] [nodePubKeys] message\n")
+		fmt.Printf("Usage: client id [configFile] [nodeURIs] [clientURIs] [nodePubKeys] message\n")
 		os.Exit(1)
 	}
 
@@ -25,8 +26,9 @@ func main() {
 	netchan.Check(cerr)
 	configFile := os.Args[2]
 	nodesFile := os.Args[3]
-	pubKeysDir := os.Args[4]
-	message := os.Args[5]
+	clientsFile := os.Args[4]
+	pubKeysDir := os.Args[5]
+	message := os.Args[6]
 
 	// Read the config
 	f, err := os.Open(configFile)
@@ -50,27 +52,38 @@ func main() {
 
 	// Create the info
 	inf := shuf.MakeInfo(shuf.UserInfo{
-		Suite:      suite,
-		PrivKey:    privKeyFn,
-		PubKey:     pubKeys,
-		NumNodes:   c.NumNodes,
-		NumClients: c.NumClients,
-		NumRounds:  c.NumRounds,
-		ResendTime: time.Millisecond * time.Duration(c.ResendTime),
-		MsgSize:    suite.Point().MarshalSize(),
-		Timeout:    time.Second * time.Duration(c.Timeout),
+		Suite:        suite,
+		PrivKey:      privKeyFn,
+		PubKey:       pubKeys,
+		NumNodes:     c.NumNodes,
+		NumClients:   c.NumClients,
+		MsgsPerGroup: c.MsgsPerGroup,
+		NumRounds:    c.NumRounds,
+		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
+		Timeout:      time.Second * time.Duration(c.Timeout),
 	}, c.Seed)
+
+	// Read the clients file
+	clients := make([]string, c.NumClients)
+	f, err = os.Open(clientsFile)
+	netchan.Check(err)
+	r := bufio.NewScanner(f)
+	for i := 0; r.Scan() && i < inf.NumClients; i++ {
+		clients[i] = r.Text()
+	}
+	f.Close()
 
 	// Read the nodes file
 	nodes := make([]string, c.NumNodes)
 	f, err = os.Open(nodesFile)
 	netchan.Check(err)
-	r := bufio.NewReader(f)
-	for i := range nodes {
-		l, _ := r.ReadString('\n')
-		nodes[i] = l
+	r = bufio.NewScanner(f)
+	for i := 0; r.Scan() && i < inf.NumNodes; i++ {
+		nodes[i] = r.Text()
 	}
+	f.Close()
 
-	n := netchan.Node{&inf, id}
-	n.StartClient(nodes, message, c.Port)
+	// Start the client
+	n := netchan.Node{inf, id}
+	n.StartClient(nodes, message, clients[id])
 }

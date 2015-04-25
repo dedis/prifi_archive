@@ -152,7 +152,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		cache.X = append(cache.X, m.X...)
 		cache.Y = append(cache.Y, m.Y...)
 		proofs := nonNil(m.LeftProofs, m.RightProofs)
-		if proofs != nil && check(i, m.Round, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
+		if len(proofs) > 0 && check(i, m.Round, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
 			return nil
 		}
 		if len(cache.X) < inf.MsgsPerGroup {
@@ -161,7 +161,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		} else {
 			var prf Proof
 			m.X, m.Y, prf = inf.Shuffle(cache.X, cache.Y, groupKey, rnd)
-			if cache.Proofs != nil {
+			if len(cache.Proofs) > 0 {
 				m.LeftProofs = cache.Proofs[1:]
 				m.RightProofs = proofs[1:]
 			}
@@ -174,7 +174,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	// Is it the first part of a cycle?
 	case subround < inf.NeffLen:
 		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey)) ||
-			m.LeftProofs != nil &&
+			len(m.LeftProofs) > 0 &&
 				(check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], groupKey)) ||
 					check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], groupKey))) {
 			return nil
@@ -182,7 +182,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		var prf Proof
 		m.X, m.Y, prf = inf.Shuffle(m.X, m.Y, groupKey, rnd)
 		m.Round = m.Round + 1
-		if m.LeftProofs != nil && m.RightProofs != nil {
+		if len(m.LeftProofs) > 0 && len(m.RightProofs) > 0 {
 			m.LeftProofs = m.LeftProofs[1:]
 			m.RightProofs = m.RightProofs[1:]
 		}

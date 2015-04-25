@@ -60,7 +60,7 @@ func main() {
 	}
 
 	// Create the info
-	inf := shuf.Info{
+	inf := shuf.MakeInfo(shuf.UserInfo{
 		Suite:        suite,
 		PrivKey:      privKeyFn,
 		PubKey:       pubKeys,
@@ -68,37 +68,31 @@ func main() {
 		NumClients:   c.NumClients,
 		NumRounds:    c.NumRounds,
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
-		MsgSize:      suite.Point().MarshalSize(),
 		MsgsPerGroup: c.MsgsPerGroup,
 		Timeout:      time.Second * time.Duration(c.Timeout),
-	}
+	}, c.Seed)
 
 	// Read the clients file
 	clients := make([]string, c.NumClients)
 	f, err = os.Open(clientsFile)
 	netchan.Check(err)
-	r := bufio.NewReader(f)
-	for i := range clients {
-		l, _ := r.ReadString('\n')
-		clients[i] = l
+	r := bufio.NewScanner(f)
+	for i := 0; r.Scan() && i < inf.NumClients; i++ {
+		clients[i] = r.Text()
 	}
+	f.Close()
 
 	// Read the nodes file
 	nodes := make([]string, c.NumNodes)
 	f, err = os.Open(nodesFile)
 	netchan.Check(err)
-	r = bufio.NewReader(f)
-	for i := range nodes {
-		l, _ := r.ReadString('\n')
-		nodes[i] = l
+	r = bufio.NewScanner(f)
+	for i := 0; r.Scan() && i < inf.NumNodes; i++ {
+		nodes[i] = r.Text()
 	}
+	f.Close()
 
 	// Start the server
-	var s shuf.Shuffle
-	switch c.Shuffle {
-	case "id":
-		s = shuf.IdShuffle{}
-	}
-	n := netchan.Node{&inf, s, id}
-	n.StartServer(clients, nodes, c.Port)
+	n := netchan.Node{inf, id}
+	n.StartServer(clients, nodes, nodes[id])
 }
