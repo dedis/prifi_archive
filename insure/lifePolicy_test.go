@@ -300,14 +300,14 @@ func insurersBasic(t *testing.T, k, returnKey *config.KeyPair,  cm connMan.ConnM
 }
 
 // Used to test timeouts, this sends a dummy ServerAliveRequest to the server. 
-func insurersNoResponse(t *testing.T, k, returnKey *config.KeyPair,  cm connMan.ConnManager) {
+func insurersNoResponse(t *testing.T, k, returnKey *config.KeyPair, msgType PolicyMessageType,  cm connMan.ConnManager) {
 
 	for true {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(returnKey.Public, msg)
 
 		// If a CertifyPromiseMessage, exit
-		if msg.Type == CertifyPromise {
+		if msg.Type == msgType {
 			cm.Put(returnKey.Public, new(PolicyMessage).createSAREQMessage())
 			return
 		}
@@ -344,7 +344,7 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 	
 	// Test that an error is produced if the timeout is exceeded
 	for i := 0; i < numServers; i++ {
-		go insurersNoResponse(t, serverKeys[i], keyPairT, connectionManagers[i])
+		go insurersNoResponse(t, serverKeys[i], keyPairT, CertifyPromise, connectionManagers[i])
 	}	
 
 	policy, state = produceNewServerPolicyWithPromise()
@@ -730,12 +730,37 @@ func TestLifePolicyModuleReconstructSecret(t *testing.T) {
 	policy.addServerPromise(state.Promise)
 	policy.serverPromises[state.Promise.PromiserId()][state.Promise.Id()] = finalState
 
+	// Test that an error is produced if the timeout is exceeded
+	for i := 0; i < numServers; i++ {
+		go insurersNoResponse(t, serverKeys[i], keyPairT, ShareRevealRequest, connectionManagers[i])
+	}
+	policy.defaultTimeout = 0;
+	key, err = policy.ReconstructSecret("test", keyPairT.Public, secretKeyT.Public)	
+	if err == nil || key != nil  {
+		t.Error("Timeout should have been exceeded", err)
+	}
+
+	// The server will have sent a server alive response. Clear it from the
+	// insurer's channel so as not to affect other tests.
+	for i := 0; i < numServers; i++ {
+		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
+		connectionManagers[i].Get(keyPairT.Public, msg)
+
+		// If a CertifyPromiseMessage, exit
+		if msg.Type != ServerAliveResponse {
+			t.Error("Alive response should have been sent")
+		}
+	}
+
+	
+	// Test the success case.
 	
 	// Start up the other insurers for revealing the share.
 	for i := 0; i < numServers; i++ {
 		go sendRevealShareResponses(t, i, finalState, connectionManagers[i])
 	}
-	
+
+	policy.defaultTimeout = 5;	
 	key, err = policy.ReconstructSecret("test", keyPairT.Public, secretKeyT.Public)	
 	if err != nil  {
 		t.Error("Unexpected error", err)

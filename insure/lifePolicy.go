@@ -474,8 +474,19 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 	}
 	sharesRetrieved := 0;
 
-	// TODO: Add timeout mechanism.
+	// Setup the timeout.	
+	timeoutChan  := make(chan bool, 1)
+	go handleTimeout(lp.defaultTimeout, timeoutChan)
+	
+	// Wait for responses
 	for sharesRetrieved < lp.t {
+		select {
+			case result := <- timeoutChan:
+				if result == true {
+					return nil, errors.New("Server failed to respond in time.")
+				}
+			default:
+		}
 		for i := 0; i < lp.n; i++ {	
 			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
 				lp.keyPair.Suite)
