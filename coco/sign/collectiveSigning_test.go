@@ -31,15 +31,9 @@ import (
 //    / \
 //   2   3
 func TestStaticMerkle(t *testing.T) {
-	aux := sign.RoundsPerView
-	sign.RoundsPerView = 100
-
 	if err := runStaticTest(sign.MerkleTree); err != nil {
 		t.Fatal(err)
 	}
-
-	sign.RoundsPerView = aux
-
 }
 
 func TestStaticPubKey(t *testing.T) {
@@ -328,7 +322,6 @@ func TestTCPStaticConfig(t *testing.T) {
 	hc.SNodes[0].StartAnnouncement(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: 1})
 	log.Println("Test Done")
 	sign.RoundsPerView = aux
-
 }
 
 func TestTCPStaticConfigRounds(t *testing.T) {

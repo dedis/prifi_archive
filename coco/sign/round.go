@@ -58,3 +58,36 @@ func NewRound(suite abstract.Suite) *Round {
 	round.Log.Suite = suite
 	return round
 }
+
+type RoundType int
+
+const (
+	EmptyRT RoundType = iota
+	ViewChangeRT
+	AddRT
+	RemoveRT
+	ShutdownRT
+	NoOpRT
+	SigningRT
+)
+
+func (rt RoundType) String() string {
+	switch rt {
+	case EmptyRT:
+		return "empty"
+	case SigningRT:
+		return "signing"
+	case ViewChangeRT:
+		return "viewchange"
+	case AddRT:
+		return "add"
+	case RemoveRT:
+		return "remove"
+	case ShutdownRT:
+		return "shutdown"
+	case NoOpRT:
+		return "noop"
+	default:
+		return ""
+	}
+}

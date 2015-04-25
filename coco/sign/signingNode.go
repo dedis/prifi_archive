@@ -57,6 +57,7 @@ type Node struct {
 	nRounds       int
 	Rounds        map[int]*Round
 	Round         int // *only* used by Root( by annoucer)
+	RoundTypes    []RoundType
 	LastSeenRound int // largest round number I have seen
 	RoundsAsRoot  int // latest continuous streak of rounds with sn root
 
@@ -107,7 +108,17 @@ func (sn *Node) Listen() error {
 	return err
 }
 
+func (sn *Node) printRoundTypes() {
+	for i, rt := range sn.RoundTypes {
+		if i > sn.LastSeenRound {
+			break
+		}
+		log.Println("Round", i, "type", rt.String())
+	}
+}
+
 func (sn *Node) Close() {
+	// sn.printRoundTypes()
 	sn.hbLock.Lock()
 	if sn.heartbeat != nil {
 		sn.heartbeat.Stop()
@@ -115,12 +126,12 @@ func (sn *Node) Close() {
 		log.Println("after close", sn.Name(), "has heartbeat=", sn.heartbeat)
 	}
 	if !sn.isclosed {
-		sn.hbLock.Unlock()
 		close(sn.closed)
 		log.Printf("signing node: closing: %s", sn.Name())
 		sn.Host.Close()
 	}
 	sn.isclosed = true
+	sn.hbLock.Unlock()
 }
 
 func (sn *Node) ViewChangeCh() chan string {

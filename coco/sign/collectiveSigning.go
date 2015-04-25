@@ -320,7 +320,7 @@ func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 			return err
 		}
 	} else {
-		log.Println(sn.Name(), "chalenge: using merkle proofs")
+		log.Println(sn.Name(), "challenge: using merkle proofs")
 		// messages from clients, proofs computed
 		if sn.CommitedFor(round) {
 			if err := sn.SendLocalMerkleProof(view, chm); err != nil {
@@ -426,6 +426,7 @@ func (sn *Node) Respond(view, Round int, sm *SigningMessage) error {
 }
 
 func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, exceptionX_hat abstract.Point) error {
+	log.Println(sn.Name(), "got all responses")
 	round := sn.Rounds[Round]
 	err := sn.VerifyResponses(view, Round)
 
@@ -439,6 +440,7 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 	// if no error send up own response
 	if err == nil && !isroot {
 		if round.Log.v == nil && sn.ShouldIFail("response") {
+			log.Println(sn.Name(), "failing on response")
 			return nil
 		}
 

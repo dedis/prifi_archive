@@ -140,6 +140,16 @@ func (sn *Node) setUpRound(view int, am *AnnouncementMessage) error {
 	if Round <= sn.LastSeenRound {
 		return ErrPastRound
 	}
+	// make space for round type
+	if len(sn.RoundTypes) <= Round {
+		sn.RoundTypes = append(sn.RoundTypes, make([]RoundType, max(len(sn.RoundTypes), Round+1))...)
+	}
+	if am.Vote == nil {
+		log.Println("***", Round, len(sn.RoundTypes))
+		sn.RoundTypes[Round] = SigningRT
+	} else {
+		sn.RoundTypes[Round] = RoundType(am.Vote.Type)
+	}
 
 	// set up commit and response channels for the new round
 	sn.Rounds[Round] = NewRound(sn.suite)
