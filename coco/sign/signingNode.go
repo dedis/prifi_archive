@@ -41,9 +41,11 @@ type Node struct {
 
 	// Signing Node will Fail at FailureRate probability
 	FailureRate         int
-	Rand                *rand.Rand
 	FailAsRootEvery     int
 	FailAsFollowerEvery int
+
+	randmu sync.Mutex
+	Rand   *rand.Rand
 
 	Type   Type
 	Height int
@@ -58,6 +60,7 @@ type Node struct {
 	Rounds        map[int]*Round
 	Round         int // *only* used by Root( by annoucer)
 	RoundTypes    []RoundType
+	roundmu       sync.Mutex
 	LastSeenRound int // largest round number I have seen
 	RoundsAsRoot  int // latest continuous streak of rounds with sn root
 
@@ -81,8 +84,8 @@ type Node struct {
 	// notify the maker of the sn what role sn plays in the new view
 	viewChangeCh chan string
 	ChangingView bool // TRUE if node is currently engaged in changing the view
-	// AmNextRoot   bool // determined when new view is needed
-	ViewNo int // *only* used by Root( by annoucer)
+	viewmu       sync.Mutex
+	ViewNo       int
 
 	timeout  time.Duration
 	timeLock sync.RWMutex
@@ -118,6 +121,8 @@ func (sn *Node) Listen() error {
 // }
 //
 func (sn *Node) printRoundTypes() {
+	sn.roundmu.Lock()
+	defer sn.roundmu.Unlock()
 	for i, rt := range sn.RoundTypes {
 		if i > sn.LastSeenRound {
 			break
@@ -127,7 +132,7 @@ func (sn *Node) printRoundTypes() {
 }
 
 func (sn *Node) Close() {
-	// sn.printRoundTypes()
+	sn.printRoundTypes()
 	sn.hbLock.Lock()
 	if sn.heartbeat != nil {
 		sn.heartbeat.Stop()
@@ -309,10 +314,13 @@ func (sn *Node) StartSigningRound() error {
 	sn.nRounds = sn.LastSeenRound
 
 	// report view is being change, and sleep before retrying
+	sn.viewmu.Lock()
 	if sn.ChangingView {
 		log.Println(sn.Name(), "start signing round: changingViewError")
+		sn.viewmu.Unlock()
 		return ChangingViewError
 	}
+	sn.viewmu.Unlock()
 
 	sn.nRounds++
 	return sn.StartAnnouncement(
@@ -404,7 +412,10 @@ func (sn *Node) Done() chan int {
 }
 
 func (sn *Node) LastRound() int {
-	return sn.LastSeenRound
+	sn.roundmu.Lock()
+	lsr := sn.LastSeenRound
+	sn.roundmu.Unlock()
+	return lsr
 }
 
 func (sn *Node) SetLastSeenRound(round int) {
@@ -434,12 +445,14 @@ func (sn *Node) AddVotes(Round int, v *Vote) {
 	// accept what admin requested with x% probability
 	// TODO: replace with non-probabilistic approach, maybe callback
 	forProbability := 100
+	sn.randmu.Lock()
 	if p := sn.Rand.Int() % 100; p < forProbability {
 		cv.For += 1
 		vresp.Accepted = true
 	} else {
 		cv.Against += 1
 	}
+	sn.randmu.Unlock()
 
 	// log.Infoln(sn.Name(), "added votes. for:", cv.For, "against:", cv.Against)
 

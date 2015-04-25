@@ -102,7 +102,9 @@ func (sn *Node) Propose(view int, am *AnnouncementMessage, from string) error {
 func (sn *Node) Promise(view, Round int, sm *SigningMessage) error {
 	log.Println(sn.Name(), "GOT ", "Promise", sm)
 	// update max seen round
+	sn.roundmu.Lock()
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
+	sn.roundmu.Unlock()
 
 	round := sn.Rounds[Round]
 	if round == nil {
@@ -171,7 +173,9 @@ func (sn *Node) actOnPromises(view, Round int) error {
 func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
 	log.Println(sn.Name(), "GOT ", "Accept", chm)
 	// update max seen round
+	sn.roundmu.Lock()
 	sn.LastSeenRound = max(sn.LastSeenRound, chm.Round)
+	sn.roundmu.Unlock()
 
 	round := sn.Rounds[chm.Round]
 	if round == nil {
@@ -200,7 +204,9 @@ func (sn *Node) Accept(view int, chm *ChallengeMessage) error {
 func (sn *Node) Accepted(view, Round int, sm *SigningMessage) error {
 	log.Println(sn.Name(), "GOT ", "Accepted")
 	// update max seen round
+	sn.roundmu.Lock()
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
+	sn.roundmu.Unlock()
 
 	round := sn.Rounds[Round]
 	if round == nil {

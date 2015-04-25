@@ -118,12 +118,16 @@ func (sn *Node) StartGossip() {
 		for {
 			select {
 			case <-t:
+				sn.viewmu.Lock()
 				c := sn.HostListOn(sn.ViewNo)
+				sn.viewmu.Unlock()
 				if len(c) == 0 {
 					log.Errorln(sn.Name(), "StartGossip: none in hostlist for view: ", sn.ViewNo, len(c))
 					continue
 				}
+				sn.randmu.Lock()
 				from := c[sn.Rand.Int()%len(c)]
+				sn.randmu.Unlock()
 				log.Errorln("Gossiping with: ", from)
 				sn.CatchUp(int(atomic.LoadInt64(&sn.LastAppliedVote)+1), from)
 			case <-sn.closed:

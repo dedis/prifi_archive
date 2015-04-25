@@ -66,15 +66,17 @@ func (sn *Node) get() error {
 			sm := nm.Data.(*SigningMessage)
 			sm.From = nm.From
 			// log.Println(sn.Name(), "received message: ", sm.Type)
-			sn.updateLastSeenVote(sm.LastSeenVote, sm.From)
 
 			// don't act on future view if not caught up, must be done after updating vote index
+			sn.viewmu.Lock()
 			if sm.View > sn.ViewNo {
 				if atomic.LoadInt64(&sn.LastSeenVote) != atomic.LoadInt64(&sn.LastAppliedVote) {
 					log.Warnln("not caught up for view change", sn.LastSeenVote, sn.LastAppliedVote)
 					return errors.New("not caught up for view change")
 				}
 			}
+			sn.viewmu.Unlock()
+			sn.updateLastSeenVote(sm.LastSeenVote, sm.From)
 
 			switch sm.Type {
 			// if it is a bad message just ignore it
@@ -210,7 +212,9 @@ func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
 
 func (sn *Node) Commit(view, Round int, sm *SigningMessage) error {
 	// update max seen round
+	sn.roundmu.Lock()
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
+	sn.roundmu.Unlock()
 
 	round := sn.Rounds[Round]
 	if round == nil {
@@ -304,7 +308,9 @@ func (sn *Node) actOnCommits(view, Round int) error {
 // initiated by root, propagated by all others
 func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
 	// update max seen round
+	sn.roundmu.Lock()
 	sn.LastSeenRound = max(sn.LastSeenRound, chm.Round)
+	sn.roundmu.Unlock()
 
 	round := sn.Rounds[chm.Round]
 	if round == nil {
@@ -353,7 +359,9 @@ func (sn *Node) initResponseCrypto(Round int) {
 
 func (sn *Node) Respond(view, Round int, sm *SigningMessage) error {
 	// update max seen round
+	sn.roundmu.Lock()
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
+	sn.roundmu.Unlock()
 
 	round := sn.Rounds[Round]
 	if round == nil || round.Log.v == nil {
@@ -478,8 +486,8 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 }
 
 func (sn *Node) TryViewChange(view int) error {
-	// should ideally be compare and swap
 	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", sn.ViewNo)
+	// should ideally be compare and swap
 	if view <= sn.ViewNo {
 		return errors.New("trying to view change on previous/ current view")
 	}
@@ -577,6 +585,9 @@ func (sn *Node) VerifyResponses(view, Round int) error {
 }
 
 func (sn *Node) TimeForViewChange() bool {
+	sn.roundmu.Lock()
+	defer sn.roundmu.Unlock()
+
 	// if this round is last one for this view
 	if sn.LastSeenRound%sn.RoundsPerView == 0 {
 		// log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)

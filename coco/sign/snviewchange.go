@@ -6,7 +6,9 @@ func (sn *Node) ChangeView(vcv *ViewChangeVote) {
 	// log.Println(sn.Name(), " in CHANGE VIEW")
 	// at this point actions have already been applied
 	// all we need to do is switch our default view
+	sn.viewmu.Lock()
 	sn.ViewNo = vcv.View
+	sn.viewmu.Unlock()
 	if sn.RootFor(vcv.View) == sn.Name() {
 		log.Println(sn.Name(), "CHANGE VIEW TO ROOT")
 		sn.viewChangeCh <- "root"
@@ -15,7 +17,9 @@ func (sn *Node) ChangeView(vcv *ViewChangeVote) {
 		sn.viewChangeCh <- "regular"
 	}
 
+	sn.viewmu.Lock()
 	sn.ChangingView = false
+	sn.viewmu.Unlock()
 	// TODO: garbage collect old connections
 }
 
