@@ -63,9 +63,9 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 		inf.EncryptKeys[n] = make([][2]abstract.Point, numLevels)
 		inf.GroupKeys[n] = make([]abstract.Point, numLevels)
 	}
-	inf.Active = make([][]int, inf.NumNodes)
+	inf.Active = make([][]int32, inf.NumNodes)
 	for n := range inf.Active {
-		inf.Active[n] = make([]int, 0)
+		inf.Active[n] = make([]int32, 0)
 	}
 
 	oldEnders := make([]int, inf.NumGroups)
@@ -93,13 +93,13 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 			inf.GroupKeys[gi][level] = inf.PublicKey(g)
 			for i := range g {
 				inf.NodeGroup[g[i]][level] = gi
-				inf.Active[g[i]] = append(inf.Active[g[i]], level*2*inf.NeffLen+i)
+				inf.Active[g[i]] = append(inf.Active[g[i]], int32(level*2*inf.NeffLen+i))
 				if i < len(g)-1 {
 					inf.Routes[g[i]][level*2*inf.NeffLen+i] = []int{g[i+1]}
 				}
 			}
 			for i := range g {
-				inf.Active[g[i]] = append(inf.Active[g[i]], (level*2+1)*inf.NeffLen+i)
+				inf.Active[g[i]] = append(inf.Active[g[i]], int32((level*2+1)*inf.NeffLen+i))
 				if i < len(g)-1 {
 					inf.Routes[g[i]][(level*2+1)*inf.NeffLen+i] = []int{g[i+1]}
 				}
@@ -120,7 +120,7 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 	return inf
 }
 
-func check(i, r int, e error) bool {
+func check(i int, r int32, e error) bool {
 	if e != nil {
 		fmt.Printf("Node %v, round %d: %s\n", i, r, e.Error())
 		return true
@@ -143,8 +143,8 @@ func clearCache(cache *Cache) {
 }
 
 func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
-	subround := m.Round % (2 * inf.NeffLen)
-	level := m.Round / (2 * inf.NeffLen)
+	subround := int(m.Round) % (2 * inf.NeffLen)
+	level := int(m.Round) / (2 * inf.NeffLen)
 	groupKey := inf.GroupKeys[inf.NodeGroup[i][level]][level]
 	half := len(m.X) / 2
 	rnd := inf.Suite.Cipher(nil)
@@ -154,6 +154,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	case subround == 0:
 		cache.X = append(cache.X, m.X...)
 		cache.Y = append(cache.Y, m.Y...)
+		fmt.Printf("Node %d: collected len %d\n", i, len(cache.X))
 		proofs := nonNil(m.LeftProofs, m.RightProofs)
 		if len(proofs) > 0 && check(i, m.Round, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
 			return nil

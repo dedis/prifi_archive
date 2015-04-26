@@ -2,11 +2,10 @@ package netchan
 
 import (
 	"encoding/binary"
-	// "fmt"
-	"bufio"
+	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
-	"io"
+	"log"
 	"net"
 	"time"
 )
@@ -37,20 +36,28 @@ type CFile struct {
 	Timeout      int
 }
 
-// Handle an incoming connection (on client or server)
-func (n Node) handleConnection(conn net.Conn, shared chan Shared, nodes, clients []string) {
+// Handle an incoming connection on the server
+func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, clients []string) {
 	defer conn.Close()
-	var m shuf.Msg
 	s := <-shared
 	defer func() { shared <- s }()
 	round := n.Inf.Active[n.C][s.RIdx]
-	if n.receiveMsg(conn, round, &m) {
+	var msgRound int32
+	binary.Read(conn, binary.BigEndian, &msgRound)
+	fmt.Printf("Node %d: got message with round %d on round %d\n", n.C, msgRound, round)
+	if msgRound != round {
 		return
 	}
-	if s.RIdx == -1 {
-		n.Inf.HandleClient(n.C, &m)
-		return
+	_, e := conn.Write([]byte{1})
+	if e != nil {
+		panic(e)
 	}
+	var m shuf.Msg
+	err := n.readMsg(conn, &m)
+	if err != nil {
+		panic(err)
+	}
+	m.Round = round
 	to := n.Inf.Routes[n.C][round]
 	mp := n.Inf.HandleRound(n.C, &m, s.Cache)
 	if mp != nil {
@@ -58,120 +65,67 @@ func (n Node) handleConnection(conn net.Conn, shared chan Shared, nodes, clients
 		switch {
 		case to == nil:
 			for _, cl := range clients {
-				n.sendMsg(mp, cl)
+				n.sendClientMsg(mp, cl)
 			}
 		case len(to) == 1:
 			go n.sendMsg(mp, nodes[to[0]])
 		case len(to) == 2:
+			fmt.Printf("Node %d: jumping to a new group\n", n.C)
 			go n.sendMsg(shuf.GetLeft(*mp), nodes[to[0]])
 			go n.sendMsg(shuf.GetRight(*mp), nodes[to[1]])
 		}
 	}
 }
 
-func (n Node) receiveProofs(reader io.Reader) []shuf.Proof {
-	var numProofs, proofLen int
-	binary.Read(reader, binary.BigEndian, &numProofs)
-	Proofs := make([]shuf.Proof, numProofs)
-	for i := range Proofs {
-		Proofs[i].X, Proofs[i].Y = n.receivePairs(reader)
-		binary.Read(reader, binary.BigEndian, &proofLen)
-		Proofs[i].Proof = make([]byte, proofLen)
-		reader.Read(Proofs[i].Proof)
+// Handle an incoming connection on the client
+func (n Node) handleClientConnection(conn net.Conn) {
+	defer conn.Close()
+	var m shuf.Msg
+	err := n.readMsg(conn, &m)
+	if err != nil {
+		panic(err)
 	}
-	return Proofs
+	n.Inf.HandleClient(n.C, &m)
 }
 
-func (n Node) receivePairs(reader io.Reader) ([]abstract.Point, []abstract.Point) {
-	var numPairs int
-	binary.Read(reader, binary.BigEndian, &numPairs)
-	X := make([]abstract.Point, numPairs)
-	Y := make([]abstract.Point, numPairs)
-	for i := range X {
-		X[i] = n.Inf.Suite.Point()
-		X[i].UnmarshalFrom(reader)
+func (n Node) sendClientMsg(m *shuf.Msg, uri string) {
+	conn, err := net.Dial("tcp", uri)
+	defer conn.Close()
+	if err != nil {
+		fmt.Printf("%s\n", err.Error())
+	} else {
+		err = writeMsg(conn, m)
 	}
-	for i := range Y {
-		Y[i] = n.Inf.Suite.Point()
-		Y[i].UnmarshalFrom(reader)
-	}
-	return X, Y
-}
-
-func (n Node) receiveMsg(conn net.Conn, round int, m *shuf.Msg) bool {
-
-	// Check that the round matches
-	reader := bufio.NewReader(conn)
-	var r int
-	binary.Read(reader, binary.BigEndian, &r)
-	if r != round {
-		return true
-	}
-	m.Round = r
-	conn.Write([]byte{1})
-
-	// Get the pairs
-	m.X, m.Y = n.receivePairs(reader)
-	var numXs int
-	binary.Read(reader, binary.BigEndian, &numXs)
-	NewX := make([]abstract.Point, numXs)
-	for i := range NewX {
-		NewX[i] = n.Inf.Suite.Point()
-		NewX[i].UnmarshalFrom(reader)
-	}
-
-	// Get the proofs
-	m.LeftProofs = n.receiveProofs(reader)
-	m.RightProofs = n.receiveProofs(reader)
-	m.ShufProofs = n.receiveProofs(reader)
-	return false
 }
 
 func (n Node) sendMsg(m *shuf.Msg, uri string) {
+	fmt.Printf("Node %d: sending a message to %s\n", n.C, uri)
 	for {
 		conn, err := net.Dial("tcp", uri)
 		if err != nil {
+			fmt.Printf("%s\n", err.Error())
 			time.Sleep(n.Inf.ResendTime)
 			continue
 		}
 
 		// Check if the round number of ok
-		binary.Write(conn, binary.BigEndian, m.Round)
+		binary.Write(conn, binary.BigEndian, int32(m.Round))
 		conn.SetReadDeadline(time.Now().Add(n.Inf.ResendTime))
 		okBuf := make([]byte, 1)
 		_, err = conn.Read(okBuf)
 		if err != nil {
+			log.Print(err.Error())
 			conn.Close()
+			time.Sleep(n.Inf.ResendTime)
 			continue
 		}
-		writer := bufio.NewWriter(conn)
-
-		// Send the pairs
-		binary.Write(writer, binary.BigEndian, len(m.X))
-		for _, x := range m.X {
-			x.MarshalTo(writer)
+		fmt.Printf("Got the ok!\n")
+		err = writeMsg(conn, m)
+		conn.Close()
+		if err != nil {
+			panic(err)
 		}
-		for _, y := range m.Y {
-			y.MarshalTo(writer)
-		}
-		binary.Write(writer, binary.BigEndian, len(m.NewX))
-		for _, x := range m.NewX {
-			x.MarshalTo(writer)
-		}
-
-		// Send the proofs
-		binary.Write(writer, binary.BigEndian, len(m.ShufProofs))
-		for _, p := range m.ShufProofs {
-			binary.Write(writer, binary.BigEndian, len(p.X))
-			for _, x := range p.X {
-				x.MarshalTo(writer)
-			}
-			for _, y := range p.Y {
-				y.MarshalTo(writer)
-			}
-			binary.Write(writer, binary.BigEndian, len(p.Proof))
-			writer.Write(p.Proof)
-		}
+		return
 	}
 }
 
@@ -186,12 +140,10 @@ func (n Node) StartClient(nodes []string, s string, port string) {
 	// Receive messages from everybody
 	ln, err := net.Listen("tcp", port)
 	Check(err)
-	shared := make(chan Shared, 1)
-	shared <- Shared{new(shuf.Cache), -1}
 	for {
 		conn, err := ln.Accept()
 		if err == nil {
-			go n.handleConnection(conn, shared, nodes, nil)
+			go n.handleClientConnection(conn)
 		}
 	}
 }
@@ -204,7 +156,7 @@ func (n Node) StartServer(clients []string, nodes []string, port string) {
 	for {
 		conn, err := ln.Accept()
 		if err == nil {
-			go n.handleConnection(conn, shared, nodes, clients)
+			go n.handleNodeConnection(conn, shared, nodes, clients)
 		}
 	}
 }

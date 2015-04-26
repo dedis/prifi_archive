@@ -13,7 +13,7 @@ type Msg struct {
 	X           []abstract.Point
 	Y           []abstract.Point
 	NewX        []abstract.Point
-	Round       int
+	Round       int32
 }
 
 // Information collectively aggreed upon beforehand
@@ -34,7 +34,7 @@ type UserInfo struct {
 type Info struct {
 	UserInfo
 	Routes      [][][]int             // (node, round) -> []to
-	Active      [][]int               // node -> active rounds
+	Active      [][]int32             // node -> active rounds
 	EncryptKeys [][][2]abstract.Point // (groupid, level) -> left+right pubkeys
 	GroupKeys   [][]abstract.Point    // (groupid, level) -> group key
 	StartNodes  []int                 // client % numgroups -> node
