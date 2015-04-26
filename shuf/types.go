@@ -27,6 +27,7 @@ type UserInfo struct {
 	ResendTime   time.Duration
 	MsgsPerGroup int
 	Timeout      time.Duration
+	MaxResends   int
 }
 
 // Information required to run the shuffle

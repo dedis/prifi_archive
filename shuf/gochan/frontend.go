@@ -28,6 +28,7 @@ type cFile struct {
 	Shuffle      string
 	Seed         int64
 	Timeout      int
+	MaxResends   int
 }
 
 func main() {
@@ -77,6 +78,7 @@ func main() {
 		NumRounds:    c.NumRounds,
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
 		MsgsPerGroup: c.MsgsPerGroup,
+		MaxResends:   c.MaxResends,
 		Timeout:      time.Second * time.Duration(c.Timeout),
 	}, c.Seed)
 	var wg sync.WaitGroup

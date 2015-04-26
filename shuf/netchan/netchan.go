@@ -37,6 +37,7 @@ type CFile struct {
 	MsgsPerGroup int
 	Seed         int64
 	Timeout      int
+	MaxResends   int
 }
 
 // Handle an incoming connection on the server
@@ -106,7 +107,7 @@ func (n Node) sendClientMsg(m *shuf.Msg, uri string) {
 
 func (n Node) sendMsg(m *shuf.Msg, uri string) {
 	log.Printf("Node %d: sending a message to %s\n", n.C, uri)
-	for {
+	for i := 0; i < n.Inf.MaxResends+1; i++ {
 		conn, err := net.Dial("tcp", uri)
 		if err != nil {
 			log.Printf("Node %d: %s\n", n.C, err.Error())

@@ -16,7 +16,7 @@ type wrapper struct {
 
 func sendTo(inf *shuf.Info, c chan wrapper, m *shuf.Msg) {
 	w := wrapper{m, make(chan bool)}
-	for {
+	for i := 0; i < inf.MaxResends+1; i++ {
 		c <- w
 		select {
 		case <-w.ack:

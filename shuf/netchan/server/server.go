@@ -70,6 +70,7 @@ func main() {
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
 		MsgsPerGroup: c.MsgsPerGroup,
 		Timeout:      time.Second * time.Duration(c.Timeout),
+		MaxResends:   c.MaxResends,
 	}, c.Seed)
 
 	// Read the clients file
