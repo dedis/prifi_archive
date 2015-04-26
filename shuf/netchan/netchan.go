@@ -7,6 +7,9 @@ import (
 	"github.com/dedis/prifi/shuf"
 	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -44,18 +47,19 @@ func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, cli
 	round := n.Inf.Active[n.C][s.RIdx]
 	var msgRound int32
 	binary.Read(conn, binary.BigEndian, &msgRound)
-	fmt.Printf("Node %d: got message with round %d on round %d\n", n.C, msgRound, round)
+	log.Printf("Node %d: got message with round %d on round %d\n", n.C, msgRound, round)
 	if msgRound != round {
 		return
 	}
 	_, e := conn.Write([]byte{1})
 	if e != nil {
-		panic(e)
+		log.Printf("Node %d: cannot ack; %s\n", n.C, e.Error())
+		return
 	}
 	var m shuf.Msg
 	err := n.readMsg(conn, &m)
 	if err != nil {
-		panic(err)
+		log.Printf("Node %d: invalid message; %s\n", n.C, err.Error())
 	}
 	m.Round = round
 	to := n.Inf.Routes[n.C][round]
@@ -70,7 +74,7 @@ func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, cli
 		case len(to) == 1:
 			go n.sendMsg(mp, nodes[to[0]])
 		case len(to) == 2:
-			fmt.Printf("Node %d: jumping to a new group\n", n.C)
+			log.Printf("Node %d: jumping to a new group\n", n.C)
 			go n.sendMsg(shuf.GetLeft(*mp), nodes[to[0]])
 			go n.sendMsg(shuf.GetRight(*mp), nodes[to[1]])
 		}
@@ -78,32 +82,34 @@ func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, cli
 }
 
 // Handle an incoming connection on the client
-func (n Node) handleClientConnection(conn net.Conn) {
+func (n Node) handleClientConnection(conn net.Conn, die chan bool) {
 	defer conn.Close()
 	var m shuf.Msg
 	err := n.readMsg(conn, &m)
 	if err != nil {
-		panic(err)
+		log.Printf("Client %d: decoding error; %s\n", err.Error())
 	}
-	n.Inf.HandleClient(n.C, &m)
+	if n.Inf.HandleClient(n.C, &m) == nil {
+		die <- true
+	}
 }
 
 func (n Node) sendClientMsg(m *shuf.Msg, uri string) {
 	conn, err := net.Dial("tcp", uri)
-	defer conn.Close()
 	if err != nil {
-		fmt.Printf("%s\n", err.Error())
+		log.Printf("%s\n", err.Error())
 	} else {
+		defer conn.Close()
 		err = writeMsg(conn, m)
 	}
 }
 
 func (n Node) sendMsg(m *shuf.Msg, uri string) {
-	fmt.Printf("Node %d: sending a message to %s\n", n.C, uri)
+	log.Printf("Node %d: sending a message to %s\n", n.C, uri)
 	for {
 		conn, err := net.Dial("tcp", uri)
 		if err != nil {
-			fmt.Printf("%s\n", err.Error())
+			log.Printf("Node %d: %s\n", n.C, err.Error())
 			time.Sleep(n.Inf.ResendTime)
 			continue
 		}
@@ -114,16 +120,14 @@ func (n Node) sendMsg(m *shuf.Msg, uri string) {
 		okBuf := make([]byte, 1)
 		_, err = conn.Read(okBuf)
 		if err != nil {
-			log.Print(err.Error())
 			conn.Close()
 			time.Sleep(n.Inf.ResendTime)
 			continue
 		}
-		fmt.Printf("Got the ok!\n")
 		err = writeMsg(conn, m)
 		conn.Close()
 		if err != nil {
-			panic(err)
+			log.Printf("Node %d: couldn't write message; %s\n", n.C, err.Error())
 		}
 		return
 	}
@@ -138,13 +142,32 @@ func (n Node) StartClient(nodes []string, s string, port string) {
 	go n.sendMsg(&shuf.Msg{X: x, Y: y}, nodes[to])
 
 	// Receive messages from everybody
+	die := make(chan bool)
 	ln, err := net.Listen("tcp", port)
 	Check(err)
-	for {
-		conn, err := ln.Accept()
-		if err == nil {
-			go n.handleClientConnection(conn)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err == nil {
+				go n.handleClientConnection(conn, die)
+			}
 		}
+	}()
+
+	// Wait for interrupt, completion, or timeout
+	ch := make(chan os.Signal)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	select {
+	case <-ch:
+		ln.Close()
+		os.Exit(1)
+	case <-die:
+		ln.Close()
+		os.Exit(0)
+	case <-time.After(n.Inf.Timeout):
+		ln.Close()
+		fmt.Printf("Client %d timed out\n", n.C)
+		os.Exit(1)
 	}
 }
 
@@ -153,10 +176,21 @@ func (n Node) StartServer(clients []string, nodes []string, port string) {
 	Check(err)
 	shared := make(chan Shared, 1)
 	shared <- Shared{new(shuf.Cache), 0}
-	for {
-		conn, err := ln.Accept()
-		if err == nil {
-			go n.handleNodeConnection(conn, shared, nodes, clients)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err == nil {
+				go n.handleNodeConnection(conn, shared, nodes, clients)
+			}
 		}
+	}()
+
+	// Wait for interrupt
+	ch := make(chan os.Signal)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+	select {
+	case <-ch:
+		ln.Close()
+		os.Exit(0)
 	}
 }

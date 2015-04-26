@@ -3,6 +3,7 @@ package shuf
 import (
 	"fmt"
 	"github.com/dedis/crypto/abstract"
+	"log"
 	"math/rand"
 )
 
@@ -22,8 +23,12 @@ func GetLeft(m Msg) *Msg {
 	return &m
 }
 
-func (inf *Info) HandleClient(i int, m *Msg) {
-	inf.VerifyDecrypts(m.LeftProofs, m.Y, inf.Suite.Point().Null())
+func (inf *Info) HandleClient(i int, m *Msg) error {
+	err := inf.VerifyDecrypts(m.LeftProofs, m.Y, inf.Suite.Point().Null())
+	if err != nil {
+		fmt.Printf("Client %v: %s\n", i, err.Error())
+		return err
+	}
 	for _, val := range m.Y {
 		d, e := val.Data()
 		if e != nil {
@@ -32,6 +37,7 @@ func (inf *Info) HandleClient(i int, m *Msg) {
 			fmt.Printf("Client %v: %v\n", i, string(d))
 		}
 	}
+	return nil
 }
 
 func (inf *Info) Setup(msg abstract.Point, client int) (
@@ -122,7 +128,7 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 
 func check(i int, r int32, e error) bool {
 	if e != nil {
-		fmt.Printf("Node %v, round %d: %s\n", i, r, e.Error())
+		log.Printf("Node %v, round %d: %s\n", i, r, e.Error())
 		return true
 	}
 	return false
@@ -154,7 +160,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	case subround == 0:
 		cache.X = append(cache.X, m.X...)
 		cache.Y = append(cache.Y, m.Y...)
-		fmt.Printf("Node %d: collected len %d\n", i, len(cache.X))
+		log.Printf("Node %d: collected len %d\n", i, len(cache.X))
 		proofs := nonNil(m.LeftProofs, m.RightProofs)
 		if len(proofs) > 0 && check(i, m.Round, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
 			return nil

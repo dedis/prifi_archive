@@ -83,13 +83,18 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 		go func(i int) {
 			X, Y, to := inf.Setup(msgs[i], i)
 			go sendTo(inf, messages[to], &shuf.Msg{X: X, Y: Y})
-			select {
-			case w := <-results[i]:
-				inf.HandleClient(i, w.m)
-			case <-time.After(inf.Timeout):
-				fmt.Printf("Client %d timed out\n", i)
+			defer wg.Done()
+			for {
+				select {
+				case w := <-results[i]:
+					if inf.HandleClient(i, w.m) == nil {
+						return
+					}
+				case <-time.After(inf.Timeout):
+					fmt.Printf("Client %d timed out\n", i)
+					return
+				}
 			}
-			wg.Done()
 		}(i)
 	}
 }
