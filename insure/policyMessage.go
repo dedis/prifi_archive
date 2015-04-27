@@ -93,6 +93,29 @@ func (pm *PolicyMessage) UnmarshalInit(t,r,n int, suite abstract.Suite) *PolicyM
 	return pm
 }
 
+// Checks if two PolicyMessage's are equal
+func (pm *PolicyMessage) Equal(pm2 *PolicyMessage) bool {
+	if pm.Type != pm2.Type {
+		return false
+	}
+	switch pm.Type {
+		case CertifyPromise:
+			return pm.CertifyPromiseMsg.Equal(pm2.CertifyPromiseMsg)
+		case PromiseResponse:
+			return pm.PromiseResponseMsg.Equal(pm2.PromiseResponseMsg)
+		case PromiseToClient:
+			return pm.PromiseToClientMsg.Equal(pm2.PromiseToClientMsg)
+		case ShareRevealRequest:
+			return pm.ShareRevealRequestMsg.Equal(pm2.ShareRevealRequestMsg)
+		case ShareRevealResponse:
+			return pm.ShareRevealResponseMsg.Equal(pm2.ShareRevealResponseMsg)
+		case ServerAliveRequest:
+			return true
+		case ServerAliveResponse:
+			return true
+	}
+	return false
+}
 
 /* Returns the number of bytes used by this struct when marshalled
  *

@@ -30,15 +30,23 @@ var basicPromise = new(promise.Promise).ConstructPromise(secretKey, promiserKey,
 var basicPromise2 = new(promise.Promise).ConstructPromise(secretKey,  produceKeyPair(), 5, r, insurerList)
 
 var basicResponse, _ = basicPromise.ProduceResponse(10, insurerKeys[10])
+var basicResponse2, _ = basicPromise.ProduceResponse(5, insurerKeys[5])
 
 var basicCertifyMessage = &CertifyPromiseMessage{ShareIndex:10, Promise: *basicPromise}
+var basicCertifyMessage2 = &CertifyPromiseMessage{ShareIndex:10, Promise: *basicPromise2}
 var basicResponseMessage = &PromiseResponseMessage{ShareIndex:10,
+                                                   Id: basicPromise.Id(),
+                                                   PromiserId: basicPromise.PromiserId(),
+                                                   Response: basicResponse}
+var basicResponseMessage2 = &PromiseResponseMessage{ShareIndex:5,
                                                    Id: basicPromise.Id(),
                                                    PromiserId: basicPromise.PromiserId(),
                                                    Response: basicResponse}
 
 var basicShareRequest  = new(PromiseShareMessage).createRequestMessage(10, "test", *basicPromise)
+var basicShareRequest2  = new(PromiseShareMessage).createRequestMessage(10, "test2", *basicPromise2)
 var basicShareResponse = new(PromiseShareMessage).createResponseMessage(10, *basicPromise, basicShare)
+var basicShareResponse2 = new(PromiseShareMessage).createResponseMessage(10, *basicPromise2, basicShare)
 
 func produceKeyPair() *config.KeyPair {
 	keyPair := new(config.KeyPair)
@@ -424,36 +432,57 @@ func TestPromiseShareMessageMarshalling(t *testing.T) {
 	}
 }
 
-// This function checks if an original and unmarshalled PolicyMessage are equal
-func determineValid(policy, policyMsg2 *PolicyMessage) bool {
-	okay := false
-	switch policyMsg2.Type {
-		case CertifyPromise:
-			msg1 := policy.CertifyPromiseMsg
-			msg2 := policyMsg2.CertifyPromiseMsg
-			okay = msg1.Equal(msg2)
-		case PromiseResponse:
-			msg1 := policy.PromiseResponseMsg
-			msg2 := policyMsg2.PromiseResponseMsg
-			okay = msg1.Equal(msg2)
-		case PromiseToClient:
-			msg1 := policy.PromiseToClientMsg
-			msg2 := policyMsg2.PromiseToClientMsg
-			okay  = msg1.Equal(msg2)
-		case ShareRevealRequest:
-			msg1 := policy.ShareRevealRequestMsg
-			msg2 := policyMsg2.ShareRevealRequestMsg
-			okay  = msg1.Equal(msg2)
-		case ShareRevealResponse:
-			msg1 := policy.ShareRevealResponseMsg
-			msg2 := policyMsg2.ShareRevealResponseMsg
-			okay  = msg1.Equal(msg2)
-		case ServerAliveRequest:
-			okay = true
-		case ServerAliveResponse:
-			okay = true
+// This is a helper function for PolicyMessage's equal test
+func equalHelper(t *testing.T, policy, policyDiff, policyDiffType * PolicyMessage) {
+
+	if !policy.Equal(policy) {
+		t.Error("Message should equal itself")
 	}
-	return okay
+	if policy.Equal(policyDiff) {
+		t.Error("Message should not equal a different message of the same type.")
+	}
+	if policy.Equal(policyDiffType) {
+		t.Error("Message should not equal a message of a different type.")
+	}
+}
+
+// Tests whether PolicyMessage's equal function works.
+func PolicyMessageEqual(t *testing.T) {
+
+	certPolicy1 := &PolicyMessage{Type:CertifyPromise, CertifyPromiseMsg: basicCertifyMessage}
+	certPolicy2 := &PolicyMessage{Type:CertifyPromise, CertifyPromiseMsg: basicCertifyMessage2}
+
+	responsePolicy1 := &PolicyMessage{Type:PromiseResponse, PromiseResponseMsg: basicResponseMessage}
+	responsePolicy2 := &PolicyMessage{Type:PromiseResponse, PromiseResponseMsg: basicResponseMessage2}
+	
+	promisePolicy1 := &PolicyMessage{Type:PromiseToClient, PromiseToClientMsg: basicPromise}
+	promisePolicy2 := &PolicyMessage{Type:PromiseToClient, PromiseToClientMsg: basicPromise2}
+	
+	shareRequestPolicy1 := &PolicyMessage{Type:ShareRevealRequest, ShareRevealRequestMsg: basicShareRequest}
+	shareRequestPolicy2 := &PolicyMessage{Type:ShareRevealRequest, ShareRevealRequestMsg: basicShareRequest2}
+
+	shareResponsePolicy1 := &PolicyMessage{Type:ShareRevealResponse, ShareRevealResponseMsg: basicShareResponse}
+	shareResponsePolicy2 := &PolicyMessage{Type:ShareRevealResponse, ShareRevealResponseMsg: basicShareResponse2}
+
+	aliveRequestPolicy := &PolicyMessage{Type:ServerAliveRequest}
+	aliveResponsePolicy := &PolicyMessage{Type:ServerAliveResponse}
+
+
+	equalHelper(t, certPolicy1, certPolicy2, responsePolicy1)
+	equalHelper(t, responsePolicy1, responsePolicy2, promisePolicy1)
+	equalHelper(t, promisePolicy1, promisePolicy2, shareRequestPolicy1)
+	equalHelper(t, shareRequestPolicy1, shareRequestPolicy2, shareResponsePolicy1)
+	equalHelper(t, shareResponsePolicy1, shareResponsePolicy2, aliveRequestPolicy)
+	
+	if !aliveRequestPolicy.Equal(aliveRequestPolicy) {
+		t.Error("Message should equal itself")
+	}
+	if !aliveResponsePolicy.Equal(aliveResponsePolicy) {
+		t.Error("Message should equal itself")
+	}
+	if !aliveRequestPolicy.Equal(aliveResponsePolicy) {
+		t.Error("Alive request should not equal an alive response")
+	}
 }
 
 // This is a helper function to test all of PolicyMessage's functions
@@ -475,7 +504,7 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 	if policy.Type != policyMsg2.Type {
 		t.Error("Unexpected MessageType")
 	}
-	if !determineValid(policy, policyMsg2) {
+	if !policy.Equal(policyMsg2) {
 		t.Error("Message corroded after encoding/decoding.")
 	}
 
@@ -498,7 +527,7 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 	if policy.Type != policyMsg2.Type {
 		t.Error("Unexpected MessageType")
 	}
-	if !determineValid(policy, policyMsg2) {
+	if !policy.Equal(policyMsg2) {
 		t.Error("Message corroded after encoding/decoding.")
 	}
 	
@@ -519,7 +548,6 @@ func TestPolicyMessage(t *testing.T) {
 	PolicyMessageHelper(t, &PolicyMessage{Type:ShareRevealResponse, ShareRevealResponseMsg: basicShareResponse})
 	PolicyMessageHelper(t, &PolicyMessage{Type:ServerAliveRequest})
 	PolicyMessageHelper(t, &PolicyMessage{Type:ServerAliveResponse})
-
 }
 
 // Tests all the string functions. Simply calls them to make sure they return.
