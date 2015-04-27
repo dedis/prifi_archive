@@ -15,11 +15,11 @@ package insure
 
 import (
 	"errors"
-	"log"
-	"time"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/config"
 	"github.com/dedis/crypto/poly/promise"
+	"log"
+	"time"
 
 	"github.com/dedis/prifi/connMan"
 )
@@ -51,13 +51,13 @@ import (
  * contact the insurers and reconstruct the promised secret.
  *
  * Lastly, HandlePolicyMessage can be used to handle messages sent by other
- * servers. It is recommended to check frequently for other messages. 
+ * servers. It is recommended to check frequently for other messages.
  *
  * Please see the comments below for a more information about these functions.
  *
  * Note: It is important that users of this code frequently check and handle
  * messages from all servers in the system. Other servers will send promised
- * secrets to your server, request your server to become their insurer, check if 
+ * secrets to your server, request your server to become their insurer, check if
  * your server is still alive, etc. It is important to be able to receive these
  * quickly and make a speedy response.
  */
@@ -65,11 +65,11 @@ type LifePolicyModule struct {
 
 	// The long-term key pair of the server
 	keyPair *config.KeyPair
-	
+
 	// The id of the server (a string version of its long term public key).
 	// This is used primarily to simplify code.
 	serverId string
-	
+
 	// t, r, and n are parameters used to construct promise.Promise's. These
 	// parameters will be used for all promises constructed. Other servers
 	// wishing to send promises to this module should use the same values for
@@ -83,7 +83,7 @@ type LifePolicyModule struct {
 	// the form:
 	//
 	// promised_public_key_string => state_of_promise
-	promises map[string] *promise.State
+	promises map[string]*promise.State
 
 	// This hash contains promises that originated from other servers.
 	// Promises that the server is insuring as well as promises from
@@ -98,10 +98,10 @@ type LifePolicyModule struct {
 
 	// The connection manager used for sending/receiving messages over the network
 	cman connMan.ConnManager
-	
+
 	// This is the default timeout in seconds.
 	defaultTimeout int
-	
+
 	// This function is used to check whether a server is still alive.
 	// Insurers use this function to verify a promiser is dead before
 	// revealing its share of the promise.
@@ -119,7 +119,7 @@ type LifePolicyModule struct {
 	// Note:
 	//   A default method is provided that simply pings the promiser. Users
 	//   of this code can define more complex functions in which the insurer
-	//   requests the work on behalf of the client, receives the work, and 
+	//   requests the work on behalf of the client, receives the work, and
 	//   then sends it off to the client.
 	verifyServerAlive func(reason string, serverKey, clientKey abstract.Point, timeout int) error
 }
@@ -142,18 +142,18 @@ type LifePolicyModule struct {
  *                   are insuring is certified. Hence, they will send messages to
  *                   themselves when trying to get promiseResponses.
  */
-func (lp *LifePolicyModule) Init(kp *config.KeyPair, t,r,n int,
-                                 cman connMan.ConnManager, defaultTimeout int,
-                                 verifyServerAlive func(reason string, serverKey, clientKey abstract.Point, timeout int) error) *LifePolicyModule {
-	lp.keyPair         = kp
-	lp.serverId        = kp.Public.String()
-	lp.t               = t
-	lp.r               = r
-	lp.n               = n
-	lp.cman            = cman
-	lp.promises        = make(map[string] *promise.State)
-	lp.serverPromises  = make(map[string](map[string]*promise.State))
-	lp.defaultTimeout  = defaultTimeout
+func (lp *LifePolicyModule) Init(kp *config.KeyPair, t, r, n int,
+	cman connMan.ConnManager, defaultTimeout int,
+	verifyServerAlive func(reason string, serverKey, clientKey abstract.Point, timeout int) error) *LifePolicyModule {
+	lp.keyPair = kp
+	lp.serverId = kp.Public.String()
+	lp.t = t
+	lp.r = r
+	lp.n = n
+	lp.cman = cman
+	lp.promises = make(map[string]*promise.State)
+	lp.serverPromises = make(map[string](map[string]*promise.State))
+	lp.defaultTimeout = defaultTimeout
 	lp.verifyServerAlive = lp.verifyServerAliveDefault
 	if verifyServerAlive != nil {
 		lp.verifyServerAlive = verifyServerAlive
@@ -190,11 +190,11 @@ func handleTimeout(timeout int, timeoutChan chan<- bool) {
  */
 func checkTimelimit(timeoutChan chan bool) error {
 	select {
-		case result := <- timeoutChan:
-			if result == true {
-				return errors.New("Server failed to respond in time.")
-			}
-		default:
+	case result := <-timeoutChan:
+		if result == true {
+			return errors.New("Server failed to respond in time.")
+		}
+	default:
 	}
 	return nil
 }
@@ -210,21 +210,21 @@ func (lp *LifePolicyModule) verifyServerAliveDefault(reason string,
 	serverKey, clientKey abstract.Point, timeout int) error {
 
 	// Send the request message first.
-	policyMsg  := &PolicyMessage{Type: ServerAliveRequest}
+	policyMsg := &PolicyMessage{Type: ServerAliveRequest}
 	lp.cman.Put(serverKey, policyMsg)
 
-	// Setup the timeout.	
-	timeoutChan  := make(chan bool, 1)
+	// Setup the timeout.
+	timeoutChan := make(chan bool, 1)
 	go handleTimeout(timeout, timeoutChan)
-	
+
 	// Wait for the response
 	for true {
 		if err := checkTimelimit(timeoutChan); err != nil {
 			return err
 		}
 
-		msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
-				lp.keyPair.Suite)
+		msg := new(PolicyMessage).UnmarshalInit(lp.t, lp.r, lp.n,
+			lp.keyPair.Suite)
 		lp.cman.Get(serverKey, msg)
 		msgType, err := lp.HandlePolicyMessage(serverKey, msg)
 		if msgType == ServerAliveResponse && err == nil {
@@ -279,7 +279,7 @@ func (lp *LifePolicyModule) TakeOutPolicy(secretPair *config.KeyPair, serverList
 	// If the promise has already been created, do not create a new one but
 	// use the existing one.
 	if state, ok := lp.promises[secretPair.Public.String()]; ok {
-	
+
 		// If the promise is not yet certified, attempt to get its
 		// certification.
 		if state.PromiseCertified() != nil {
@@ -328,13 +328,13 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 
 	// Send a request off to each server
 	for i := 0; i < lp.n; i++ {
-		requestMsg := &CertifyPromiseMessage{ShareIndex:i, Promise:state.Promise}
-		policyMsg  := &PolicyMessage{Type: CertifyPromise, CertifyPromiseMsg: requestMsg}
+		requestMsg := &CertifyPromiseMessage{ShareIndex: i, Promise: state.Promise}
+		policyMsg := &PolicyMessage{Type: CertifyPromise, CertifyPromiseMsg: requestMsg}
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
 
-	// Setup the timeout.	
-	timeoutChan  := make(chan bool, 1)
+	// Setup the timeout.
+	timeoutChan := make(chan bool, 1)
 	go handleTimeout(lp.defaultTimeout, timeoutChan)
 
 	// Wait for responses
@@ -343,7 +343,7 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 			return err
 		}
 		for i := 0; i < lp.n; i++ {
-			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n, lp.keyPair.Suite)
+			msg := new(PolicyMessage).UnmarshalInit(lp.t, lp.r, lp.n, lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
 			msgType, err := lp.HandlePolicyMessage(insurersList[i], msg)
 			if err != nil {
@@ -375,7 +375,7 @@ func (lp *LifePolicyModule) CertifyPromise(serverKey, promiseKey abstract.Point)
 /* This function is responsible for revealing a share and sending it to a client.
  * Once insurers have verified that the promiser is dead, insurers can use this
  * method to reveal the share.
- * 
+ *
  * Arguments:
  *   shareIndex = the index of the share to reveal
  *   state      = the state of the promise holding the share to reveal
@@ -389,7 +389,7 @@ func (lp *LifePolicyModule) CertifyPromise(serverKey, promiseKey abstract.Point)
  *   verifying if the insurer should actually send the share to the client. Such
  *   verification must be done before the call to this function.
  */
-func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, clientKey abstract.Point) error {
+func (lp *LifePolicyModule) revealShare(shareIndex int, state *promise.State, clientKey abstract.Point) error {
 	// A promise must have a sufficient number of signatures before a share
 	// can be revealed. SufficientSignatures is used here rather than
 	// PromiseCertified to prevent a malicious server and insurer from
@@ -409,7 +409,7 @@ func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, 
 	}
 	responseMsg := new(PromiseShareMessage).createResponseMessage(
 		shareIndex, state.Promise, share)
-	policyMsg := &PolicyMessage{Type:ShareRevealResponse, ShareRevealResponseMsg: responseMsg}
+	policyMsg := &PolicyMessage{Type: ShareRevealResponse, ShareRevealResponseMsg: responseMsg}
 	lp.cman.Put(clientKey, policyMsg)
 	return nil
 }
@@ -432,8 +432,8 @@ func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Po
 	if state.PromiseCertified() != nil {
 		return errors.New("Promise must be certified.")
 	}
-	policyMsg := &PolicyMessage{Type:PromiseToClient, PromiseToClientMsg: &state.Promise}
-	lp.cman.Put(clientKey, policyMsg)	
+	policyMsg := &PolicyMessage{Type: PromiseToClient, PromiseToClientMsg: &state.Promise}
+	lp.cman.Put(clientKey, policyMsg)
 	return nil
 }
 
@@ -460,10 +460,10 @@ func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Po
  * Returns
  *   (key, error) pair
  *      key   = the reconstructed key on success, nil otherwise
- *      error = nil on success, the error that occurred otherwise 
+ *      error = nil on success, the error that occurred otherwise
  */
 func (lp *LifePolicyModule) ReconstructSecret(reason string,
-	serverKey,promiseKey abstract.Point) (abstract.Secret, error) {
+	serverKey, promiseKey abstract.Point) (abstract.Secret, error) {
 
 	state, assigned := lp.serverPromises[serverKey.String()][promiseKey.String()]
 	if !assigned {
@@ -474,10 +474,10 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 	// Send a request off to each server
 	for i := 0; i < lp.n; i++ {
 		requestMsg := new(PromiseShareMessage).createRequestMessage(i, reason, state.Promise)
-		policyMsg  := &PolicyMessage{Type:ShareRevealRequest, ShareRevealRequestMsg: requestMsg}
+		policyMsg := &PolicyMessage{Type: ShareRevealRequest, ShareRevealRequestMsg: requestMsg}
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
-	
+
 	// It is important to have this seenBefore array. Secret reconstruction
 	// relies on crypto/poly.PriShares. The function used will panic if
 	// not enough shares have been recovered. The function also doesn't keep
@@ -487,28 +487,28 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 	// and trick the client into thinking it has received unique shares and
 	// consequently try to reconstruct the secret to early.
 	seenBefore := make([]bool, lp.n, lp.n)
-	for i:= 0; i < lp.n; i++ {
-		seenBefore[i] = false;
+	for i := 0; i < lp.n; i++ {
+		seenBefore[i] = false
 	}
-	sharesRetrieved := 0;
+	sharesRetrieved := 0
 
-	// Setup the timeout.	
-	timeoutChan  := make(chan bool, 1)
+	// Setup the timeout.
+	timeoutChan := make(chan bool, 1)
 	go handleTimeout(lp.defaultTimeout, timeoutChan)
-	
+
 	// Wait for responses
 	for sharesRetrieved < lp.t {
 		if err := checkTimelimit(timeoutChan); err != nil {
 			return nil, err
 		}
-		for i := 0; i < lp.n; i++ {	
-			msg := new(PolicyMessage).UnmarshalInit(lp.t,lp.r,lp.n,
+		for i := 0; i < lp.n; i++ {
+			msg := new(PolicyMessage).UnmarshalInit(lp.t, lp.r, lp.n,
 				lp.keyPair.Suite)
 			lp.cman.Get(insurersList[i], msg)
 			msgType, err := lp.HandlePolicyMessage(insurersList[i], msg)
 			if err == nil &&
-			   seenBefore[i] == false &&
-			   msgType == ShareRevealResponse {
+				seenBefore[i] == false &&
+				msgType == ShareRevealResponse {
 				seenBefore[i] = true
 				sharesRetrieved += 1
 			}
@@ -516,7 +516,6 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 	}
 	return state.PriShares.Secret(), nil
 }
-
 
 /******************************** Receive Methods *****************************/
 
@@ -541,24 +540,23 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
  */
 func (lp *LifePolicyModule) HandlePolicyMessage(pubKey abstract.Point, msg *PolicyMessage) (PolicyMessageType, error) {
 	switch msg.Type {
-		case CertifyPromise:
-			return CertifyPromise, lp.handleCertifyPromiseMessage(pubKey, msg.CertifyPromiseMsg)
-		case PromiseResponse:
-			return PromiseResponse, lp.handlePromiseResponseMessage(msg.PromiseResponseMsg)
-		case PromiseToClient:
-			return PromiseToClient, lp.handlePromiseToClientMessage(pubKey, msg.PromiseToClientMsg)
-		case ShareRevealRequest:
-			return ShareRevealRequest, lp.handleRevealShareRequestMessage(pubKey, msg.ShareRevealRequestMsg)
-		case ShareRevealResponse:
-			return ShareRevealResponse, lp.handleRevealShareResponseMessage(msg.ShareRevealResponseMsg)
-		case ServerAliveRequest:
-			return ServerAliveRequest, lp.handleServerAliveRequestMessage(pubKey)
-		case ServerAliveResponse:
-			return ServerAliveResponse, nil
+	case CertifyPromise:
+		return CertifyPromise, lp.handleCertifyPromiseMessage(pubKey, msg.CertifyPromiseMsg)
+	case PromiseResponse:
+		return PromiseResponse, lp.handlePromiseResponseMessage(msg.PromiseResponseMsg)
+	case PromiseToClient:
+		return PromiseToClient, lp.handlePromiseToClientMessage(pubKey, msg.PromiseToClientMsg)
+	case ShareRevealRequest:
+		return ShareRevealRequest, lp.handleRevealShareRequestMessage(pubKey, msg.ShareRevealRequestMsg)
+	case ShareRevealResponse:
+		return ShareRevealResponse, lp.handleRevealShareResponseMessage(msg.ShareRevealResponseMsg)
+	case ServerAliveRequest:
+		return ServerAliveRequest, lp.handleServerAliveRequestMessage(pubKey)
+	case ServerAliveResponse:
+		return ServerAliveResponse, nil
 	}
 	return Error, errors.New("Invald message type")
 }
-
 
 /* This internal helper method properly adds a new promise to the serverPromises
  * hash. If the promise already exists in the hash, the function does nothing.
@@ -579,8 +577,8 @@ func (lp *LifePolicyModule) HandlePolicyMessage(pubKey abstract.Point, msg *Poli
  */
 func (lp *LifePolicyModule) addServerPromise(prom promise.Promise) {
 	promiserId := prom.PromiserId()
-	id         := prom.Id()
-	if _, assigned := lp.serverPromises[promiserId]; !assigned{
+	id := prom.Id()
+	if _, assigned := lp.serverPromises[promiserId]; !assigned {
 		lp.serverPromises[promiserId] = make(map[string]*promise.State)
 	}
 	if _, assigned := lp.serverPromises[promiserId][id]; !assigned {
@@ -620,15 +618,15 @@ func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, m
 	if !assigned {
 		return errors.New("No such promise exists.")
 	}
-	
+
 	response, err := state.Promise.ProduceResponse(msg.ShareIndex, lp.keyPair)
 	if err != nil {
 		return err
 	}
-	replyMsg := &PromiseResponseMessage{ShareIndex:msg.ShareIndex,
-					    Id: state.Promise.Id(),
-					    PromiserId: state.Promise.PromiserId(),
-					    Response: response}
+	replyMsg := &PromiseResponseMessage{ShareIndex: msg.ShareIndex,
+		Id:         state.Promise.Id(),
+		PromiserId: state.Promise.PromiserId(),
+		Response:   response}
 	lp.cman.Put(pubKey, &PolicyMessage{Type: PromiseResponse, PromiseResponseMsg: replyMsg})
 	return nil
 }
@@ -649,14 +647,14 @@ func (lp *LifePolicyModule) handlePromiseResponseMessage(msg *PromiseResponseMes
 	// If the promise was created by the server, add the response to the
 	// server's promise state. This should only be done if the promiser id of the
 	// promise is the same as the server's long term public key.
-	state, ok := lp.promises[msg.Id];
-	if  ok && msg.PromiserId == lp.serverId {
+	state, ok := lp.promises[msg.Id]
+	if ok && msg.PromiserId == lp.serverId {
 		return state.AddResponse(msg.ShareIndex, msg.Response)
 	}
 
 	// Otherwise, the server was requesting a certificate for a promise
 	// from another server.
-	state, ok = lp.serverPromises[msg.PromiserId][msg.Id];	
+	state, ok = lp.serverPromises[msg.PromiserId][msg.Id]
 	if ok {
 		return state.AddResponse(msg.ShareIndex, msg.Response)
 	}
@@ -703,7 +701,7 @@ func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, 
  *   nil (since the send should always succeed)
  */
 func (lp *LifePolicyModule) handleServerAliveRequestMessage(pubKey abstract.Point) error {
-	lp.cman.Put(pubKey, &PolicyMessage{Type:ServerAliveResponse})
+	lp.cman.Put(pubKey, &PolicyMessage{Type: ServerAliveResponse})
 	return nil
 }
 
@@ -728,7 +726,7 @@ func (lp *LifePolicyModule) handleRevealShareRequestMessage(pubKey abstract.Poin
 	if !assigned {
 		return errors.New("This server insurers no such Promise.")
 	}
-	
+
 	err := lp.verifyServerAlive(msg.Reason, state.Promise.PromiserKey(), pubKey, lp.defaultTimeout)
 	if err == nil {
 		return errors.New("Server is still alive. Share not revealed.")
@@ -751,11 +749,10 @@ func (lp *LifePolicyModule) handleRevealShareResponseMessage(msg *PromiseShareMe
 	state, assigned := lp.serverPromises[msg.PromiserId][msg.Id]
 	if !assigned {
 		return errors.New("Promise does not exist on this server.")
-	}	
+	}
 	if err := state.Promise.VerifyRevealedShare(msg.ShareIndex, msg.Share); err != nil {
 		return err
 	}
 	state.PriShares.SetShare(msg.ShareIndex, msg.Share)
 	return nil
 }
-
