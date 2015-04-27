@@ -160,7 +160,6 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	case subround == 0:
 		cache.X = append(cache.X, m.X...)
 		cache.Y = append(cache.Y, m.Y...)
-		log.Printf("Node %d: collected len %d\n", i, len(cache.X))
 		proofs := nonNil(m.LeftProofs, m.RightProofs)
 		if len(proofs) > 0 && check(i, m.Round, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
 			return nil
@@ -171,7 +170,6 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		} else {
 			var prf Proof
 			m.X, m.Y, prf = inf.Shuffle(cache.X, cache.Y, groupKey, rnd)
-			inf.VerifyShuffles([]Proof{prf}, m.X, m.Y, groupKey)
 
 			if len(cache.Proofs) > 0 {
 				m.LeftProofs = cache.Proofs[1:]

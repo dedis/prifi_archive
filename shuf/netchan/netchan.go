@@ -61,6 +61,7 @@ func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, cli
 	err := n.readMsg(conn, &m)
 	if err != nil {
 		log.Printf("Node %d: invalid message; %s\n", n.C, err.Error())
+		return
 	}
 	m.Round = round
 	to := n.Inf.Routes[n.C][round]
