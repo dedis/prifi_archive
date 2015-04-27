@@ -4,7 +4,7 @@
  * In order to achieve a more scalable Dissent, it is important that the
  * protocol is able to make progress even in the midst of server failure.
  *
- * To accomplish this, servers will have to take out an insurance (life) policy.
+ * To accomplish this, servers will have to take out a life insurance policy.
  * Servers will use Shamir Secret Sharing to give shares of their private keys
  * to n other servers who will act as insurers. Once the server has done so,
  * it can fully participate in the system and perform work for clients.

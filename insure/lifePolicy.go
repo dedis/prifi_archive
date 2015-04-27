@@ -57,7 +57,7 @@ import (
  *
  * Note: It is important that users of this code frequently check and handle
  * messages from all servers in the system. Other servers will send promised
- * secrets to your server, request your server to become its insurer, check if 
+ * secrets to your server, request your server to become their insurer, check if 
  * your server is still alive, etc. It is important to be able to receive these
  * quickly and make a speedy response.
  */

@@ -1,3 +1,15 @@
+/* These tests are divided into two main parts: unit tests and a functional
+ * test. The unit tests isolate the behavior of functions as much as possible
+ * using helper functions to similate other servers. The functional test
+ * attempts to simulate a real-life use case and uses almost exclusively
+ * lifePolicy.go functions.
+ *
+ * This code was build with blocking gochans that can receive only one message
+ * at a time. Altering the channels may break these tests.
+ *
+ * All tests use the same gochans. Make sure that each test leaves the channels
+ * empty, otherwise odd behavior will occur.
+ */
 package insure
 
 import (
@@ -17,42 +29,33 @@ import (
 	"github.com/dedis/prifi/coco/coconet"
 )
 
-// Note: These tests are divided into two main parts: unit tests and a functional
-// test. The unit tests attempt to isolate the behavior of the functions. Hence, they often
-// have helper functions that are written to send data over channels rather than useing
-// methods defined in lifePolic.go. This is done so as to better isolate the cause of errors.
-// The functional test makes sure that the entire system works as it should.
-
-// NOTE: This code was build with gochans that can only receive messages one
-// at a time and that block when waiting to receive a message. Changing the
-// channel might break tests.
-
-// NOTE: The same gochans are used throughout the tests. Make sure each test
-// gets all the messages it puts. Otherwise, there may be problems.
-
+/* There are three main types of servers for testing:
+ *   1) The promiser server with keyPairT
+ *   2) The client server with clientT
+ *   3) Insurer servers represented by the array serverKeys
+ *       a) There are numServer insurers.
+ *
+ * Each are given a public/private key along with a gochan
+ */
+var goDir = coconet.NewGoDirectory()
 var keySuite abstract.Suite = nist.NewAES128SHA256P256()
 
-var goDir = coconet.NewGoDirectory()
-
-// Variables for the server to take out the policy.
-var secretKeyT = produceKeyPairT()
+var secretKeyT  = produceKeyPairT()
 var secretKeyT2 = produceKeyPairT()
-var keyPairT   = produceKeyPairT()
-var clientT   = produceKeyPairT()
-var goConn     = produceChanConn(keyPairT)
-var clientConn = produceChanConn(clientT)
+var keyPairT    = produceKeyPairT()
+var clientT     = produceKeyPairT()
+var goConn      = produceChanConn(keyPairT)
+var clientConn  = produceChanConn(clientT)
 
 // Alter this to easily scale the number of servers to test with. This
-// represents the number of other servers waiting to approve policies.
+// represents the number of insurers.
 var numServers = 10
 
 var lpt = 5
 var lpr = 7
 var lpn = 10
-
 var defaultTimeout = 5
 
-// Variables for the servers to accept the policy
 var serverKeys = produceKeys()
 var secretKeys = produceKeys()
 var insurerListT = produceInsuredList()
@@ -318,7 +321,6 @@ func insurersNoResponse(t *testing.T, k, returnKey *config.KeyPair, msgType Poli
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, k.Suite)
 		cm.Get(returnKey.Public, msg)
 
-		// If a CertifyPromiseMessage, exit
 		if msg.Type == msgType {
 			cm.Put(returnKey.Public, new(PolicyMessage).createSAREQMessage())
 			return
@@ -347,7 +349,7 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 	}
 	
 	// Now that the promise is certified, it should simply return without
-	// contacting the insurers. Since the insurers all should have exitted
+	// contacting the insurers. Since the insurers all should have exited
 	// by now, this will hang if it attempts to contact the network.
 	err = policy.certifyPromise(finalState)
 	if err != nil {
@@ -372,7 +374,6 @@ func TestLifePolicyModuleCertifyPromise(t *testing.T) {
 		msg := new(PolicyMessage).UnmarshalInit(lpt,lpr,lpn, keyPairT.Suite)
 		connectionManagers[i].Get(keyPairT.Public, msg)
 
-		// If a CertifyPromiseMessage, exit
 		if msg.Type != ServerAliveResponse {
 			t.Error("Alive response should have been sent")
 		}
@@ -1210,22 +1211,24 @@ func TestLifePolicyModuleHandlePromiseToClientMessage(t *testing.T) {
 	}
 }
 
-/****************************** FUNCTIONAL TESTS ******************************/
+/****************************** FUNCTIONAL TEST *******************************/
 
 /* This functional test is designed to test the code under conditions similar to
  * production. It uses gochanns to simulate the network. It has three main types
- * of channels:
+ * of functions:
  *
- *   - Server channel = this is the channel of the main server who creates the
+ *   - Server function = this is the function of the main server who creates the
  *                      promise. This is the TestLifePolicyFunctional method.
  *
- *   - Insurer channel = these are a set of channels for representing insurer
- *                       logic. There is one channel per insurer.
+ *   - Insurer function = this is the insurersFunctional which contains logic for
+ *                      the insurers. A process of the function is run for each
+ *                      insurer.
  *
- *   - Client channel = this channel simulates requests by clients.
+ *   - Client function = this is the function clientFunctional that simulates
+ *                       requests by clients.
  *
- * The test undergoes several main phases that may involve all the channels or just
- * a subset:
+ * The test undergoes several main phases that may involve all the functions or
+ * just a subset:
  *
  *   Phase 1: Create a new Promise
  *
