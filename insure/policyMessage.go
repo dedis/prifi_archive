@@ -1,5 +1,6 @@
-/* Modelled off coco/sign/signingMessage.go, this file is defines messages
- * used in the insurance policy protocol.
+/* Modelled off coco/sign/signingMessage.go, this file defines messages
+ * used in the insurance policy protocol. All information that is sent over
+ * the network by the LifePolicyModule is contained within a PolicyMessage
  */
 package insure
 
@@ -50,7 +51,7 @@ const (
  * message field. The name of the message to set corresponds nicely with the
  * message type.
  *
- * Note: Each PolicyMessage should only contain one type of message.
+ * Note: Each PolicyMessage should contain only one message.
  */
 type PolicyMessage struct {
 	
@@ -148,7 +149,7 @@ var uint32Size int = binary.Size(uint32(0))
 
 /***************************** CertifyPromiseMessage ***************************/
 
-/* CertifyPromiseMessage are sent by servers to insurers to request that they
+/* CertifyPromiseMessage's are sent by servers to insurers to request that they
  * certify a promise.
  */
 type CertifyPromiseMessage struct {
@@ -409,7 +410,7 @@ func (msg *PromiseResponseMessage) String()  string {
  * share.
  *
  * Since creating this struct is more complicated than with the others,
- * initialization methods are provided.
+ * initialization methods are provided. It is highly suggested to use those.
  *
  * Note: Whether the message is a request or response is determined by whether
  * the share is nil (nil for request, defined for response). Make sure that this
@@ -429,6 +430,7 @@ type PromiseShareMessage struct {
 	// The reason why the client is requesting the share. For more info,
 	// see the documentation in lifePolicy.go for the verifyServerAlive
 	// function.
+	//
 	// This is nil for responses but defined for requests
 	Reason string
 
