@@ -31,8 +31,11 @@ var basicPromise2 = new(promise.Promise).ConstructPromise(secretKey,  produceKey
 
 var basicResponse, _ = basicPromise.ProduceResponse(10, insurerKeys[10])
 
-var basicCertifyMessage = new(CertifyPromiseMessage).createMessage(10, *basicPromise)
-var basicResponseMessage = new(PromiseResponseMessage).createMessage(10, *basicPromise, basicResponse)
+var basicCertifyMessage = &CertifyPromiseMessage{ShareIndex:10, Promise: *basicPromise}
+var basicResponseMessage = &PromiseResponseMessage{ShareIndex:10,
+                                                   Id: basicPromise.Id(),
+                                                   PromiserId: basicPromise.PromiserId(),
+                                                   Response: basicResponse}
 
 var basicShareRequest  = new(PromiseShareMessage).createRequestMessage(10, "test", *basicPromise)
 var basicShareResponse = new(PromiseShareMessage).createResponseMessage(10, *basicPromise, basicShare)
@@ -68,7 +71,7 @@ func produceinsurerList() []abstract.Point {
 
 // Verifies that a CertifyPromiseMessage can be created properly.
 func TestCertifyPromiseMessageCreateMessage(t *testing.T) {
-	msg := new(CertifyPromiseMessage).createMessage(10, *basicPromise)
+	msg := &CertifyPromiseMessage{ShareIndex: 10, Promise: *basicPromise}
 
 	if msg.ShareIndex != 10 {
 		t.Error("ShareIndex not properly set.")
@@ -86,12 +89,12 @@ func TestCertifyPromiseMessageEqual(t *testing.T) {
 		t.Error("Message should equal itself.")
 	}
 
-	msg2 := new(CertifyPromiseMessage).createMessage(1, *basicPromise)
+	msg2 := &CertifyPromiseMessage{ShareIndex: 1, Promise: *basicPromise}
 	if basicCertifyMessage.Equal(msg2) {
 		t.Error("Share Indices differ.")
 	}
 
-	msg2 = new(CertifyPromiseMessage).createMessage(10, *basicPromise2)
+	msg2 = &CertifyPromiseMessage{ShareIndex: 10, Promise: *basicPromise2}
 	if basicCertifyMessage.Equal(msg2) {
 		t.Error("Promises differ.")
 	}
@@ -104,7 +107,7 @@ func TestCertifyPromiseMessageUnMarshall(t *testing.T) {
 	new(CertifyPromiseMessage).UnmarshalInit(pt,r,numInsurers, suite)
 }
 
-// Verifies that blameProof's marshalling methods work properly.
+// Verifies that CertifyPromiseMessage's marshalling methods work properly.
 func TestCertifyPromiseMessageMarshalling(t *testing.T) {
 	// Tests BinaryMarshal, BinaryUnmarshal, and MarshalSize
 	encodedCM, err := basicCertifyMessage.MarshalBinary()
@@ -150,7 +153,10 @@ func TestCertifyPromiseMessageMarshalling(t *testing.T) {
 // Verifies that a PromiseResponseMessage can be created properly.
 func TestPromiseResponseMessageCreateMessage(t *testing.T) {
 
-	responseMsg := new(PromiseResponseMessage).createMessage(10, *basicPromise, basicResponse)
+	responseMsg := &PromiseResponseMessage{ShareIndex: 10, 
+	                                       Id: basicPromise.Id(),
+	                                       PromiserId: basicPromise.PromiserId(),
+	                                       Response: basicResponse}
 	if responseMsg.ShareIndex != 10 {
 		t.Error("ShareIndex not properly initialized")
 	}
@@ -166,10 +172,8 @@ func TestPromiseResponseMessageCreateMessage(t *testing.T) {
 }
 
 
-// Verifies that a CertifyPromiseMessage can be marshalled and unmarshalled
+// Verifies that a PromiseResponseMessage can be marshalled and unmarshalled
 func TestPromiseResponseMessageUnMarshall(t *testing.T) {
-	// Since Equal can't be used on a promise until it has been fully
-	// unmarshalled, simply make sure this doesn't fail.
 	new(PromiseResponseMessage).UnmarshalInit(suite)
 }
 
@@ -180,31 +184,43 @@ func TestPromiseResponseMessageEqual(t *testing.T) {
 		t.Error("Message should equal itself.")
 	}
 
-	msg2 := new(PromiseResponseMessage).createMessage(1, *basicPromise, basicResponse)
+	msg2 := &PromiseResponseMessage{ShareIndex: 1, 
+	                                Id: basicPromise.Id(),
+	                                PromiserId: basicPromise.PromiserId(),
+	                                Response: basicResponse}
 	if basicResponseMessage.Equal(msg2) {
 		t.Error("Share Indices differ.")
 	}
 
 	newPromise := new(promise.Promise).ConstructPromise(secretKey,  produceKeyPair(), 5, r, insurerList)
-	msg2 = new(PromiseResponseMessage).createMessage(10, *newPromise, basicResponse)
+	msg2 = &PromiseResponseMessage{ShareIndex: 10, 
+	                               Id: newPromise.Id(),
+	                               PromiserId: newPromise.PromiserId(),
+	                               Response: basicResponse}
 	if basicResponseMessage.Equal(msg2) {
 		t.Error("PromiserId differs.")
 	}
 
 	newPromise = new(promise.Promise).ConstructPromise(produceKeyPair(),  promiserKey, 5, r, insurerList)
-	msg2 = new(PromiseResponseMessage).createMessage(10, *newPromise, basicResponse)
+	msg2 = &PromiseResponseMessage{ShareIndex: 10, 
+	                                       Id: newPromise.Id(),
+	                                       PromiserId: newPromise.PromiserId(),
+	                                       Response: basicResponse}
 	if basicResponseMessage.Equal(msg2) {
 		t.Error("Id differs.")
 	}
 
 	response, _ := basicPromise.ProduceResponse(1, insurerKeys[1])
-	msg2 = new(PromiseResponseMessage).createMessage(10, *basicPromise, response)
+	msg2 = &PromiseResponseMessage{ShareIndex: 10, 
+	                               Id: basicPromise.Id(),
+	                               PromiserId: basicPromise.PromiserId(),
+	                               Response: response}
 	if basicResponseMessage.Equal(msg2) {
 		t.Error("Response differs.")
 	}
 }
 
-// Verifies that blameProof's marshalling methods work properly.
+// Verifies that PromiseResponseMessage marshalling methods work properly.
 func TestPromiseResponseMessageMarshalling(t *testing.T) {
 	// Tests BinaryMarshal, BinaryUnmarshal, and MarshalSize
 	encodedPRM, err := basicResponseMessage.MarshalBinary()
@@ -247,10 +263,7 @@ func TestPromiseResponseMessageMarshalling(t *testing.T) {
 	}
 }
 
-
-
-
-// Verifies that a PromiseShareMessage can be created properly.
+// Verifies that a PromiseShareMessage can be created properly for requests.
 func TestPromiseShareMessageCreateRequestMessage(t *testing.T) {
 	reason   := "test_reason"
 	shareMsg := new(PromiseShareMessage).createRequestMessage(10, reason, *basicPromise)
@@ -271,7 +284,7 @@ func TestPromiseShareMessageCreateRequestMessage(t *testing.T) {
 	}
 }
 
-// Verifies that a PromiseShareMessage can be created properly.
+// Verifies that a PromiseShareMessage can be created properly for responses.
 func TestPromiseShareMessageCreateResponseMessage(t *testing.T) {
 	shareMsg := new(PromiseShareMessage).createResponseMessage(10, *basicPromise, basicShare)
 	if shareMsg.ShareIndex != 10 {
@@ -288,11 +301,8 @@ func TestPromiseShareMessageCreateResponseMessage(t *testing.T) {
 	}
 }
 
-
-// Verifies that a CertifyPromiseMessage can be marshalled and unmarshalled
+// Verifies that a PromiseShareMessage can be marshalled and unmarshalled
 func TestPromiseShareMessageUnMarshall(t *testing.T) {
-	// Since Equal can't be used on a promise until it has been fully
-	// unmarshalled, simply make sure this doesn't fail.
 	new(PromiseShareMessage).UnmarshalInit(suite)
 }
 
@@ -329,7 +339,7 @@ func TestPromiseShareMessageEqual(t *testing.T) {
 	}
 }
 
-// Verifies that blameProof's marshalling methods work properly.
+// Verifies that PromiseShareMessage marshalling methods work properly.
 func TestPromiseShareMessageMarshalling(t *testing.T) {
 	// Test with the request messages.
 	// Tests BinaryMarshal, BinaryUnmarshal, and MarshalSize
@@ -414,11 +424,9 @@ func TestPromiseShareMessageMarshalling(t *testing.T) {
 	}
 }
 
-
-
-
+// This is a helper function to test PolicyMessage's functions
 func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
-	// Send an RequestInsuranceMessage
+	// Marshal and unmarshl the message
 	encodedMsg, err := policy.MarshalBinary()
 	if err != nil {
 		t.Fatal("Marshalling failed!", err)
@@ -434,27 +442,26 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 	}
 
 	okay := false
-
 	switch policyMsg2.Type {
 		case CertifyPromise:
-			msg1 := policy.getCPM()
-			msg2 := policyMsg2.getCPM()
+			msg1 := policy.CertifyPromiseMsg
+			msg2 := policyMsg2.CertifyPromiseMsg
 			okay = msg1.Equal(msg2)
 		case PromiseResponse:
-			msg1 := policy.getPRM()
-			msg2 := policyMsg2.getPRM()
+			msg1 := policy.PromiseResponseMsg
+			msg2 := policyMsg2.PromiseResponseMsg
 			okay = msg1.Equal(msg2)
 		case PromiseToClient:
-			msg1 := policy.getPTCM()
-			msg2 := policyMsg2.getPTCM()
+			msg1 := policy.PromiseToClientMsg
+			msg2 := policyMsg2.PromiseToClientMsg
 			okay  = msg1.Equal(msg2)
 		case ShareRevealRequest:
-			msg1 := policy.getSREQ()
-			msg2 := policyMsg2.getSREQ()
+			msg1 := policy.ShareRevealRequestMsg
+			msg2 := policyMsg2.ShareRevealRequestMsg
 			okay  = msg1.Equal(msg2)
 		case ShareRevealResponse:
-			msg1 := policy.getSRSP()
-			msg2 := policyMsg2.getSRSP()
+			msg1 := policy.ShareRevealResponseMsg
+			msg2 := policyMsg2.ShareRevealResponseMsg
 			okay  = msg1.Equal(msg2)
 		case ServerAliveRequest:
 			okay = true
@@ -472,13 +479,13 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 // Hence, the functionality of PolicyMessage is tested here.
 func TestPolicyMessage(t *testing.T) {
 
-	PolicyMessageHelper(t, new(PolicyMessage).createCPMessage(basicCertifyMessage))
-	PolicyMessageHelper(t, new(PolicyMessage).createPRMessage(basicResponseMessage))
-	PolicyMessageHelper(t, new(PolicyMessage).createPTCMessage(basicPromise))
-	PolicyMessageHelper(t, new(PolicyMessage).createSREQMessage(basicShareRequest))
-	PolicyMessageHelper(t, new(PolicyMessage).createSRSPMessage(basicShareResponse))
-	PolicyMessageHelper(t, new(PolicyMessage).createSAREQMessage())
-	PolicyMessageHelper(t, new(PolicyMessage).createSARSPMessage())
+	PolicyMessageHelper(t, &PolicyMessage{Type:CertifyPromise, CertifyPromiseMsg: basicCertifyMessage})
+	PolicyMessageHelper(t, &PolicyMessage{Type:PromiseResponse, PromiseResponseMsg: basicResponseMessage})
+	PolicyMessageHelper(t, &PolicyMessage{Type:PromiseToClient, PromiseToClientMsg: basicPromise})
+	PolicyMessageHelper(t, &PolicyMessage{Type:ShareRevealRequest, ShareRevealRequestMsg: basicShareRequest})
+	PolicyMessageHelper(t, &PolicyMessage{Type:ShareRevealResponse, ShareRevealResponseMsg: basicShareResponse})
+	PolicyMessageHelper(t, &PolicyMessage{Type:ServerAliveRequest})
+	PolicyMessageHelper(t, &PolicyMessage{Type:ServerAliveResponse})
 
 }
 
