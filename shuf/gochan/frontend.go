@@ -55,7 +55,6 @@ func main() {
 	privKeys := make([]abstract.Secret, c.NumNodes)
 	for i := range pubKeys {
 		privKeys[i] = suite.Secret().Pick(rand)
-		// privKeys[i] = suite.Secret().Zero()
 		pubKeys[i] = suite.Point().Mul(nil, privKeys[i])
 	}
 	privKeyFn := func(n int) abstract.Secret {
@@ -80,9 +79,11 @@ func main() {
 		MsgsPerGroup: c.MsgsPerGroup,
 		MaxResends:   c.MaxResends,
 		Timeout:      time.Second * time.Duration(c.Timeout),
+		Split:        shuf.Butterfly{},
 	}, c.Seed)
 	var wg sync.WaitGroup
 	wg.Add(inf.NumClients)
+
 	ChanShuffle(inf, messages, &wg)
 	wg.Wait()
 }

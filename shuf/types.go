@@ -7,9 +7,10 @@ import (
 
 // Messages exchanged during a shuffle
 type Msg struct {
-	LeftProofs  []Proof
-	RightProofs []Proof
-	ShufProofs  []Proof
+	LeftProofs  []DecProof
+	RightProofs []DecProof
+	ShufProofs  []ShufProof
+	SplitProof  *SplitProof
 	X           []abstract.Point
 	Y           []abstract.Point
 	NewX        []abstract.Point
@@ -28,6 +29,7 @@ type UserInfo struct {
 	MsgsPerGroup int
 	Timeout      time.Duration
 	MaxResends   int
+	Split        Splitter
 }
 
 // Information required to run the shuffle
@@ -44,15 +46,32 @@ type Info struct {
 	NeffLen     int
 }
 
-// Proof of either a shuffle, decryption, or encryption
-type Proof struct {
+// Proof of division between halves
+type SplitProof struct {
+	X      []abstract.Point // old X
+	Y      []abstract.Point // old Y
+	LProof []byte           // proof that left sides come from old X and Y
+	RProof []byte           // proof that right sides come from old X and Y
+}
+
+// Proof of decryption and re-encryption
+type DecProof struct {
+	Y     []abstract.Point // old Y
+	Proof []byte           // proof that new Y comes from old Y
+
+}
+
+// Proof of a shuffle
+type ShufProof struct {
 	X     []abstract.Point // old X
 	Y     []abstract.Point // old Y
 	Proof []byte
 }
 
+// Data stored between rounds
 type Cache struct {
-	X      []abstract.Point
-	Y      []abstract.Point
-	Proofs []Proof
+	NewX   []abstract.Point // stored NewX
+	X      []abstract.Point // stored X
+	Y      []abstract.Point // stored Y
+	Proofs []DecProof       // stored proof
 }

@@ -91,7 +91,7 @@ func (n Node) handleClientConnection(conn net.Conn, die chan bool) {
 	if err != nil {
 		log.Printf("Client %d: decoding error; %s\n", err.Error())
 	}
-	if n.Inf.HandleClient(n.C, &m) == nil {
+	if n.Inf.HandleClient(n.C, &m) {
 		die <- true
 	}
 }

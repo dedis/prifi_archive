@@ -43,11 +43,12 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 
 		// For each round it's active, wait for a message
 		go func(i int) {
+
 			cache := new(shuf.Cache)
 			for ridx := 0; ridx < len(inf.Active[i]); {
 				round := inf.Active[i][ridx]
 				w := <-messages[i]
-				// fmt.Printf("Node %d: got message with round %d on round %d\n", i, w.m.Round, round)
+				fmt.Printf("Node %d: got message with round %d on round %d\n", i, w.m.Round, round)
 				w.ack <- true
 				if w.m.Round != round {
 					continue
@@ -64,10 +65,10 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 							cl <- wrapper{m, nil}
 						}
 					case len(to) == 1:
-						// fmt.Printf("Node %d: sending to %d, round %d\n", i, to[0], m.Round)
+						fmt.Printf("Node %d: sending to %d, round %d\n", i, to[0], m.Round)
 						go sendTo(inf, messages[to[0]], m)
 					case len(to) == 2:
-						// fmt.Printf("Node %d: jumping to a new group\n", i)
+						fmt.Printf("Node %d: jumping to a new group\n", i)
 						leftMsg := shuf.GetLeft(*m)
 						rightMsg := shuf.GetRight(*m)
 						go sendTo(inf, messages[to[0]], leftMsg)
@@ -82,12 +83,12 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 	for i := range msgs {
 		go func(i int) {
 			X, Y, to := inf.Setup(msgs[i], i)
-			go sendTo(inf, messages[to], &shuf.Msg{X: X, Y: Y})
+			go sendTo(inf, messages[to], &shuf.Msg{NewX: X, Y: Y})
 			defer wg.Done()
 			for {
 				select {
 				case w := <-results[i]:
-					if inf.HandleClient(i, w.m) == nil {
+					if inf.HandleClient(i, w.m) {
 						return
 					}
 				case <-time.After(inf.Timeout):

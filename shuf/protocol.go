@@ -8,26 +8,29 @@ import (
 )
 
 func GetRight(m Msg) *Msg {
-	half := len(m.X) / 2
+	half := len(m.Y) / 2
 	m.LeftProofs = nil
+	m.NewX = m.NewX[half:]
 	m.X = m.X[half:]
 	m.Y = m.Y[half:]
 	return &m
 }
 
 func GetLeft(m Msg) *Msg {
-	half := len(m.X) / 2
+	half := len(m.Y) / 2
 	m.RightProofs = nil
+	m.NewX = m.NewX[:half]
 	m.X = m.X[:half]
 	m.Y = m.Y[:half]
 	return &m
 }
 
-func (inf *Info) HandleClient(i int, m *Msg) error {
-	err := inf.VerifyDecrypts(m.LeftProofs, m.Y, inf.Suite.Point().Null())
-	if err != nil {
-		fmt.Printf("Client %v: %s\n", i, err.Error())
-		return err
+// Return value indicates whether the client is done
+func (inf *Info) HandleClient(i int, m *Msg) bool {
+	half := len(m.Y) / 2
+	if check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.X[:half], m.Y[:half], inf.Suite.Point().Null())) ||
+		check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.X[half:], m.Y[half:], inf.Suite.Point().Null())) {
+		return false
 	}
 	for _, val := range m.Y {
 		d, e := val.Data()
@@ -37,7 +40,7 @@ func (inf *Info) HandleClient(i int, m *Msg) error {
 			fmt.Printf("Client %v: %v\n", i, string(d))
 		}
 	}
-	return nil
+	return true
 }
 
 func (inf *Info) Setup(msg abstract.Point, client int) (
@@ -128,13 +131,13 @@ func MakeInfo(uinf UserInfo, seed int64) *Info {
 
 func check(i int, r int32, e error) bool {
 	if e != nil {
-		log.Printf("Node %v, round %d: %s\n", i, r, e.Error())
+		log.Printf("Node %v round %d: %s\n", i, r, e.Error())
 		return true
 	}
 	return false
 }
 
-func nonNil(left, right []Proof) []Proof {
+func nonNil(left, right []DecProof) []DecProof {
 	if len(left) < 1 {
 		return right
 	} else {
@@ -145,6 +148,7 @@ func nonNil(left, right []Proof) []Proof {
 func clearCache(cache *Cache) {
 	cache.X = nil
 	cache.Y = nil
+	cache.NewX = nil
 	cache.Proofs = nil
 }
 
@@ -152,92 +156,138 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	subround := int(m.Round) % (2 * inf.NeffLen)
 	level := int(m.Round) / (2 * inf.NeffLen)
 	groupKey := inf.GroupKeys[inf.NodeGroup[i][level]][level]
-	half := len(m.X) / 2
+	encryptKey := inf.EncryptKeys[inf.NodeGroup[i][level]][level]
+	half := len(m.Y) / 2
 	rnd := inf.Suite.Cipher(nil)
 	switch {
 
 	// Is it a collection round?
 	case subround == 0:
+		cache.NewX = append(cache.NewX, m.NewX...)
 		cache.X = append(cache.X, m.X...)
 		cache.Y = append(cache.Y, m.Y...)
 		proofs := nonNil(m.LeftProofs, m.RightProofs)
-		if len(proofs) > 0 && check(i, m.Round, inf.VerifyDecrypts(proofs, m.Y, groupKey)) {
+		if len(proofs) > 0 && check(i, m.Round, inf.VerifyDecrypts(proofs, m.X, m.Y, groupKey)) {
 			return nil
 		}
-		if len(cache.X) < inf.MsgsPerGroup {
+		if len(cache.NewX) < inf.MsgsPerGroup {
 			cache.Proofs = proofs
 			return nil
 		} else {
-			var prf Proof
-			m.X, m.Y, prf = inf.Shuffle(cache.X, cache.Y, groupKey, rnd)
+			var prf ShufProof
+			m.NewX, m.Y, prf = inf.Shuffle(cache.NewX, cache.Y, groupKey, rnd)
+			m.X = cache.X
 
 			if len(cache.Proofs) > 0 {
 				m.LeftProofs = cache.Proofs[1:]
 				m.RightProofs = proofs[1:]
 			}
-			m.ShufProofs = []Proof{prf}
+			if subround != inf.NeffLen-1 {
+				m.ShufProofs = []ShufProof{prf}
+			}
 			m.Round = m.Round + 1
 			clearCache(cache)
-			return m
 		}
 
-	// Is it the first part of a cycle?
+	// Is it the first cycle?
 	case subround < inf.NeffLen:
-		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey)) ||
+		lastY := m.ShufProofs[0].Y
+		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.NewX, m.Y, groupKey)) ||
 			len(m.LeftProofs) > 0 &&
-				(check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.ShufProofs[0].Y[:half], groupKey)) ||
-					check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.ShufProofs[0].Y[half:], groupKey))) {
+				(check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.X[:half], lastY[:half], groupKey)) ||
+					check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.X[half:], lastY[half:], groupKey))) {
 			return nil
 		}
-		var prf Proof
-		m.X, m.Y, prf = inf.Shuffle(m.X, m.Y, groupKey, rnd)
+		var prf ShufProof
+		m.NewX, m.Y, prf = inf.Shuffle(m.NewX, m.Y, groupKey, rnd)
 		m.Round = m.Round + 1
 		if len(m.LeftProofs) > 0 && len(m.RightProofs) > 0 {
 			m.LeftProofs = m.LeftProofs[1:]
 			m.RightProofs = m.RightProofs[1:]
 		}
 		m.ShufProofs = append(m.ShufProofs, prf)
+		if subround == inf.NeffLen-1 {
+			m.ShufProofs = m.ShufProofs[1:]
+		}
 
-	// Verify a part of the second cycle
-	case subround >= inf.NeffLen:
-		encryptKey := inf.EncryptKeys[inf.NodeGroup[i][level]][level]
-		var b bool
-		if len(m.LeftProofs) < 1 || len(m.RightProofs) < 1 {
-			b = check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.X, m.Y, groupKey))
-		} else {
-			xs := append(m.LeftProofs[0].X, m.RightProofs[0].X...)
-			ys := append(m.LeftProofs[0].Y, m.RightProofs[0].Y...)
-			b = check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, xs, ys, groupKey))
-			b = b || check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.Y[:half], encryptKey[0]))
-			b = b || check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.Y[half:], encryptKey[1]))
+	// Is it the start of the second cycle?
+	case subround == inf.NeffLen:
+		if len(m.ShufProofs) > 0 {
+			if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.NewX, m.Y, groupKey)) {
+				return nil
+			}
+			m.ShufProofs = m.ShufProofs[1:]
 		}
-		if b {
-			return nil
-		}
+		temp := m.X
+		m.X = m.NewX
+		m.NewX = temp
 		if len(m.NewX) < 1 {
 			m.NewX = make([]abstract.Point, len(m.X))
-			for x := range m.NewX {
-				m.NewX[x] = inf.Suite.Point().Null()
-			}
 		}
-		leftNewX, leftY, leftPrf, lerr :=
-			inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], i, encryptKey[0])
-		rightNewX, rightY, rightPrf, rerr :=
-			inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], i, encryptKey[1])
+		for x := range m.NewX {
+			m.NewX[x] = inf.Suite.Point().Null()
+		}
+		m.SplitProof = new(SplitProof)
+		m.SplitProof.X = m.X
+		m.SplitProof.Y = m.Y
+		inf.Split.Split(m)
+		newY := make([]abstract.Point, len(m.Y))
+		leftPrf, lerr := inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], newY[:half], i, encryptKey[0])
+		rightPrf, rerr := inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], newY[half:], i, encryptKey[1])
 		if check(i, m.Round, lerr) || check(i, m.Round, rerr) {
 			return nil
 		}
-		m.Y = append(leftY, rightY...)
-		m.ShufProofs = m.ShufProofs[1:]
-		m.LeftProofs = append(m.LeftProofs, leftPrf)
-		m.RightProofs = append(m.RightProofs, rightPrf)
-		m.NewX = append(leftNewX, rightNewX...)
+		m.Y = newY
 		m.Round = m.Round + 1
-		if subround == inf.NeffLen*2-1 {
+		switch {
+		case m.Round == int32(inf.NumRounds):
+			m.NewX = nil
+			m.SplitProof = nil
+		case subround == inf.NeffLen*2-1:
 			m.X = m.NewX
 			m.NewX = nil
+			m.SplitProof = nil
+		default:
+			m.LeftProofs = []DecProof{leftPrf}
+			m.RightProofs = []DecProof{rightPrf}
 		}
 
+	// Is it in the second cycle?
+	case subround >= inf.NeffLen:
+		if len(m.LeftProofs) < 1 || len(m.RightProofs) < 1 || len(m.NewX) < 1 {
+			log.Printf("Node %d round %d: no encryption proofs\n", i, m.Round)
+			return nil
+		}
+		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.SplitProof.X, m.SplitProof.Y, groupKey)) ||
+			check(i, m.Round, inf.Split.VerifySplit(m.SplitProof, m.LeftProofs[0].Y, m.RightProofs[0].Y)) ||
+			check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.X[:half], m.Y[:half], encryptKey[0])) ||
+			check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.X[half:], m.Y[half:], encryptKey[1])) {
+			return nil
+		}
+		newY := make([]abstract.Point, len(m.Y))
+		leftPrf, lerr := inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], newY[:half], i, encryptKey[0])
+		rightPrf, rerr := inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], newY[half:], i, encryptKey[1])
+		if check(i, m.Round, lerr) || check(i, m.Round, rerr) {
+			return nil
+		}
+		m.Y = newY
+		if len(m.ShufProofs) > 0 {
+			m.ShufProofs = m.ShufProofs[1:]
+		}
+		m.LeftProofs = append(m.LeftProofs, leftPrf)
+		m.RightProofs = append(m.RightProofs, rightPrf)
+		m.Round = m.Round + 1
+		switch {
+		case m.Round == int32(inf.NumRounds):
+			m.NewX = nil
+			m.SplitProof = nil
+			m.LeftProofs = m.LeftProofs[1:]
+			m.RightProofs = m.RightProofs[1:]
+		case subround == inf.NeffLen*2-1:
+			m.SplitProof = nil
+			m.LeftProofs = m.LeftProofs[1:]
+			m.RightProofs = m.RightProofs[1:]
+		}
 	}
 	return m
 }
