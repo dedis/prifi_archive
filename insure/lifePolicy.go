@@ -210,7 +210,7 @@ func (lp *LifePolicyModule) verifyServerAliveDefault(reason string,
 	serverKey, clientKey abstract.Point, timeout int) error {
 
 	// Send the request message first.
-	policyMsg  := new(PolicyMessage).createSAREQMessage()
+	policyMsg  := &PolicyMessage{Type: ServerAliveRequest}
 	lp.cman.Put(serverKey, policyMsg)
 
 	// Setup the timeout.	
@@ -328,8 +328,8 @@ func (lp *LifePolicyModule) certifyPromise(state *promise.State) error {
 
 	// Send a request off to each server
 	for i := 0; i < lp.n; i++ {
-		requestMsg := new(CertifyPromiseMessage).createMessage(i, state.Promise)
-		policyMsg  := new(PolicyMessage).createCPMessage(requestMsg)
+		requestMsg := &CertifyPromiseMessage{ShareIndex:i, Promise:state.Promise}
+		policyMsg  := &PolicyMessage{Type: CertifyPromise, CertifyPromiseMsg: requestMsg}
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
 
@@ -409,7 +409,8 @@ func (lp * LifePolicyModule) revealShare(shareIndex int, state * promise.State, 
 	}
 	responseMsg := new(PromiseShareMessage).createResponseMessage(
 		shareIndex, state.Promise, share)
-	lp.cman.Put(clientKey, new(PolicyMessage).createSRSPMessage(responseMsg))
+	policyMsg := &PolicyMessage{Type:ShareRevealResponse, ShareRevealResponseMsg: responseMsg}
+	lp.cman.Put(clientKey, policyMsg)
 	return nil
 }
 
@@ -431,7 +432,7 @@ func (lp *LifePolicyModule) SendPromiseToClient(clientKey, secretKey abstract.Po
 	if state.PromiseCertified() != nil {
 		return errors.New("Promise must be certified.")
 	}
-	policyMsg := new(PolicyMessage).createPTCMessage(&state.Promise)
+	policyMsg := &PolicyMessage{Type:PromiseToClient, PromiseToClientMsg: &state.Promise}
 	lp.cman.Put(clientKey, policyMsg)	
 	return nil
 }
@@ -473,7 +474,7 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 	// Send a request off to each server
 	for i := 0; i < lp.n; i++ {
 		requestMsg := new(PromiseShareMessage).createRequestMessage(i, reason, state.Promise)
-		policyMsg  := new(PolicyMessage).createSREQMessage(requestMsg)
+		policyMsg  := &PolicyMessage{Type:ShareRevealRequest, ShareRevealRequestMsg: requestMsg}
 		lp.cman.Put(insurersList[i], policyMsg)
 	}
 	
@@ -541,15 +542,15 @@ func (lp *LifePolicyModule) ReconstructSecret(reason string,
 func (lp *LifePolicyModule) HandlePolicyMessage(pubKey abstract.Point, msg *PolicyMessage) (PolicyMessageType, error) {
 	switch msg.Type {
 		case CertifyPromise:
-			return CertifyPromise, lp.handleCertifyPromiseMessage(pubKey, msg.getCPM())
+			return CertifyPromise, lp.handleCertifyPromiseMessage(pubKey, msg.CertifyPromiseMsg)
 		case PromiseResponse:
-			return PromiseResponse, lp.handlePromiseResponseMessage(msg.getPRM())
+			return PromiseResponse, lp.handlePromiseResponseMessage(msg.PromiseResponseMsg)
 		case PromiseToClient:
-			return PromiseToClient, lp.handlePromiseToClientMessage(pubKey, msg.getPTCM())
+			return PromiseToClient, lp.handlePromiseToClientMessage(pubKey, msg.PromiseToClientMsg)
 		case ShareRevealRequest:
-			return ShareRevealRequest, lp.handleRevealShareRequestMessage(pubKey, msg.getSREQ())
+			return ShareRevealRequest, lp.handleRevealShareRequestMessage(pubKey, msg.ShareRevealRequestMsg)
 		case ShareRevealResponse:
-			return ShareRevealResponse, lp.handleRevealShareResponseMessage(msg.getSRSP())
+			return ShareRevealResponse, lp.handleRevealShareResponseMessage(msg.ShareRevealResponseMsg)
 		case ServerAliveRequest:
 			return ServerAliveRequest, lp.handleServerAliveRequestMessage(pubKey)
 		case ServerAliveResponse:
@@ -624,9 +625,11 @@ func (lp *LifePolicyModule) handleCertifyPromiseMessage(pubKey abstract.Point, m
 	if err != nil {
 		return err
 	}
-	replyMsg := new(PromiseResponseMessage).createMessage(msg.ShareIndex,
-		state.Promise, response)
-	lp.cman.Put(pubKey, new(PolicyMessage).createPRMessage(replyMsg))
+	replyMsg := &PromiseResponseMessage{ShareIndex:msg.ShareIndex,
+					    Id: state.Promise.Id(),
+					    PromiserId: state.Promise.PromiserId(),
+					    Response: response}
+	lp.cman.Put(pubKey, &PolicyMessage{Type: PromiseResponse, PromiseResponseMsg: replyMsg})
 	return nil
 }
 
@@ -700,7 +703,7 @@ func (lp *LifePolicyModule) handlePromiseToClientMessage(pubKey abstract.Point, 
  *   nil (since the send should always succeed)
  */
 func (lp *LifePolicyModule) handleServerAliveRequestMessage(pubKey abstract.Point) error {
-	lp.cman.Put(pubKey, new(PolicyMessage).createSARSPMessage())
+	lp.cman.Put(pubKey, &PolicyMessage{Type:ServerAliveResponse})
 	return nil
 }
 
