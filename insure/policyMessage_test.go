@@ -424,23 +424,8 @@ func TestPromiseShareMessageMarshalling(t *testing.T) {
 	}
 }
 
-// This is a helper function to test PolicyMessage's functions
-func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
-	// Marshal and unmarshl the message
-	encodedMsg, err := policy.MarshalBinary()
-	if err != nil {
-		t.Fatal("Marshalling failed!", err)
-	}
-	policyMsg2 := new(PolicyMessage).UnmarshalInit(pt,r,numInsurers, suite)
-	err = policyMsg2.UnmarshalBinary(encodedMsg)
-	if err != nil {
-		t.Fatal("Unmarshalling failed!", err)
-	}
-
-	if policy.Type != policyMsg2.Type {
-		t.Error("Unexpected MessageType")
-	}
-
+// This function checks if an original and unmarshalled PolicyMessage are equal
+func determineValid(policy, policyMsg2 *PolicyMessage) bool {
 	okay := false
 	switch policyMsg2.Type {
 		case CertifyPromise:
@@ -468,11 +453,59 @@ func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
 		case ServerAliveResponse:
 			okay = true
 	}
+	return okay
+}
 
-	if !okay {
+// This is a helper function to test all of PolicyMessage's functions
+func PolicyMessageHelper(t *testing.T, policy *PolicyMessage) {
+	// Marshal and unmarshl the message
+	encodedMsg, err := policy.MarshalBinary()
+	if err != nil || len(encodedMsg) != policy.MarshalSize() {
+		t.Fatal("Marshalling failed!", err, len(encodedMsg), policy.MarshalSize())
+	}
+	policyMsg2 := new(PolicyMessage).UnmarshalInit(pt,r,numInsurers, suite)
+	err = policyMsg2.UnmarshalBinary(encodedMsg)
+	if err != nil {
+		t.Fatal("Unmarshalling failed!", err)
+	}
+	if policy.MarshalSize() != policyMsg2.MarshalSize() {
+		t.Error("MarshalSize of decoded and original differ: ",
+			policy.MarshalSize(), policyMsg2.MarshalSize())
+	}
+	if policy.Type != policyMsg2.Type {
+		t.Error("Unexpected MessageType")
+	}
+	if !determineValid(policy, policyMsg2) {
 		t.Error("Message corroded after encoding/decoding.")
 	}
+
+	// Tests MarshlTo and UnmarshalFrom
+	bufWriter := new(bytes.Buffer)
+	bytesWritter, errs := policy.MarshalTo(bufWriter)
+	if bytesWritter != policy.MarshalSize() || errs != nil {
+		t.Fatal("MarshalTo failed: ", bytesWritter, err)
+	}
+	policyMsg2 = new(PolicyMessage).UnmarshalInit(pt, r,numInsurers,suite)
+	bufReader := bytes.NewReader(bufWriter.Bytes())
+	bytesRead, errs2 := policyMsg2.UnmarshalFrom(bufReader)
+	if bytesRead != policyMsg2.MarshalSize() || errs2 != nil {
+		t.Fatal("UnmarshalFrom failed: ", bytesRead, errs2)
+	}
+	if policy.MarshalSize() != policyMsg2.MarshalSize() {
+		t.Error("MarshalSize of decoded and original differ: ",
+			policy.MarshalSize(), policyMsg2.MarshalSize())
+	}
+	if policy.Type != policyMsg2.Type {
+		t.Error("Unexpected MessageType")
+	}
+	if !determineValid(policy, policyMsg2) {
+		t.Error("Message corroded after encoding/decoding.")
+	}
+	
+	// Verify the String function
+	policy.String()
 }
+
 
 // This method and its helper tests the methods of PolicyMessage. PolicyMessage
 // is simply a wrapper around the other messages to help during sending messages.
