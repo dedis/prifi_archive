@@ -114,6 +114,7 @@ func (pm *PolicyMessage) MarshalSize() int {
 		case ShareRevealResponse:
 			size += pm.ShareRevealResponseMsg.MarshalSize()
 		case ServerAliveRequest:
+			fallthrough
 		case ServerAliveResponse:
 			size += 0
 	}
@@ -160,6 +161,7 @@ func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 			b.Write(marshalSize)
 			sub, err = pm.ShareRevealResponseMsg.MarshalBinary()
 		case ServerAliveRequest:
+			fallthrough
 		case ServerAliveResponse:
 			binary.LittleEndian.PutUint32(marshalSize, uint32(0))
 			b.Write(marshalSize)
@@ -198,7 +200,7 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 			size  := int(binary.LittleEndian.Uint32(msgBytes))
 			finalBuf := msgBytes[uint32Size: uint32Size+size]
 			err    = pm.ShareRevealResponseMsg.UnmarshalBinary(finalBuf)
-		case ServerAliveRequest:
+		case ServerAliveRequest: fallthrough
 		case ServerAliveResponse:
 			err    = nil
 	}
@@ -217,7 +219,7 @@ func (pm *PolicyMessage) MarshalTo(w io.Writer) (int, error) {
 // Unmarshals a PolicyMessage struct using an io.Reader
 func (pm *PolicyMessage) UnmarshalFrom(r io.Reader) (int, error) {
 	// Read enough to get the size of the message the PolicyMessage is storing
-	buf := make([]byte, 1*uint32Size + 1)
+	buf := make([]byte, uint32Size + 1)
 	n, err := io.ReadFull(r, buf)
 	if err != nil {
 		return n, err
@@ -230,7 +232,7 @@ func (pm *PolicyMessage) UnmarshalFrom(r io.Reader) (int, error) {
 	if err != nil {
 		return n+m, err
 	}
-	return n+m, pm.UnmarshalBinary(buf)
+	return n+m, pm.UnmarshalBinary(finalBuf)
 }
 
 // Returns a string representation of the PolicyMessage for debugging
