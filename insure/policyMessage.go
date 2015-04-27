@@ -14,6 +14,9 @@ import (
 	"github.com/dedis/crypto/poly/promise"
 )
 
+// Used mostly in marshalling code, this is the size of a uint32
+var uint32Size int = binary.Size(uint32(0))
+
 // PolicyMessageType lists the different types of messages that can be sent.
 type PolicyMessageType int
 const (
@@ -90,25 +93,76 @@ func (pm *PolicyMessage) UnmarshalInit(t,r,n int, suite abstract.Suite) *PolicyM
 	return pm
 }
 
-// Marshalls a PolicyMessage for sending over the internet
+
+/* Returns the number of bytes used by this struct when marshalled
+ *
+ * Note
+ *   Since PolicyMessage contains variable fields, this can't be used before
+ *   unmarshalling.
+ */
+func (pm *PolicyMessage) MarshalSize() int {
+	size := 1 + uint32Size
+	switch pm.Type {
+		case CertifyPromise:
+			size += pm.CertifyPromiseMsg.MarshalSize()
+		case PromiseResponse:
+			size += pm.PromiseResponseMsg.MarshalSize()
+		case PromiseToClient:
+			size += pm.PromiseToClientMsg.MarshalSize()
+		case ShareRevealRequest:
+			size += pm.ShareRevealRequestMsg.MarshalSize()
+		case ShareRevealResponse:
+			size += pm.ShareRevealResponseMsg.MarshalSize()
+		case ServerAliveRequest:
+		case ServerAliveResponse:
+			size += 0
+	}
+	return size
+}
+
+/* Marshalls a PolicyMessage for sending over the internet
+ *
+ * Note
+ *   The marshalled buff is of the form:
+ *
+ *   ||Type||MsgSize||Msg_Corresponding_To_Type||
+ */
 func (pm *PolicyMessage) MarshalBinary() ([]byte, error) {
 	var b bytes.Buffer
 	var sub []byte
 	var err error
+	marshalSize := make([]byte, uint32Size, uint32Size)
 	b.WriteByte(byte(pm.Type))
 	switch pm.Type {
 		case CertifyPromise:
+			binary.LittleEndian.PutUint32(marshalSize,
+			                              uint32(pm.CertifyPromiseMsg.MarshalSize()))
+			b.Write(marshalSize)
 			sub, err = pm.CertifyPromiseMsg.MarshalBinary()
 		case PromiseResponse:
+			binary.LittleEndian.PutUint32(marshalSize,
+			                              uint32(pm.PromiseResponseMsg.MarshalSize()))
+			b.Write(marshalSize)
 			sub, err = pm.PromiseResponseMsg.MarshalBinary()
 		case PromiseToClient:
+			binary.LittleEndian.PutUint32(marshalSize,
+			                              uint32(pm.PromiseToClientMsg.MarshalSize()))
+			b.Write(marshalSize)
 			sub, err = pm.PromiseToClientMsg.MarshalBinary()
 		case ShareRevealRequest:
+			binary.LittleEndian.PutUint32(marshalSize,
+			                              uint32(pm.ShareRevealRequestMsg.MarshalSize()))
+			b.Write(marshalSize)
 			sub, err = pm.ShareRevealRequestMsg.MarshalBinary()
 		case ShareRevealResponse:
+			binary.LittleEndian.PutUint32(marshalSize,
+			                              uint32(pm.ShareRevealResponseMsg.MarshalSize()))
+			b.Write(marshalSize)
 			sub, err = pm.ShareRevealResponseMsg.MarshalBinary()
 		case ServerAliveRequest:
 		case ServerAliveResponse:
+			binary.LittleEndian.PutUint32(marshalSize, uint32(0))
+			b.Write(marshalSize)
 		        sub = make([]byte, 0, 0)
 		        err = nil
 	}
@@ -125,15 +179,25 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 	var err error
 	switch pm.Type {
 		case CertifyPromise:
-			err    = pm.CertifyPromiseMsg.UnmarshalBinary(msgBytes)
+			size  := int(binary.LittleEndian.Uint32(msgBytes))
+			finalBuf := msgBytes[uint32Size: uint32Size+size]
+			err    = pm.CertifyPromiseMsg.UnmarshalBinary(finalBuf)
 		case PromiseResponse:
-			err    = pm.PromiseResponseMsg.UnmarshalBinary(msgBytes)
+			size  := int(binary.LittleEndian.Uint32(msgBytes))
+			finalBuf := msgBytes[uint32Size: uint32Size+size]
+			err    = pm.PromiseResponseMsg.UnmarshalBinary(finalBuf)
 		case PromiseToClient:
-			err    = pm.PromiseToClientMsg.UnmarshalBinary(msgBytes)
+			size  := int(binary.LittleEndian.Uint32(msgBytes))
+			finalBuf := msgBytes[uint32Size: uint32Size+size]
+			err    = pm.PromiseToClientMsg.UnmarshalBinary(finalBuf)
 		case ShareRevealRequest:
-			err    = pm.ShareRevealRequestMsg.UnmarshalBinary(msgBytes)
+			size  := int(binary.LittleEndian.Uint32(msgBytes))
+			finalBuf := msgBytes[uint32Size: uint32Size+size]
+			err    = pm.ShareRevealRequestMsg.UnmarshalBinary(finalBuf)
 		case ShareRevealResponse:
-			err    = pm.ShareRevealResponseMsg.UnmarshalBinary(msgBytes)
+			size  := int(binary.LittleEndian.Uint32(msgBytes))
+			finalBuf := msgBytes[uint32Size: uint32Size+size]
+			err    = pm.ShareRevealResponseMsg.UnmarshalBinary(finalBuf)
 		case ServerAliveRequest:
 		case ServerAliveResponse:
 			err    = nil
@@ -141,11 +205,65 @@ func (pm *PolicyMessage) UnmarshalBinary(data []byte) error {
 	return err
 }
 
+// Marshals a PolicyMessage struct using an io.Writer
+func (pm *PolicyMessage) MarshalTo(w io.Writer) (int, error) {
+	buf, err := pm.MarshalBinary()
+	if err != nil {
+		return 0, err
+	}
+	return w.Write(buf)
+}
+
+// Unmarshals a PolicyMessage struct using an io.Reader
+func (pm *PolicyMessage) UnmarshalFrom(r io.Reader) (int, error) {
+	// Read enough to get the size of the message the PolicyMessage is storing
+	buf := make([]byte, 1*uint32Size + 1)
+	n, err := io.ReadFull(r, buf)
+	if err != nil {
+		return n, err
+	}
+	msgSize := int(binary.LittleEndian.Uint32(buf[1:]))
+	finalLen := 1 + uint32Size + msgSize
+	finalBuf := make([]byte, finalLen)
+	copy(finalBuf, buf)
+	m, err := io.ReadFull(r, finalBuf[n:])
+	if err != nil {
+		return n+m, err
+	}
+	return n+m, pm.UnmarshalBinary(buf)
+}
+
+// Returns a string representation of the PolicyMessage for debugging
+func (pm *PolicyMessage) String() string {
+	s := "{PolicyMessage:\n"
+	switch pm.Type {
+		case CertifyPromise:
+			s += "Type => CertifyPromise,\n"
+			s +=  "Message => " + pm.CertifyPromiseMsg.String()
+		case PromiseResponse:
+			s += "Type => PromiseResponse,\n"
+			s +=  "Message => " + pm.PromiseResponseMsg.String()
+		case PromiseToClient:
+			s += "Type => PromiseToClient,\n"
+			s +=  "Message => " + pm.PromiseToClientMsg.String()
+		case ShareRevealRequest:
+			s += "Type => ShareRevealRequest,\n"
+			s +=  "Message => " + pm.ShareRevealRequestMsg.String()
+		case ShareRevealResponse:
+			s += "Type => ShareRevealResponse,\n"
+			s +=  "Message => " + pm.ShareRevealResponseMsg.String()
+		case ServerAliveRequest:
+			s += "Type => ServerAliveRequest,\n"
+			s +=  "Message => " + "ServerAliveRequest"
+		case ServerAliveResponse:
+			s += "Type => ServerAliveResponse,\n"
+			s +=  "Message => " + "ServerAliveResponse"
+	}
+	s += "\n}\n"
+	return s
+}
+
 /*********************************** Messages *********************************/
-
-// Used mostly in marshalling code, this is the size of a uint32
-var uint32Size int = binary.Size(uint32(0))
-
 
 /***************************** CertifyPromiseMessage ***************************/
 
