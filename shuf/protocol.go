@@ -244,8 +244,6 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 			m.NewX = nil
 			m.SplitProof = nil
 		case subround == inf.NeffLen*2-1:
-			m.X = m.NewX
-			m.NewX = nil
 			m.SplitProof = nil
 		default:
 			m.LeftProofs = []DecProof{leftPrf}

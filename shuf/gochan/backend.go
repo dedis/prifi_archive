@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
+	"log"
 	"sync"
 	"time"
 )
@@ -48,7 +49,7 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 			for ridx := 0; ridx < len(inf.Active[i]); {
 				round := inf.Active[i][ridx]
 				w := <-messages[i]
-				fmt.Printf("Node %d: got message with round %d on round %d\n", i, w.m.Round, round)
+				log.Printf("Node %d: got message with round %d on round %d\n", i, w.m.Round, round)
 				w.ack <- true
 				if w.m.Round != round {
 					continue
@@ -65,10 +66,10 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 							cl <- wrapper{m, nil}
 						}
 					case len(to) == 1:
-						fmt.Printf("Node %d: sending to %d, round %d\n", i, to[0], m.Round)
+						log.Printf("Node %d: sending to %d, round %d\n", i, to[0], m.Round)
 						go sendTo(inf, messages[to[0]], m)
 					case len(to) == 2:
-						fmt.Printf("Node %d: jumping to a new group\n", i)
+						log.Printf("Node %d: jumping to a new group\n", i)
 						leftMsg := shuf.GetLeft(*m)
 						rightMsg := shuf.GetRight(*m)
 						go sendTo(inf, messages[to[0]], leftMsg)
