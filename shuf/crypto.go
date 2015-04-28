@@ -19,10 +19,8 @@ func (inf *Info) createPred(x, y, newY []abstract.Point, b abstract.Point) (
 	for i := range y {
 		xname := "X" + strconv.Itoa(i)
 		diffname := "YDiff" + strconv.Itoa(i)
-		yname := "Y" + strconv.Itoa(i)
 		rname := "r" + strconv.Itoa(i)
 		pub[xname] = x[i]
-		pub[yname] = y[i]
 		pub[diffname] = inf.Suite.Point().Sub(newY[i], y[i])
 
 		// Create the requirement
