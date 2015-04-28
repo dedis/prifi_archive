@@ -84,8 +84,10 @@ func main() {
 		MsgsPerGroup: c.MsgsPerGroup,
 		MaxResends:   c.MaxResends,
 		Timeout:      time.Second * time.Duration(c.Timeout),
-		Split:        shuf.Butterfly{},
 	}, c.Seed)
+	inf.Split = shuf.Butterfly{inf}
+	inf.Shuffle = shuf.Neff{inf}
+
 	var wg sync.WaitGroup
 	wg.Add(inf.NumClients)
 

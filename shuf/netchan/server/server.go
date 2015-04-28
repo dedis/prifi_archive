@@ -71,8 +71,9 @@ func main() {
 		MsgsPerGroup: c.MsgsPerGroup,
 		Timeout:      time.Second * time.Duration(c.Timeout),
 		MaxResends:   c.MaxResends,
-		Split:        shuf.Butterfly{},
 	}, c.Seed)
+	inf.Split = shuf.Butterfly{inf}
+	inf.Shuffle = shuf.Neff{inf}
 
 	// Read the clients file
 	clients := make([]string, c.NumClients)

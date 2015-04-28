@@ -30,6 +30,7 @@ type UserInfo struct {
 	Timeout      time.Duration
 	MaxResends   int
 	Split        Splitter
+	Shuffle      Shuffler
 }
 
 // Information required to run the shuffle

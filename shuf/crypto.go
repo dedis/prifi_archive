@@ -1,10 +1,8 @@
 package shuf
 
 import (
-	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/proof"
-	"github.com/dedis/crypto/shuffle"
 	"strconv"
 )
 
@@ -95,43 +93,6 @@ func (inf *Info) PublicKey(nodes []int) abstract.Point {
 		h = inf.Suite.Point().Add(inf.PubKey[i], h)
 	}
 	return h
-}
-
-// Verify that the shuffle history from a node is correct
-func (inf *Info) VerifyShuffles(hist []ShufProof,
-	x, y []abstract.Point, h abstract.Point) error {
-	if len(hist) < 1 {
-		return nil
-	}
-
-	// Check everything but the last proof
-	for p := 0; p < len(hist)-1; p++ {
-		verifier := shuffle.Verifier(inf.Suite, nil, h, hist[p].X, hist[p].Y, hist[p+1].X, hist[p+1].Y)
-		e := proof.HashVerify(inf.Suite, "PairShuffle", verifier, hist[p].Proof)
-		if e != nil {
-			return e
-		}
-	}
-
-	// Check the last proof
-	p := hist[len(hist)-1]
-	verifier := shuffle.Verifier(inf.Suite, nil, h, p.X, p.Y, x, y)
-	e := proof.HashVerify(inf.Suite, "PairShuffle", verifier, p.Proof)
-	if e != nil {
-		return e
-	}
-	return nil
-}
-
-// Perform a Neff shuffle and prove it
-func (inf *Info) Shuffle(x, y []abstract.Point, h abstract.Point, rnd abstract.Cipher) (
-	[]abstract.Point, []abstract.Point, ShufProof) {
-	xx, yy, prover := shuffle.Shuffle(inf.Suite, nil, h, x, y, rnd)
-	prf, err := proof.HashProve(inf.Suite, "PairShuffle", rnd, prover)
-	if err != nil {
-		fmt.Printf("Error creating proof: %s\n", err.Error())
-	}
-	return xx, yy, ShufProof{x, y, prf}
 }
 
 // Verify that the decrypt history from a node is correct
