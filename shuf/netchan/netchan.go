@@ -141,7 +141,7 @@ func (n Node) StartClient(nodes []string, s string, port string) {
 	r := n.Inf.Suite.Cipher(abstract.RandomKey)
 	msgPoint, _ := n.Inf.Suite.Point().Pick([]byte(s), r)
 	x, y, to := n.Inf.Setup(msgPoint, n.C)
-	go n.sendMsg(&shuf.Msg{X: x, Y: y}, nodes[to])
+	go n.sendMsg(&shuf.Msg{NewX: x, Y: y}, nodes[to])
 
 	// Receive messages from everybody
 	die := make(chan bool)

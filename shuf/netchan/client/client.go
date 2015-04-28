@@ -62,6 +62,7 @@ func main() {
 		ResendTime:   time.Millisecond * time.Duration(c.ResendTime),
 		Timeout:      time.Second * time.Duration(c.Timeout),
 		MaxResends:   c.MaxResends,
+		Split:        shuf.Butterfly{},
 	}, c.Seed)
 
 	// Read the clients file
