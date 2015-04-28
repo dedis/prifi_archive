@@ -95,6 +95,29 @@ func (inf *Info) PublicKey(nodes []int) abstract.Point {
 	return h
 }
 
+// Verify that the shuffle history from a node is correct
+func (inf *Info) VerifyShuffles(hist []ShufProof, x, y []abstract.Point, h abstract.Point) error {
+	if len(hist) < 1 {
+		return nil
+	}
+
+	// Check everything but the last proof
+	for p := 0; p < len(hist)-1; p++ {
+		e := inf.Shuffle.Verify(h, hist[p].X, hist[p].Y, hist[p+1].X, hist[p+1].Y, hist[p].Proof)
+		if e != nil {
+			return e
+		}
+	}
+
+	// Check the last proof
+	p := hist[len(hist)-1]
+	e := inf.Shuffle.Verify(h, p.X, p.Y, x, y, p.Proof)
+	if e != nil {
+		return e
+	}
+	return nil
+}
+
 // Verify that the decrypt history from a node is correct
 func (inf *Info) VerifyDecrypts(history []DecProof, X []abstract.Point,
 	newY []abstract.Point, encryptFor abstract.Point) error {

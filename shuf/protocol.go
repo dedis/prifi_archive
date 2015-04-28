@@ -192,7 +192,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	// Is it the first cycle?
 	case subround < inf.NeffLen:
 		lastY := m.ShufProofs[0].Y
-		if check(i, m.Round, inf.Shuffle.VerifyShuffles(m.ShufProofs, m.NewX, m.Y, groupKey)) ||
+		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.NewX, m.Y, groupKey)) ||
 			len(m.LeftProofs) > 0 &&
 				(check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.X[:half], lastY[:half], groupKey)) ||
 					check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.X[half:], lastY[half:], groupKey))) {
@@ -213,7 +213,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	// Is it the start of the second cycle?
 	case subround == inf.NeffLen:
 		if len(m.ShufProofs) > 0 {
-			if check(i, m.Round, inf.Shuffle.VerifyShuffles(m.ShufProofs, m.NewX, m.Y, groupKey)) {
+			if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.NewX, m.Y, groupKey)) {
 				return nil
 			}
 			m.ShufProofs = m.ShufProofs[1:]
@@ -256,7 +256,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 			log.Printf("Node %d round %d: no encryption proofs\n", i, m.Round)
 			return nil
 		}
-		if check(i, m.Round, inf.Shuffle.VerifyShuffles(m.ShufProofs, m.SplitProof.X, m.SplitProof.Y, groupKey)) ||
+		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.SplitProof.X, m.SplitProof.Y, groupKey)) ||
 			check(i, m.Round, inf.Split.VerifySplit(m.SplitProof, m.X, m.LeftProofs[0].Y, m.RightProofs[0].Y)) ||
 			check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.X[:half], m.Y[:half], encryptKey[0])) ||
 			check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.X[half:], m.Y[half:], encryptKey[1])) {
