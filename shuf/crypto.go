@@ -5,52 +5,7 @@ import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/proof"
 	"github.com/dedis/crypto/shuffle"
-	"strconv"
 )
-
-func (inf *Info) createPred(x, y, newY []abstract.Point, b abstract.Point) (
-	proof.Predicate, map[string]abstract.Point) {
-
-	// Initialization
-	var pred proof.Predicate
-	pub := map[string]abstract.Point{}
-
-	// Add requirements for each pair
-	for i := range y {
-		xname := "X" + strconv.Itoa(i)
-		diffname := "YDiff" + strconv.Itoa(i)
-		rname := "r" + strconv.Itoa(i)
-		pub[xname] = x[i]
-		pub[diffname] = inf.Suite.Point().Sub(newY[i], y[i])
-
-		// Create the requirement
-		var rep proof.Predicate
-		if b != nil {
-			rep = proof.Rep(diffname, "-h", xname, rname, "B")
-		} else {
-			rep = proof.Rep(diffname, "-h", xname)
-		}
-
-		// Add the requirement to the big Predicate
-		if pred == nil {
-			pred = rep
-		} else {
-			pred = proof.And(pred, rep)
-		}
-	}
-	pub["B"] = b
-	return pred, pub
-}
-
-func (inf *Info) MakeSecrets(n int, negKey abstract.Secret,
-	rnd abstract.Cipher) map[string]abstract.Secret {
-	sec := map[string]abstract.Secret{"-h": negKey}
-	for i := 0; i < n; i++ {
-		rname := "r" + strconv.Itoa(i)
-		sec[rname] = inf.Suite.Secret().Pick(rnd)
-	}
-	return sec
-}
 
 // Encrypt a message with the given public key
 func (inf *Info) Encrypt(msgs []abstract.Point, h abstract.Point) (x, y []abstract.Point) {
@@ -69,23 +24,36 @@ func (inf *Info) Encrypt(msgs []abstract.Point, h abstract.Point) (x, y []abstra
 // Decrypt a list of pairs with associated proof, potentially adding new encryption
 func (inf *Info) Decrypt(x, y, newX, newY []abstract.Point, node int,
 	encryptFor abstract.Point) (DecProof, error) {
+
 	rnd := inf.Suite.Cipher(abstract.RandomKey)
 	negKey := inf.Suite.Secret().Neg(inf.PrivKey(node))
+	proofs := make([][]byte, len(x))
+	sec := map[string]abstract.Secret{"-h": negKey}
+	pub := map[string]abstract.Point{"B": encryptFor}
 
-	// Create the Predicate and new pairs
-	sec := inf.MakeSecrets(len(x), negKey, rnd)
-	for i := range x {
-		newY[i] = inf.Suite.Point().Add(inf.Suite.Point().Mul(x[i], negKey), y[i])
-		r := sec["r"+strconv.Itoa(i)]
-		newY[i] = inf.Suite.Point().Add(newY[i], inf.Suite.Point().Mul(encryptFor, r))
-		newX[i] = inf.Suite.Point().Add(newX[i], inf.Suite.Point().Mul(nil, r))
+	var p proof.Predicate
+	if encryptFor != nil {
+		p = proof.Rep("Y'-Y", "-h", "X", "r", "B")
+	} else {
+		p = proof.Rep("Y'-Y", "-h", "r")
 	}
-	p, pub := inf.createPred(x, y, newY, encryptFor)
 
-	// Create the proof
-	prover := p.Prover(inf.Suite, sec, pub, nil)
-	proof, proofErr := proof.HashProve(inf.Suite, "Decrypt", rnd, prover)
-	return DecProof{y, proof}, proofErr
+	for i := range x {
+		pub["X"] = x[i]
+		r := inf.Suite.Secret().Pick(rnd)
+		sec["r"] = r
+		newY[i] = inf.Suite.Point().Add(inf.Suite.Point().Mul(x[i], negKey), y[i])
+		newY[i] = inf.Suite.Point().Add(newY[i], inf.Suite.Point().Mul(encryptFor, r))
+		pub["Y'-Y"] = inf.Suite.Point().Sub(newY[i], y[i])
+		newX[i] = inf.Suite.Point().Add(newX[i], inf.Suite.Point().Mul(nil, r))
+		prover := p.Prover(inf.Suite, sec, pub, nil)
+		proof, proofErr := proof.HashProve(inf.Suite, "Decrypt", rnd, prover)
+		proofs[i] = proof
+		if proofErr != nil {
+			return DecProof{}, proofErr
+		}
+	}
+	return DecProof{y, proofs}, nil
 }
 
 // The combined public key for a bunch of nodes
@@ -140,24 +108,34 @@ func (inf *Info) VerifyDecrypts(history []DecProof, X []abstract.Point,
 	if len(history) < 1 {
 		return nil
 	}
+	pub := map[string]abstract.Point{"B": encryptFor}
+	var p proof.Predicate
+	if encryptFor != nil {
+		p = proof.Rep("Y'-Y", "-h", "X", "r", "B")
+	} else {
+		p = proof.Rep("Y'-Y", "-h", "r")
+	}
+	for i := range X {
+		pub["X"] = X[i]
 
-	// Check everything but the last proof
-	for p := 0; p < len(history)-1; p++ {
-		pred, pub := inf.createPred(X, history[p].Y, history[p+1].Y, encryptFor)
-		verifier := pred.Verifier(inf.Suite, pub)
-		e := proof.HashVerify(inf.Suite, "Decrypt", verifier, history[p].Proof)
+		// Check everything but the last proof
+		for prf := 0; prf < len(history)-1; prf++ {
+			pub["Y'-Y"] = inf.Suite.Point().Sub(history[prf+1].Y[i], history[prf].Y[i])
+			verifier := p.Verifier(inf.Suite, pub)
+			e := proof.HashVerify(inf.Suite, "Decrypt", verifier, history[prf].Proof[i])
+			if e != nil {
+				return e
+			}
+		}
+
+		// Check the last proof
+		prf := history[len(history)-1]
+		pub["Y'-Y"] = inf.Suite.Point().Sub(newY[i], prf.Y[i])
+		verifier := p.Verifier(inf.Suite, pub)
+		e := proof.HashVerify(inf.Suite, "Decrypt", verifier, prf.Proof[i])
 		if e != nil {
 			return e
 		}
-	}
-
-	// Check the last proof
-	p := history[len(history)-1]
-	pred, pub := inf.createPred(X, p.Y, newY, encryptFor)
-	verifier := pred.Verifier(inf.Suite, pub)
-	e := proof.HashVerify(inf.Suite, "Decrypt", verifier, p.Proof)
-	if e != nil {
-		return e
 	}
 	return nil
 }
