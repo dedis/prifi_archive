@@ -230,7 +230,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		m.SplitProof = new(SplitProof)
 		m.SplitProof.X = m.X
 		m.SplitProof.Y = m.Y
-		inf.Split.Split(m)
+		inf.Split.Split(inf, m)
 		newY := make([]abstract.Point, len(m.Y))
 		leftPrf, lerr := inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], newY[:half], i, encryptKey[0])
 		rightPrf, rerr := inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], newY[half:], i, encryptKey[1])
@@ -259,7 +259,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 			return nil
 		}
 		if check(i, m.Round, inf.VerifyShuffles(m.ShufProofs, m.SplitProof.X, m.SplitProof.Y, groupKey)) ||
-			check(i, m.Round, inf.Split.VerifySplit(m.SplitProof, m.LeftProofs[0].Y, m.RightProofs[0].Y)) ||
+			check(i, m.Round, inf.Split.VerifySplit(inf, m.SplitProof, m.X, m.LeftProofs[0].Y, m.RightProofs[0].Y)) ||
 			check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.X[:half], m.Y[:half], encryptKey[0])) ||
 			check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.X[half:], m.Y[half:], encryptKey[1])) {
 			return nil

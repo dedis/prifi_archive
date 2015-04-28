@@ -46,12 +46,10 @@ type Info struct {
 	NeffLen     int
 }
 
-// Proof of division between halves
+// Record of division between halves
 type SplitProof struct {
-	X      []abstract.Point // old X
-	Y      []abstract.Point // old Y
-	LProof []byte           // proof that left sides come from old X and Y
-	RProof []byte           // proof that right sides come from old X and Y
+	X []abstract.Point // old X
+	Y []abstract.Point // old Y
 }
 
 // Proof of decryption and re-encryption
