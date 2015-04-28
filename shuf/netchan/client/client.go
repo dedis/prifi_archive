@@ -89,9 +89,9 @@ func main() {
 	var message abstract.Point
 	if id < c.ActiveClients {
 		r := suite.Cipher(abstract.RandomKey)
-		message, _ := suite.Point().Pick([]byte(s), r)
+		message, _ = suite.Point().Pick([]byte("Message "+strconv.Itoa(id)), r)
 	} else {
-		message := suite.Point().Null()
+		message = suite.Point().Null()
 	}
 	n.StartClient(nodes, message, clients[id])
 }

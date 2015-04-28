@@ -26,11 +26,12 @@ func GetLeft(m Msg) *Msg {
 }
 
 // Return value indicates whether the client is done
-func (inf *Info) HandleClient(i int, m *Msg) bool {
+func (inf *Info) HandleClient(i int, m *Msg) int {
 	half := len(m.Y) / 2
 	if check(i, m.Round, inf.VerifyDecrypts(m.LeftProofs, m.X[:half], m.Y[:half], inf.Suite.Point().Null())) ||
 		check(i, m.Round, inf.VerifyDecrypts(m.RightProofs, m.X[half:], m.Y[half:], inf.Suite.Point().Null())) {
-		return false
+		fmt.Printf("Client %v: Invalid message proof\n", i)
+		return 0
 	}
 	for _, val := range m.Y {
 		d, e := val.Data()
@@ -40,7 +41,7 @@ func (inf *Info) HandleClient(i int, m *Msg) bool {
 			fmt.Printf("Client %v: %v\n", i, string(d))
 		}
 	}
-	return true
+	return len(m.Y)
 }
 
 func (inf *Info) Setup(msg abstract.Point, client int) (

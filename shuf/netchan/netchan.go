@@ -85,14 +85,17 @@ func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, cli
 }
 
 // Handle an incoming connection on the client
-func (n Node) handleClientConnection(conn net.Conn, die chan bool) {
+func (n Node) handleClientConnection(conn net.Conn, seen chan int, die chan bool) {
 	defer conn.Close()
 	var m shuf.Msg
 	err := n.readMsg(conn, &m)
 	if err != nil {
 		log.Printf("Client %d: decoding error; %s\n", err.Error())
 	}
-	if n.Inf.HandleClient(n.C, &m) {
+	s := <-seen
+	s += n.Inf.HandleClient(n.C, &m)
+	seen <- s
+	if s >= n.Inf.NumClients {
 		die <- true
 	}
 }
@@ -147,10 +150,12 @@ func (n Node) StartClient(nodes []string, msgPoint abstract.Point, port string) 
 	ln, err := net.Listen("tcp", port)
 	Check(err)
 	go func() {
+		seen := make(chan int, 1)
+		seen <- 0
 		for {
 			conn, err := ln.Accept()
 			if err == nil {
-				go n.handleClientConnection(conn, die)
+				go n.handleClientConnection(conn, seen, die)
 			}
 		}
 	}()

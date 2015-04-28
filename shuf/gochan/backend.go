@@ -62,6 +62,7 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 					ridx++
 					switch {
 					case to == nil:
+						log.Printf("Node %d: sending back %d msgs\n", i, len(m.Y))
 						for _, cl := range results {
 							cl <- wrapper{m, nil}
 						}
@@ -86,12 +87,11 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 			X, Y, to := inf.Setup(msgs[i], i)
 			go sendTo(inf, messages[to], &shuf.Msg{NewX: X, Y: Y})
 			defer wg.Done()
-			for {
+			seen := 0
+			for seen < inf.NumClients {
 				select {
 				case w := <-results[i]:
-					if inf.HandleClient(i, w.m) {
-						return
-					}
+					seen += inf.HandleClient(i, w.m)
 				case <-time.After(inf.Timeout):
 					fmt.Printf("Client %d timed out\n", i)
 					return
