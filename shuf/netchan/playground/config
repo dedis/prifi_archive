@@ -1,0 +1,11 @@
+{
+"NumNodes": 2
+,"NumClients": 4
+,"NumRounds": 4
+,"ResendTime": 633
+,"MsgsPerGroup": 2
+,"Seed": 2
+,"Timeout": 10
+,"MaxResends": 3
+,"ActiveClients": 4
+}
