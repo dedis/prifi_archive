@@ -17,7 +17,7 @@ import (
 func main() {
 
 	if len(os.Args) < 6 {
-		fmt.Printf("Usage: client id [configFile] [nodeURIs] [clientURIs] [nodePubKeys] message\n")
+		fmt.Printf("Usage: client id [configFile] [nodeURIs] [clientURIs] [nodePubKeys]\n")
 		os.Exit(1)
 	}
 
@@ -28,7 +28,6 @@ func main() {
 	nodesFile := os.Args[3]
 	clientsFile := os.Args[4]
 	pubKeysDir := os.Args[5]
-	message := os.Args[6]
 
 	// Read the config
 	f, err := os.Open(configFile)
@@ -87,5 +86,12 @@ func main() {
 
 	// Start the client
 	n := netchan.Node{inf, id}
+	var message abstract.Point
+	if id < c.ActiveClients {
+		r := suite.Cipher(abstract.RandomKey)
+		message, _ := suite.Point().Pick([]byte(s), r)
+	} else {
+		message := suite.Point().Null()
+	}
 	n.StartClient(nodes, message, clients[id])
 }

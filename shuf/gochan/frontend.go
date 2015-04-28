@@ -20,15 +20,16 @@ func check(e error) {
 }
 
 type cFile struct {
-	NumNodes     int
-	NumClients   int
-	NumRounds    int
-	ResendTime   int
-	MsgsPerGroup int
-	Shuffle      string
-	Seed         int64
-	Timeout      int
-	MaxResends   int
+	NumNodes      int
+	NumClients    int
+	NumRounds     int
+	ResendTime    int
+	MsgsPerGroup  int
+	Shuffle       string
+	Seed          int64
+	Timeout       int
+	MaxResends    int
+	ActiveClients int
 }
 
 func main() {
@@ -64,7 +65,11 @@ func main() {
 	// Create the messages
 	messages := make([]abstract.Point, c.NumClients)
 	for i := range messages {
-		messages[i], _ = suite.Point().Pick([]byte("Message "+strconv.Itoa(i)), rand)
+		if i < c.ActiveClients {
+			messages[i], _ = suite.Point().Pick([]byte("Message "+strconv.Itoa(i)), rand)
+		} else {
+			messages[i] = suite.Point().Null()
+		}
 	}
 
 	// Create the info

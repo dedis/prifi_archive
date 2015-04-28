@@ -30,14 +30,15 @@ func Check(e error) {
 }
 
 type CFile struct {
-	NumNodes     int
-	NumClients   int
-	NumRounds    int
-	ResendTime   int
-	MsgsPerGroup int
-	Seed         int64
-	Timeout      int
-	MaxResends   int
+	NumNodes      int
+	NumClients    int
+	NumRounds     int
+	ResendTime    int
+	MsgsPerGroup  int
+	Seed          int64
+	Timeout       int
+	MaxResends    int
+	ActiveClients int
 }
 
 // Handle an incoming connection on the server
@@ -135,11 +136,9 @@ func (n Node) sendMsg(m *shuf.Msg, uri string) {
 	}
 }
 
-func (n Node) StartClient(nodes []string, s string, port string) {
+func (n Node) StartClient(nodes []string, msgPoint abstract.Point, port string) {
 
 	// Send a message to the first node
-	r := n.Inf.Suite.Cipher(abstract.RandomKey)
-	msgPoint, _ := n.Inf.Suite.Point().Pick([]byte(s), r)
 	x, y, to := n.Inf.Setup(msgPoint, n.C)
 	go n.sendMsg(&shuf.Msg{NewX: x, Y: y}, nodes[to])
 
