@@ -2,8 +2,6 @@ package sign
 
 import (
 	"errors"
-	"fmt"
-	"os"
 	"sync/atomic"
 
 	"golang.org/x/net/context"
@@ -17,44 +15,42 @@ func (sn *Node) SetupProposal(view int, am *AnnouncementMessage, from string) er
 	if am.Vote.Type == ViewChangeVT {
 		// viewchange votes must be received from the new parent on the new view
 		if view != am.Vote.Vcv.View {
-			log.Errorln("recieved view change vote on different view")
 			return errors.New("view change attempt on view != received view")
 		}
 		// ensure that we are caught up
 		if atomic.LoadInt64(&sn.LastSeenVote) != atomic.LoadInt64(&sn.LastAppliedVote) {
-			log.Errorln(sn.Name(), "received vote: but not up to date: need to catch up")
 			return errors.New("not up to date: need to catch up")
 		}
 		if sn.RootFor(am.Vote.Vcv.View) != am.Vote.Vcv.Root {
-			log.Errorln("received vote: but invalid root", sn.RootFor(am.Vote.Vcv.View), am.Vote.Vcv.Root)
 			return errors.New("invalid root for proposed view")
 		}
 
 		nextview := sn.ViewNo + 1
 		for ; nextview <= view; nextview++ {
+			// log.Println(sn.Name(), "CREATING NEXT VIEW", nextview)
 			sn.NewViewFromPrev(nextview, from)
 			for _, act := range sn.Actions[nextview] {
 				sn.ApplyAction(nextview, act)
 			}
+			for _, act := range sn.Actions[nextview] {
+				sn.NotifyOfAction(nextview, act)
+			}
 		}
-		fmt.Fprintln(os.Stderr, sn.Name(), "setuppropose:", sn.HostListOn(view))
-		fmt.Fprintln(os.Stderr, sn.Name(), "setuppropose:", sn.Parent(view))
+		// fmt.Fprintln(os.Stderr, sn.Name(), "setuppropose:", sn.HostListOn(view))
+		// fmt.Fprintln(os.Stderr, sn.Name(), "setuppropose:", sn.Parent(view))
 	} else {
 		if view != sn.ViewNo {
-			log.Errorln("cannot vote on not-current view")
 			return errors.New("vote on not-current view")
 		}
 	}
 
 	if am.Vote.Type == AddVT {
 		if am.Vote.Av.View <= sn.ViewNo {
-			log.Errorln("cannot change current-view or previous views")
 			return errors.New("unable to change past views")
 		}
 	}
 	if am.Vote.Type == RemoveVT {
 		if am.Vote.Rv.View <= sn.ViewNo {
-			log.Errorln("cannot change current-view or previous views")
 			return errors.New("unable to change past views")
 		}
 	}
@@ -249,24 +245,38 @@ func (sn *Node) actOnVotes(view int, v *Vote) {
 	// Basic check to validate Vote was Confirmed, can be enhanced
 	// TODO: signing node can go through list of votes and verify
 	accepted := v.Count.For > 2*len(sn.HostListOn(view))/3
-	var actionTaken string = "rejected"
-	if accepted {
-		actionTaken = "accepted"
-	}
 
 	// Report on vote decision
 	if sn.IsRoot(view) {
 		abstained := len(sn.HostListOn(view)) - v.Count.For - v.Count.Against
-		log.Infoln("Votes FOR:", v.Count.For, "; Votes AGAINST:", v.Count.Against, "; Absteined:", abstained, actionTaken)
+		log.Infoln("Votes FOR:", v.Count.For, "; Votes AGAINST:", v.Count.Against, "; Absteined:", abstained, "Accepted", accepted)
 	}
+
 	// Act on vote Decision
 	if accepted {
-		sn.VoteLog.Put(v.Index, v)
 		log.Println(sn.Name(), "actOnVotes: vote", v.Index, " has been accepted")
+		sn.VoteLog.Put(v.Index, v)
 	} else {
+		log.Println(sn.Name(), "actOnVotes: vote", v.Index, " has been rejected")
+
+		// inform node trying to join/remove group of rejection
+		gcm := &SigningMessage{
+			Type:         GroupChanged,
+			From:         sn.Name(),
+			View:         view,
+			LastSeenVote: int(sn.LastSeenVote),
+			Gcm: &GroupChangedMessage{
+				V:        &*v, // need copy bcs PutTo on separate thread
+				HostList: sn.HostListOn(view)}}
+
+		if v.Type == AddVT && sn.Name() == v.Av.Parent {
+			sn.PutTo(context.TODO(), v.Av.Name, gcm)
+		} else if v.Type == RemoveVT && sn.Name() == v.Rv.Parent {
+			sn.PutTo(context.TODO(), v.Rv.Name, gcm)
+		}
+
 		v.Type = NoOpVT
 		sn.VoteLog.Put(v.Index, v)
-		log.Println(sn.Name(), "actOnVotes: vote", v.Index, " has been rejected")
 
 	}
 	// List out all votes

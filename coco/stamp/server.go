@@ -225,6 +225,7 @@ func (s *Server) runAsRoot(nRounds int) string {
 	for {
 		select {
 		case nextRole := <-s.ViewChangeCh():
+			log.Println(s.Name(), "assuming next role")
 			return nextRole
 			// s.reRunWith(nextRole, nRounds, true)
 		case <-ticker:

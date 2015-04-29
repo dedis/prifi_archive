@@ -4,7 +4,7 @@ import "errors"
 
 var ErrUnknownMessageType error = errors.New("received message of unknown type")
 
-var ViewRejectedError error = errors.New("view Rejected: not all nodes accepted view")
+var ErrViewRejected error = errors.New("view Rejected: not all nodes accepted view")
 
 var ErrImposedFailure error = errors.New("failure imposed")
 

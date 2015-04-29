@@ -28,14 +28,8 @@ func TestTreeSmallConfigVote(t *testing.T) {
 
 	// Achieve consensus on removing a node
 	vote := &sign.Vote{Type: sign.AddVT, Av: &sign.AddVote{Name: "host5", Parent: "host4"}}
-
 	err = hc.SNodes[0].StartVotingRound(vote)
 
-	// hc.SNodes[0].LogTest = []byte("Hello Voting")
-	// err = hc.SNodes[0].Announce(DefaultView,
-	// 	&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,
-	// 		Round: 1,
-	// 		Vote:  vote})
 	if err != nil {
 		t.Error(err)
 	}
@@ -64,13 +58,8 @@ func TestTCPStaticConfigVote(t *testing.T) {
 
 	hc.SNodes[0].LogTest = []byte("Hello Voting")
 	vote := &sign.Vote{Type: sign.RemoveVT, Rv: &sign.RemoveVote{Name: "host5", Parent: "host4"}}
-
 	err = hc.SNodes[0].StartVotingRound(vote)
 
-	// err = hc.SNodes[0].Announce(DefaultView,
-	// 	&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest,
-	// 		Round:       1,
-	// 		Vote: vote})
 	if err != nil {
 		t.Error(err)
 	}

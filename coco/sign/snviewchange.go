@@ -10,7 +10,7 @@ func (sn *Node) ChangeView(vcv *ViewChangeVote) {
 	sn.ViewNo = vcv.View
 	sn.viewmu.Unlock()
 	if sn.RootFor(vcv.View) == sn.Name() {
-		log.Println(sn.Name(), "CHANGE VIEW TO ROOT")
+		log.Println(sn.Name(), "CHANGE VIEW TO ROOT", "children", sn.Children(vcv.View))
 		sn.viewChangeCh <- "root"
 	} else {
 		log.Println(sn.Name(), "CHANGE VIEW TO REGULAR")
@@ -20,6 +20,7 @@ func (sn *Node) ChangeView(vcv *ViewChangeVote) {
 	sn.viewmu.Lock()
 	sn.ChangingView = false
 	sn.viewmu.Unlock()
+	log.Println("VIEW CHANGED")
 	// TODO: garbage collect old connections
 }
 
@@ -69,7 +70,7 @@ func (sn *Node) ViewChange(view int, parent string, vcm *ViewChangeMessage) erro
 			sn.viewChangeCh <- "root"
 		} else {
 			log.Errorln(sn.Name(), " (ROOT) DID NOT RECEIVE quorum", votes, "of", len(sn.HostList))
-			return ViewRejectedError
+			return ErrViewRejected
 		}
 	} else {
 		sn.RoundsAsRoot = 0

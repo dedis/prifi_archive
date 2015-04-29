@@ -132,7 +132,7 @@ func (sn *Node) printRoundTypes() {
 }
 
 func (sn *Node) Close() {
-	sn.printRoundTypes()
+	// sn.printRoundTypes()
 	sn.hbLock.Lock()
 	if sn.heartbeat != nil {
 		sn.heartbeat.Stop()

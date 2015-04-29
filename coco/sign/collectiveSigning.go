@@ -24,14 +24,15 @@ import (
 
 // Get multiplexes all messages from TCPHost using application logic
 func (sn *Node) get() error {
-	sn.UpdateTimeout()
-	msgchan := sn.Host.Get()
 	log.Println(sn.Name(), "getting")
 	defer log.Println(sn.Name(), "done getting")
+
+	sn.UpdateTimeout()
+	msgchan := sn.Host.Get()
 	// heartbeat for intiating viewChanges, allows intial 500s setup time
-	sn.hbLock.Lock()
-	// sn.heartbeat = time.NewTimer(500 * time.Second)
-	sn.hbLock.Unlock()
+	/* sn.hbLock.Lock()
+	sn.heartbeat = time.NewTimer(500 * time.Second)
+	sn.hbLock.Unlock() */
 
 	// as votes get approved they are streamed in ApplyVotes
 	voteChan := sn.VoteLog.Stream()
@@ -49,7 +50,7 @@ func (sn *Node) get() error {
 			nm, ok := <-msgchan
 			err := nm.Err
 
-			// TODO: gracefull shutdown voting
+			// TODO: graceful shutdown voting
 			if !ok || err == coconet.ErrClosed || err == io.EOF {
 				log.Errorf("getting from closed host")
 				sn.Close()
@@ -135,6 +136,7 @@ func (sn *Node) get() error {
 					log.Errorln(sn.Name(), "commit error:", err)
 				}
 			case Response:
+				log.Println(sn.Name(), "received response from", sm.From)
 				if !sn.IsChild(sm.View, sm.From) {
 					log.Fatalln(sn.Name(), "received response from non-child on view", sm.View)
 					continue
@@ -167,10 +169,35 @@ func (sn *Node) get() error {
 				sn.VoteLog.Put(vi, sm.Curesp.Vote)
 				// continue catching up
 				sn.CatchUp(vi+1, sm.From)
+			case GroupChange:
+				if sm.View == -1 {
+					sm.View = sn.ViewNo
+					if sm.Vrm.Vote.Type == AddVT {
+						sn.AddPeerToPending(sm.From)
+					}
+				}
+				// TODO sanity checks: check if view is == sn.ViewNo
+				if sn.RootFor(sm.View) == sn.Name() {
+					go sn.StartVotingRound(sm.Vrm.Vote)
+					continue
+				}
+				sn.PutUp(context.TODO(), sm.View, sm)
+			case GroupChanged:
+				if !sm.Gcm.V.Confirmed {
+					log.Println(sn.Name(), " received attempt to group change not confirmed")
+					continue
+				}
+				if sm.Gcm.V.Type == RemoveVT {
+					log.Println(sn.Name(), " received removal notice")
+				} else if sm.Gcm.V.Type == AddVT {
+					log.Println(sn.Name(), " received addition notice")
+					sn.NewView(sm.View, sm.From, nil, sm.Gcm.HostList)
+				} else {
+					log.Errorln(sn.Name(), "received GroupChanged for unacceptable action")
+				}
 			case Error:
 				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
-			// }(sm)
 		}
 	}
 
@@ -358,6 +385,7 @@ func (sn *Node) initResponseCrypto(Round int) {
 }
 
 func (sn *Node) Respond(view, Round int, sm *SigningMessage) error {
+	log.Println(sn.Name(), "couting response on view, round", view, Round, "Nchildren", sn.Children(view))
 	// update max seen round
 	sn.roundmu.Lock()
 	sn.LastSeenRound = max(sn.LastSeenRound, Round)
@@ -434,7 +462,7 @@ func (sn *Node) Respond(view, Round int, sm *SigningMessage) error {
 }
 
 func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, exceptionX_hat abstract.Point) error {
-	log.Println(sn.Name(), "got all responses")
+	log.Println(sn.Name(), "got all responses for view, round", view, Round)
 	round := sn.Rounds[Round]
 	err := sn.VerifyResponses(view, Round)
 
@@ -462,16 +490,12 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 
 		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
 		ctx := context.TODO()
+		log.Println(sn.Name(), "put up response to", sn.Parent(view))
 		err = sn.PutUp(ctx, view, &SigningMessage{
 			Type:         Response,
 			View:         view,
 			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
 			Rm:           rm})
-	}
-
-	// root reports round is done
-	if isroot {
-		sn.done <- Round
 	}
 
 	if sn.TimeForViewChange() {
@@ -482,19 +506,28 @@ func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, e
 		}
 	}
 
+	// root reports round is done
+	if isroot {
+		sn.done <- Round
+	}
+
 	return err
 }
 
 func (sn *Node) TryViewChange(view int) error {
 	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", sn.ViewNo)
 	// should ideally be compare and swap
+	sn.viewmu.Lock()
 	if view <= sn.ViewNo {
+		sn.viewmu.Unlock()
 		return errors.New("trying to view change on previous/ current view")
 	}
 	if sn.ChangingView {
+		sn.viewmu.Unlock()
 		return ChangingViewError
 	}
 	sn.ChangingView = true
+	sn.viewmu.Unlock()
 
 	// take action if new view root
 	if sn.Name() == sn.RootFor(view) {

@@ -25,9 +25,6 @@ const (
 	Response
 	CatchUpReq
 	CatchUpResp
-	ViewChange
-	ViewAccepted
-	ViewConfirmed
 	GroupChange
 	GroupChanged
 	Default // for internal use
@@ -50,12 +47,6 @@ func (m MessageType) String() string {
 		return "CatchUpRequest"
 	case CatchUpResp:
 		return "CatchUpResponse"
-	case ViewChange:
-		return "ViewChange"
-	case ViewAccepted:
-		return "ViewAccepted"
-	case ViewConfirmed:
-		return "ViewConfirmed"
 	case GroupChange:
 		return "GroupChange"
 	case GroupChanged:
@@ -78,10 +69,8 @@ type SigningMessage struct {
 	Rm           *ResponseMessage
 	Cureq        *CatchUpRequest
 	Curesp       *CatchUpResponse
-	Vcm          *ViewChangeMessage
-	Vcfm         *ViewConfirmedMessage
-	Vam          *ViewAcceptedMessage
 	Vrm          *VoteRequestMessage
+	Gcm          *GroupChangedMessage
 	Err          *ErrorMessage
 	From         string
 	View         int
@@ -166,30 +155,12 @@ type ErrorMessage struct {
 	Err string
 }
 
-// ViewChange message is passed from the new parent to its children
-//  i.e. all peers that are not its parent.
-// The node that receives the ViewChange request sets the sender to be
-// its parent for the new view, and forwards the message to all its children,
-// so they can accept it as their new parent as well...
-type ViewChangeMessage struct {
-	ViewNo int
-	Round  int
-}
-
-// Not a typical message of a view Change protocol
-// Sent up by a node to signal to its parent that the nodes in
-// its subtree have accepted the new view
-type ViewAcceptedMessage struct {
-	ViewNo int
-	Votes  int // number of nodes in my subtree who accepted view ViewNo
-}
-
-// initiated by Root to confirm >2/3 of nodes accepted ViewNo
-// TODO: maybe send equivalent of ChallengeMessage to allow verifying view confirm
-type ViewConfirmedMessage struct {
-	ViewNo int
-}
-
 type VoteRequestMessage struct {
 	Vote *Vote
+}
+
+type GroupChangedMessage struct {
+	V *Vote
+	// if vote not accepted rest of fields are nil
+	HostList []string
 }

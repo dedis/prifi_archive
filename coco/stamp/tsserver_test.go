@@ -314,12 +314,12 @@ func TestTCPTimestampFromConfigFaulty(t *testing.T) {
 
 func TestTCPTimestampFromConfigVote(t *testing.T) {
 	// not mixing view changes with faults
-	RoundsPerView := 100
+	RoundsPerView := 3
 	// not mixing view changes with faults
 	aux2 := sign.HEARTBEAT
 	sign.HEARTBEAT = 4 * sign.ROUND_TIME
 
-	if err := runTCPTimestampFromConfig(RoundsPerView, sign.Voter, 0, 0, 5, 0); err != nil {
+	if err := runTCPTimestampFromConfig(RoundsPerView, sign.Voter, 0, 0, 15, 0); err != nil {
 		t.Fatal(err)
 	}
 

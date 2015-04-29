@@ -47,20 +47,45 @@ func (sn *Node) AddAction(view int, v *Vote) {
 }
 
 func (sn *Node) ApplyAction(view int, v *Vote) {
+	log.Println(sn.Name(), "APPLYING ACTION")
 	switch v.Type {
 	case AddVT:
 		sn.AddPeerToHostlist(view, v.Av.Name)
 		if sn.Name() == v.Av.Parent {
-			sn.ConnectTo(v.Av.Name)
 			sn.AddChildren(view, v.Av.Name)
 		}
 	case RemoveVT:
 		// removes node from Hostlist, and from children list
-		sn.RemovePeer(view, v.Av.Name)
+		sn.RemovePeer(view, v.Rv.Name)
 		// not closing TCP connection on remove because if view
 		// does not go through, connection essential to old/ current view closed
 	default:
 		log.Errorln("applyvote: unkown action type")
+	}
+}
+
+func (sn *Node) NotifyOfAction(view int, v *Vote) {
+	log.Println(sn.Name(), "Notifying node to be added/removed of action")
+	gcm := &SigningMessage{
+		Type:         GroupChanged,
+		From:         sn.Name(),
+		View:         view,
+		LastSeenVote: int(sn.LastSeenVote),
+		Gcm: &GroupChangedMessage{
+			V:        v,
+			HostList: sn.HostListOn(view)}}
+
+	switch v.Type {
+	case AddVT:
+		if sn.Name() == v.Av.Parent {
+			sn.PutTo(context.TODO(), v.Av.Name, gcm)
+		}
+	case RemoveVT:
+		if sn.Name() == v.Rv.Parent {
+			sn.PutTo(context.TODO(), v.Rv.Name, gcm)
+		}
+	default:
+		log.Errorln("notifyofaction: unkown action type")
 	}
 }
 
