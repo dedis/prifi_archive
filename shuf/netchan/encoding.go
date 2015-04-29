@@ -48,9 +48,15 @@ func writeShufProofs(w io.Writer, ps []shuf.ShufProof) error {
 			writePoints(w, p.X),
 			writePoints(w, p.Y),
 			binary.Write(w, binary.BigEndian, int32(len(p.Proof))),
-			myWrite(w, p.Proof))
+			binary.Write(w, binary.BigEndian, int32(len(p.Proof[0]))))
 		if e1 != nil {
 			return e1
+		}
+		for j := range p.Proof {
+			e2 := myWrite(w, p.Proof[j])
+			if e2 != nil {
+				return e2
+			}
 		}
 	}
 	return nil
@@ -128,7 +134,7 @@ func (n Node) readMsg(r io.Reader, m *shuf.Msg) error {
 
 // How about now?
 func (n Node) readShufProofs(reader io.Reader) ([]shuf.ShufProof, error) {
-	var numProofs, proofLen int32
+	var numProofs, proofLen, innerProofLen int32
 	err := binary.Read(reader, binary.BigEndian, &numProofs)
 	if numProofs < 1 || err != nil {
 		return nil, err
@@ -147,10 +153,17 @@ func (n Node) readShufProofs(reader io.Reader) ([]shuf.ShufProof, error) {
 		if err != nil {
 			return nil, err
 		}
-		Proofs[i].Proof = make([]byte, proofLen)
-		_, err = reader.Read(Proofs[i].Proof)
+		err = binary.Read(reader, binary.BigEndian, &innerProofLen)
 		if err != nil {
 			return nil, err
+		}
+		Proofs[i].Proof = make([][]byte, proofLen)
+		for j := range Proofs[i].Proof {
+			Proofs[i].Proof[j] = make([]byte, innerProofLen)
+			_, err = reader.Read(Proofs[i].Proof[j])
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	return Proofs, nil

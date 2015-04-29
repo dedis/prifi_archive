@@ -43,8 +43,8 @@ type Info struct {
 	GroupKeys   [][]abstract.Point    // (groupid, level) -> group key
 	StartNodes  []int                 // client % numgroups -> node
 	NodeGroup   [][]int               // (node, level) -> groupid
-	NumGroups   int
-	NeffLen     int
+	NumGroups   int                   // number of shuffler groups
+	NeffLen     int                   // size of each shuffler group
 }
 
 // Record of division between halves
@@ -64,7 +64,7 @@ type DecProof struct {
 type ShufProof struct {
 	X     []abstract.Point // old X
 	Y     []abstract.Point // old Y
-	Proof []byte
+	Proof [][]byte         // proof that new X and Y comes from the old
 }
 
 // Data stored between rounds
