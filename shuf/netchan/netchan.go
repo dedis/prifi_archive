@@ -36,6 +36,8 @@ type CFile struct {
 	ResendTime    int
 	MsgsPerGroup  int
 	Seed          int64
+	Shuffle       string
+	Split         string
 	Timeout       int
 	MaxResends    int
 	ActiveClients int

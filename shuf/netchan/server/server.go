@@ -72,8 +72,19 @@ func main() {
 		Timeout:      time.Second * time.Duration(c.Timeout),
 		MaxResends:   c.MaxResends,
 	}, c.Seed)
-	inf.Split = shuf.Butterfly{inf}
-	inf.Shuffle = shuf.Neff{inf}
+
+	switch c.Shuffle {
+	case "Biffle":
+		inf.Shuffle = shuf.Biffle{inf}
+	default:
+		inf.Shuffle = shuf.Neff{inf}
+	}
+	switch c.Split {
+	case "Conflict":
+		inf.Split = shuf.Conflict{inf}
+	default:
+		inf.Split = shuf.Butterfly{inf}
+	}
 
 	// Read the clients file
 	clients := make([]string, c.NumClients)
