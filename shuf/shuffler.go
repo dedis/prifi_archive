@@ -42,6 +42,7 @@ type Biffle struct {
 	Inf *Info
 }
 
+// Create the predicate for Biffle proofs
 func bifflePred() proof.Predicate {
 
 	// Branch 0 of either/or proof (for bit=0)
@@ -63,6 +64,7 @@ func bifflePred() proof.Predicate {
 	return or
 }
 
+// Perform a binary shuffle
 func (b Biffle) Shuffle(x, y []abstract.Point, h abstract.Point) (
 	[]abstract.Point, []abstract.Point, ShufProof) {
 
@@ -78,8 +80,8 @@ func (b Biffle) Shuffle(x, y []abstract.Point, h abstract.Point) (
 
 		// Pick a fresh ElGamal blinding factor for each pair
 		var beta [2]abstract.Secret
-		for i := 0; i < 2; i++ {
-			beta[i] = b.Inf.Suite.Secret().Pick(rnd)
+		for j := 0; j < 2; j++ {
+			beta[j] = b.Inf.Suite.Secret().Pick(rnd)
 		}
 
 		bit := int(random.Byte(rnd) & 1)
@@ -87,6 +89,14 @@ func (b Biffle) Shuffle(x, y []abstract.Point, h abstract.Point) (
 		Xbar[i] = b.Inf.Suite.Point().Add(Xbar[i], b.Inf.Suite.Point().Mul(nil, beta[bit]))
 		Ybar[i] = y[bit*half+i]
 		Ybar[i] = b.Inf.Suite.Point().Add(Ybar[i], b.Inf.Suite.Point().Mul(h, beta[bit]))
+
+		notbit := bit ^ 1
+		j := i + half
+		Xbar[j] = x[notbit*half+i]
+		Xbar[j] = b.Inf.Suite.Point().Add(Xbar[j], b.Inf.Suite.Point().Mul(nil, beta[notbit]))
+		Ybar[j] = y[notbit*half+i]
+		Ybar[j] = b.Inf.Suite.Point().Add(Ybar[j], b.Inf.Suite.Point().Mul(h, beta[notbit]))
+
 		sec["beta0"] = beta[0]
 		sec["beta1"] = beta[1]
 		points := b.bifflePoints(i, h, x, y, Xbar, Ybar)
@@ -101,6 +111,7 @@ func (b Biffle) Shuffle(x, y []abstract.Point, h abstract.Point) (
 	return Xbar, Ybar, ShufProof{x, y, proofs}
 }
 
+// Constuct public key hash for biffle proof
 func (b Biffle) bifflePoints(i int, H abstract.Point,
 	X, Y, Xbar, Ybar []abstract.Point) map[string]abstract.Point {
 	j := len(X)/2 + i
@@ -117,6 +128,7 @@ func (b Biffle) bifflePoints(i int, H abstract.Point,
 		"Ybar1-Y0": b.Inf.Suite.Point().Sub(Ybar[j], Y[i])}
 }
 
+// Verify a biffle proof
 func (b Biffle) Verify(h abstract.Point, x, y, xbar, ybar []abstract.Point, p [][]byte) error {
 	half := len(x) / 2
 	or := bifflePred()
