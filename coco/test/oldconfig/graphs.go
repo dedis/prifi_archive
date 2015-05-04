@@ -35,7 +35,7 @@ func dijkstra(m map[string]*sign.Node, root *sign.Node) {
 			}
 			visited[name] = true
 			// add the associated peer/connection as a child
-			sn.AddChildren(conn.Name())
+			sn.AddChildren(0, conn.Name())
 			cn, ok := m[name]
 			if !ok {
 				panic("error getting connection from map")
@@ -45,7 +45,7 @@ func dijkstra(m map[string]*sign.Node, root *sign.Node) {
 			if !ok {
 				panic("parent connection doesn't exist: not bi-directional")
 			}
-			cn.AddParent(pconn.Name())
+			cn.AddParent(0, pconn.Name())
 			l.PushFront(cn)
 		}
 	}

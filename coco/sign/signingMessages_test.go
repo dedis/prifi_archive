@@ -18,7 +18,7 @@ func init() {
 }
 
 func TestErrorMessage(t *testing.T) {
-	sm := &sign.SigningMessage{Type: sign.Error, Err: &sign.ErrorMessage{"random error"}}
+	sm := &sign.SigningMessage{Type: sign.Error, Err: &sign.ErrorMessage{Err: "random error"}}
 	b, e := sm.MarshalBinary()
 	if e != nil {
 		t.Fatal(e)

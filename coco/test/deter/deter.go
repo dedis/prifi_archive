@@ -37,14 +37,21 @@ import (
 
 var rootname string
 
-func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait string) string {
+func GenExecCmd(rFail, fFail, failures int, phys string, names []string, loggerport, rootwait string, random_leaf string) string {
 	total := ""
 	for _, n := range names {
+		connect := false
+		log.Printf("name == %s, random_leaf == %s, testConnect = %t", n, random_leaf, testConnect)
+		if n == random_leaf && testConnect {
+			connect = true
+		}
 		amroot := " -amroot=false"
 		if n == rootname {
 			amroot = " -amroot=true"
 		}
 		total += "(cd remote; sudo ./forkexec -rootwait=" + rootwait +
+			" -rfail=" + strconv.Itoa(rFail) +
+			" -ffail=" + strconv.Itoa(fFail) +
 			" -failures=" + strconv.Itoa(failures) +
 			" -physaddr=" + phys +
 			" -hostname=" + n +
@@ -52,8 +59,11 @@ func GenExecCmd(failures int, phys string, names []string, loggerport, rootwait 
 			" -debug=" + debug +
 			" -suite=" + suite +
 			" -rounds=" + strconv.Itoa(rounds) +
+			" -app=" + app +
+			" -test_connect=" + strconv.FormatBool(connect) +
 			amroot +
-			" </dev/null 2>/dev/null 1>/dev/null &); "
+			" ); "
+		//" </dev/null 2>/dev/null 1>/dev/null &); "
 	}
 	return total
 }
@@ -64,8 +74,12 @@ var bf string
 var debug string
 var rate int
 var failures int
+var rFail int
+var fFail int
 var rounds int
 var kill bool
+var testConnect bool
+var app string
 var suite string
 
 func init() {
@@ -75,8 +89,12 @@ func init() {
 	flag.StringVar(&debug, "debug", "false", "set debug mode")
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rFail, "rfail", 0, "number of consecutive rounds each root runs before it fails")
+	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to timestamp")
 	flag.BoolVar(&kill, "kill", false, "kill everything (and don't start anything)")
+	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
+	flag.StringVar(&app, "app", "stamp", "app to run")
 	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
@@ -123,13 +141,14 @@ func main() {
 	}
 	wg.Wait()
 
+	nloggers := 3
 	masterLogger := phys[0]
 	slaveLogger1 := phys[1]
 	slaveLogger2 := phys[2]
 	loggers := []string{masterLogger, slaveLogger1, slaveLogger2}
 
-	phys = phys[3:]
-	virt = virt[3:]
+	phys = phys[nloggers:]
+	virt = virt[nloggers:]
 
 	// Read in and parse the configuration file
 	file, err := ioutil.ReadFile("remote/cfg.json")
@@ -146,6 +165,15 @@ func main() {
 	hostnames := cf.Hosts
 
 	depth := graphs.Depth(cf.Tree)
+	var random_leaf string
+	cf.Tree.TraverseTree(func(t *graphs.Tree) {
+		if random_leaf != "" {
+			return
+		}
+		if len(t.Children) == 0 {
+			random_leaf = t.Name
+		}
+	})
 
 	rootname = hostnames[0]
 
@@ -216,17 +244,20 @@ func main() {
 		if len(virts) == 0 {
 			continue
 		}
-		cmd := GenExecCmd(failures, phys, virts, loggerports[i], rootwait)
+		log.Println("starting timestamper")
+		cmd := GenExecCmd(rFail, fFail, failures, phys, virts, loggerports[i], rootwait, random_leaf)
 		i = (i + 1) % len(loggerports)
 		wg.Add(1)
 		//time.Sleep(500 * time.Millisecond)
 		go func(phys, cmd string) {
 			//log.Println("running on ", phys, cmd)
-			err := cliutils.SshRunBackground("", phys, cmd)
+			defer wg.Done()
+			err := cliutils.SshRunStdout("", phys, cmd)
 			if err != nil {
 				log.Fatal("ERROR STARTING TIMESTAMPER:", err)
 			}
 		}(phys, cmd)
+
 	}
 	// wait for the servers to finish before stopping
 	wg.Wait()

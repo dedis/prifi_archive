@@ -4,9 +4,10 @@ import (
 	"errors"
 	"io"
 	"strconv"
-	"time"
+	"sync/atomic"
 
 	log "github.com/Sirupsen/logrus"
+	"golang.org/x/net/context"
 
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/coco/coconet"
@@ -21,221 +22,246 @@ import (
 // 3. Challenge
 // 4. Response
 
-var ErrUnknownMessageType error = errors.New("Received message of unknown type")
+// Get multiplexes all messages from TCPHost using application logic
+func (sn *Node) get() error {
+	log.Println(sn.Name(), "getting")
+	defer log.Println(sn.Name(), "done getting")
 
-// Start listening for messages coming from parent(up)
-func (sn *Node) Listen() error {
-	sn.setPool()
-
-	if !sn.IsRoot() {
-		go sn.getUp()
-	}
-	go sn.getDown()
-
-	return nil
-}
-
-// Determine type of message coming from the parent
-// Pass the duty of acting on it to another function
-func (sn *Node) getUp() {
-	for {
-		sm := SigningMessage{}
-		if err := sn.GetUp(&sm); err != nil {
-			if err != coconet.ConnectionNotEstablished {
-				log.Warn("error getting up:", err)
-			}
-
-			if err == coconet.ErrorConnClosed ||
-				err == io.EOF {
-				// stop getting up if the connection is closed
-				sn.closed <- err
-				return
-			}
-		}
-		switch sm.Type {
-		default:
-			continue
-		case Announcement:
-			if err := sn.Announce(sm.Am); err != nil {
-				log.Errorln(err)
-			}
-
-		case Challenge:
-			if err := sn.Challenge(sm.Chm); err != nil {
-				log.Errorln(err)
-			}
-		}
-	}
-}
-
-// Block until a message from a child is received via network
-func (sn *Node) waitDownOnNM(ch chan coconet.NetworkMessg, errch chan error) (
-	coconet.NetworkMessg, error) {
-	nm := <-ch
-	err := <-errch
-
-	return nm, err
-}
-
-// Determine type of message coming from the children
-// Put them on message channels other functions can read from
-func (sn *Node) getDown() {
-	// update waiting time based on current depth
 	sn.UpdateTimeout()
-	// wait for all children to commit
-	ch, errch := sn.GetDown()
+	msgchan := sn.Host.Get()
+	// heartbeat for intiating viewChanges, allows intial 500s setup time
+	/* sn.hbLock.Lock()
+	sn.heartbeat = time.NewTimer(500 * time.Second)
+	sn.hbLock.Unlock() */
+
+	// as votes get approved they are streamed in ApplyVotes
+	voteChan := sn.VoteLog.Stream()
+	sn.ApplyVotes(voteChan)
+
+	// gossip to make sure we are up to date
+	sn.StartGossip()
 
 	for {
-		nm, err := sn.waitDownOnNM(ch, errch)
-		if err != nil {
-			if err == coconet.ConnectionNotEstablished {
-				continue
-			}
-
-			log.Warn("error getting down:", err)
-			if err == io.EOF {
-				sn.closed <- err
-				return
-			}
-			if err == coconet.ErrorConnClosed {
-				continue
-			}
-		}
-
-		// interpret network message as Siging Message
-		sm := nm.Data.(*SigningMessage)
-		sm.From = nm.From
-
-		switch sm.Type {
+		select {
+		case <-sn.closed:
+			sn.StopHeartbeat()
+			return nil
 		default:
-			continue
-		case Commitment:
-			// shove message on commit channel for its round
-			round := sm.Com.Round
-			sn.roundLock.Lock()
-			comch := sn.ComCh[round]
-			sn.roundLock.Unlock()
-			comch <- sm
-		case Response:
-			// shove message on response channel for its round
-			round := sm.Rm.Round
-			sn.roundLock.Lock()
-			rmch := sn.RmCh[round]
-			sn.roundLock.Unlock()
-			rmch <- sm
-		case Error:
-			log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
-		}
-	}
-}
+			nm, ok := <-msgchan
+			err := nm.Err
 
-// Used in Commit and Respond when waiting for children Commits and Responses
-// The commits and responses are read from the commit and respond channel
-// as they are put there by the getDown function
-func (sn *Node) waitOn(ch chan *SigningMessage, timeout time.Duration, what string) []*SigningMessage {
-	nChildren := len(sn.Children())
-	messgs := make([]*SigningMessage, 0)
-	received := 0
-	if nChildren > 0 {
-		for {
+			// TODO: graceful shutdown voting
+			if !ok || err == coconet.ErrClosed || err == io.EOF {
+				log.Errorf("getting from closed host")
+				sn.Close()
+				return coconet.ErrClosed
+			}
 
-			select {
-			case sm := <-ch:
-				messgs = append(messgs, sm)
-				received += 1
-				if received == nChildren {
-					return messgs
+			// if it is a non-fatal error try again
+			if err != nil {
+				log.Errorln("error getting message: continueing")
+				continue
+			}
+			// interpret network message as Siging Message
+			//log.Printf("got message: %#v with error %v\n", sm, err)
+			sm := nm.Data.(*SigningMessage)
+			sm.From = nm.From
+			// log.Println(sn.Name(), "received message: ", sm.Type)
+
+			// don't act on future view if not caught up, must be done after updating vote index
+			sn.viewmu.Lock()
+			if sm.View > sn.ViewNo {
+				if atomic.LoadInt64(&sn.LastSeenVote) != atomic.LoadInt64(&sn.LastAppliedVote) {
+					log.Warnln("not caught up for view change", sn.LastSeenVote, sn.LastAppliedVote)
+					return errors.New("not caught up for view change")
 				}
-			case <-time.After(timeout):
-				log.Warnln(sn.Name(), "timeouted on", what, timeout, "got", len(messgs), "out of", nChildren)
-				return messgs
+			}
+			sn.viewmu.Unlock()
+			sn.updateLastSeenVote(sm.LastSeenVote, sm.From)
+
+			switch sm.Type {
+			// if it is a bad message just ignore it
+			default:
+				continue
+			case Announcement:
+				sn.ReceivedHeartbeat(sm.View)
+
+				// log.Println("RECEIVED ANNOUNCEMENT MESSAGE")
+				var err error
+				if sm.Am.Vote != nil {
+					err = sn.Propose(sm.View, sm.Am, sm.From)
+					log.Println(sn.Name(), "done proposing")
+				} else {
+					if !sn.IsParent(sm.View, sm.From) {
+						log.Fatalln(sn.Name(), "received announcement from non-parent on view", sm.View)
+						continue
+					}
+					err = sn.Announce(sm.View, sm.Am)
+				}
+				if err != nil {
+					log.Errorln(sn.Name(), "announce error:", err)
+				}
+
+			case Challenge:
+				if !sn.IsParent(sm.View, sm.From) {
+					log.Fatalln(sn.Name(), "received challenge from non-parent on view", sm.View)
+					continue
+				}
+				sn.ReceivedHeartbeat(sm.View)
+
+				var err error
+				if sm.Chm.Vote != nil {
+					err = sn.Accept(sm.View, sm.Chm)
+				} else {
+					err = sn.Challenge(sm.View, sm.Chm)
+				}
+				if err != nil {
+					log.Errorln(sn.Name(), "challenge error:", err)
+				}
+
+			// if it is a commitment or response it is from the child
+			case Commitment:
+				if !sn.IsChild(sm.View, sm.From) {
+					log.Fatalln(sn.Name(), "received commitment from non-child on view", sm.View)
+					continue
+				}
+
+				var err error
+				if sm.Com.Vote != nil {
+					err = sn.Promise(sm.View, sm.Com.Round, sm)
+				} else {
+					err = sn.Commit(sm.View, sm.Com.Round, sm)
+				}
+				if err != nil {
+					log.Errorln(sn.Name(), "commit error:", err)
+				}
+			case Response:
+				log.Println(sn.Name(), "received response from", sm.From)
+				if !sn.IsChild(sm.View, sm.From) {
+					log.Fatalln(sn.Name(), "received response from non-child on view", sm.View)
+					continue
+				}
+
+				var err error
+				if sm.Rm.Vote != nil {
+					err = sn.Accepted(sm.View, sm.Rm.Round, sm)
+				} else {
+					err = sn.Respond(sm.View, sm.Rm.Round, sm)
+				}
+				if err != nil {
+					log.Errorln(sn.Name(), "response error:", err)
+				}
+			case CatchUpReq:
+				v := sn.VoteLog.Get(sm.Cureq.Index)
+				ctx := context.TODO()
+				sn.PutTo(ctx, sm.From,
+					&SigningMessage{
+						From:         sn.Name(),
+						Type:         CatchUpResp,
+						LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
+						Curesp:       &CatchUpResponse{Vote: v}})
+			case CatchUpResp:
+				if sm.Curesp.Vote == nil || sn.VoteLog.Get(sm.Curesp.Vote.Index) != nil {
+					continue
+				}
+				vi := sm.Curesp.Vote.Index
+				// put in votelog to be streamed and applied
+				sn.VoteLog.Put(vi, sm.Curesp.Vote)
+				// continue catching up
+				sn.CatchUp(vi+1, sm.From)
+			case GroupChange:
+				if sm.View == -1 {
+					sm.View = sn.ViewNo
+					if sm.Vrm.Vote.Type == AddVT {
+						sn.AddPeerToPending(sm.From)
+					}
+				}
+				// TODO sanity checks: check if view is == sn.ViewNo
+				if sn.RootFor(sm.View) == sn.Name() {
+					go sn.StartVotingRound(sm.Vrm.Vote)
+					continue
+				}
+				sn.PutUp(context.TODO(), sm.View, sm)
+			case GroupChanged:
+				if !sm.Gcm.V.Confirmed {
+					log.Println(sn.Name(), " received attempt to group change not confirmed")
+					continue
+				}
+				if sm.Gcm.V.Type == RemoveVT {
+					log.Println(sn.Name(), " received removal notice")
+				} else if sm.Gcm.V.Type == AddVT {
+					log.Println(sn.Name(), " received addition notice")
+					sn.NewView(sm.View, sm.From, nil, sm.Gcm.HostList)
+				} else {
+					log.Errorln(sn.Name(), "received GroupChanged for unacceptable action")
+				}
+			case Error:
+				log.Println("Received Error Message:", ErrUnknownMessageType, sm, sm.Err)
 			}
 		}
 	}
 
-	return messgs
 }
 
-func (sn *Node) Announce(am *AnnouncementMessage) error {
-	// set up commit and response channels for the new round
-	Round := am.Round
-	sn.roundLock.Lock()
-	sn.Rounds[Round] = NewRound(sn.suite)
-	sn.ComCh[Round] = make(chan *SigningMessage, sn.NChildren())
-	sn.RmCh[Round] = make(chan *SigningMessage, sn.NChildren())
-	sn.roundLock.Unlock()
+func (sn *Node) Announce(view int, am *AnnouncementMessage) error {
+	log.Println(sn.Name(), "RECEIVED annoucement on", view)
 
-	// the root is the only node that keeps track of round # internally
-	if sn.IsRoot() {
-		// sequential round number
-		sn.Round = Round
-		sn.LastSeenRound = Round
-
-		// Create my back link to previous round
-		sn.SetBackLink(Round)
-		// sn.SetAccountableRound(Round)
-	}
-
-	// doing this before annoucing children to avoid major drama
-	if !sn.IsRoot() && sn.ShouldIFail("commit") {
-		log.Warn(sn.Name(), "not commiting for round", Round)
-		return nil
-	}
-
-	// Inform all children of announcement
-	messgs := make([]coconet.BinaryMarshaler, sn.NChildren())
-	for i := range messgs {
-		sm := SigningMessage{Type: Announcement, Am: am}
-		messgs[i] = &sm
-	}
-	if err := sn.PutDown(messgs); err != nil {
+	if err := sn.TryFailure(view, am.Round); err != nil {
 		return err
 	}
 
-	return sn.Commit(am.Round)
+	if err := sn.setUpRound(view, am); err != nil {
+		return err
+	}
+
+	// Inform all children of announcement
+	messgs := make([]coconet.BinaryMarshaler, sn.NChildren(view))
+	for i := range messgs {
+		sm := SigningMessage{
+			Type:         Announcement,
+			View:         view,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
+			Am:           am}
+		messgs[i] = &sm
+	}
+	ctx := context.TODO()
+	//ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+	if err := sn.PutDown(ctx, view, messgs); err != nil {
+		return err
+	}
+
+	// return sn.Commit(view, am)
+	if len(sn.Children(view)) == 0 {
+		sn.Commit(view, am.Round, nil)
+	}
+	return nil
 }
 
-// Create round lasting secret and commit point v and V
-// Initialize log structure for the round
-func (sn *Node) initCommitCrypto(Round int) {
-	round := sn.Rounds[Round]
-	// generate secret and point commitment for this round
-	rand := sn.suite.Cipher([]byte(sn.Name()))
-	round.Log = SNLog{}
-	round.Log.v = sn.suite.Secret().Pick(rand)
-	round.Log.V = sn.suite.Point().Mul(nil, round.Log.v)
-	// initialize product of point commitments
-	round.Log.V_hat = sn.suite.Point().Null()
-	sn.add(round.Log.V_hat, round.Log.V)
-
-	round.X_hat = sn.suite.Point().Null()
-	sn.add(round.X_hat, sn.PubKey)
-}
-
-func (sn *Node) Commit(Round int) error {
+func (sn *Node) Commit(view, Round int, sm *SigningMessage) error {
+	// update max seen round
+	sn.roundmu.Lock()
+	sn.LastSeenRound = max(sn.LastSeenRound, Round)
+	sn.roundmu.Unlock()
 
 	round := sn.Rounds[Round]
-	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	if round == nil {
 		// was not announced of this round, should retreat
 		return nil
 	}
 
-	sn.initCommitCrypto(Round)
+	if sm != nil {
+		round.Commits = append(round.Commits, sm)
+	}
 
-	// wait on commits from children
-	sn.UpdateTimeout()
-	messgs := sn.waitOn(sn.ComCh[Round], sn.Timeout(), "commits")
-
-	sn.roundLock.Lock()
-	delete(sn.ComCh, Round)
-	sn.roundLock.Unlock()
+	if len(round.Commits) != len(sn.Children(view)) {
+		return nil
+	}
 
 	// prepare to handle exceptions
 	round.ExceptionList = make([]abstract.Point, 0)
-	round.ChildV_hat = make(map[string]abstract.Point, len(sn.Children()))
-	round.ChildX_hat = make(map[string]abstract.Point, len(sn.Children()))
-	children := sn.Children()
+	round.ChildV_hat = make(map[string]abstract.Point, len(sn.Children(view)))
+	round.ChildX_hat = make(map[string]abstract.Point, len(sn.Children(view)))
+	children := sn.Children(view)
 
 	// Commits from children are the first Merkle Tree leaves for the round
 	round.Leaves = make([]hashid.HashId, 0)
@@ -245,47 +271,44 @@ func (sn *Node) Commit(Round int) error {
 		round.ChildX_hat[key] = sn.suite.Point().Null()
 		round.ChildV_hat[key] = sn.suite.Point().Null()
 	}
-	for _, sm := range messgs {
+
+	// TODO: fill in missing commit messages, and add back exception code
+	for _, sm := range round.Commits {
 		from := sm.From
-		switch sm.Type {
-		default: // default == no response from i
-			// fmt.Println(sn.Name(), "no commit from", i)
-			round.ExceptionList = append(round.ExceptionList, children[from].PubKey())
-			continue
-		case Commitment:
-			round.Leaves = append(round.Leaves, sm.Com.MTRoot)
-			round.LeavesFrom = append(round.LeavesFrom, from)
-			round.ChildV_hat[from] = sm.Com.V_hat
-			round.ChildX_hat[from] = sm.Com.X_hat
-			round.ExceptionList = append(round.ExceptionList, sm.Com.ExceptionList...)
 
-			// add good child server to combined public key, and point commit
-			sn.add(round.X_hat, sm.Com.X_hat)
-			sn.add(round.Log.V_hat, sm.Com.V_hat)
-		}
+		round.Leaves = append(round.Leaves, sm.Com.MTRoot)
+		round.LeavesFrom = append(round.LeavesFrom, from)
+		round.ChildV_hat[from] = sm.Com.V_hat
+		round.ChildX_hat[from] = sm.Com.X_hat
+		round.ExceptionList = append(round.ExceptionList, sm.Com.ExceptionList...)
 
+		// add good child server to combined public key, and point commit
+		sn.add(round.X_hat, sm.Com.X_hat)
+		sn.add(round.Log.V_hat, sm.Com.V_hat)
 	}
 
 	if sn.Type == PubKey {
-		return sn.actOnCommits(Round)
+		log.Println("sign.Node.Commit using PubKey")
+		return sn.actOnCommits(view, Round)
 	} else {
+		log.Println("sign.Node.Commit using Merkle")
 		sn.AddChildrenMerkleRoots(Round)
-		sn.AddLocalMerkleRoot(Round)
+		sn.AddLocalMerkleRoot(view, Round)
 		sn.HashLog(Round)
-		sn.ComputeCombinedMerkleRoot(Round)
-		return sn.actOnCommits(Round)
+		sn.ComputeCombinedMerkleRoot(view, Round)
+		return sn.actOnCommits(view, Round)
 	}
 }
 
 // Finalize commits by initiating the challenge pahse if root
 // Send own commitment message up to parent if non-root
-func (sn *Node) actOnCommits(Round int) error {
+func (sn *Node) actOnCommits(view, Round int) error {
 	round := sn.Rounds[Round]
 	var err error
 
-	if sn.IsRoot() {
+	if sn.IsRoot(view) {
 		sn.commitsDone <- Round
-		err = sn.FinalizeCommits(Round)
+		err = sn.FinalizeCommits(view, Round)
 	} else {
 		// create and putup own commit message
 		com := &CommitmentMessage{
@@ -294,70 +317,62 @@ func (sn *Node) actOnCommits(Round int) error {
 			X_hat:         round.X_hat,
 			MTRoot:        round.MTRoot,
 			ExceptionList: round.ExceptionList,
+			Vote:          round.Vote,
 			Round:         Round}
 
-		err = sn.PutUp(&SigningMessage{
-			Type: Commitment,
-			Com:  com})
+		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+		log.Println(sn.Name(), "puts up commit")
+		ctx := context.TODO()
+		err = sn.PutUp(ctx, view, &SigningMessage{
+			View:         view,
+			Type:         Commitment,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
+			Com:          com})
 	}
 	return err
 }
 
 // initiated by root, propagated by all others
-func (sn *Node) Challenge(chm *ChallengeMessage) error {
+func (sn *Node) Challenge(view int, chm *ChallengeMessage) error {
+	// update max seen round
+	sn.roundmu.Lock()
+	sn.LastSeenRound = max(sn.LastSeenRound, chm.Round)
+	sn.roundmu.Unlock()
+
 	round := sn.Rounds[chm.Round]
-	sn.LastSeenRound = max(chm.Round, sn.LastSeenRound)
 	if round == nil {
 		return nil
 	}
+
 	// register challenge
 	round.c = chm.C
 
 	if sn.Type == PubKey {
-		if err := sn.SendChildrenChallenges(chm); err != nil {
+		log.Println(sn.Name(), "challenge: using pubkey", sn.Type, chm.Vote)
+		if err := sn.SendChildrenChallenges(view, chm); err != nil {
 			return err
 		}
-		return sn.Respond(chm.Round)
 	} else {
+		log.Println(sn.Name(), "challenge: using merkle proofs")
 		// messages from clients, proofs computed
 		if sn.CommitedFor(round) {
-			if err := sn.SendLocalMerkleProof(chm); err != nil {
+			if err := sn.SendLocalMerkleProof(view, chm); err != nil {
 				return err
 			}
 
 		}
-		if err := sn.SendChildrenChallengesProofs(chm); err != nil {
+		if err := sn.SendChildrenChallengesProofs(view, chm); err != nil {
 			return err
 		}
-		return sn.Respond(chm.Round)
 	}
 
-}
-
-// Figure out which kids did not submit messages
-// Add default messages to messgs, one per missing child
-// as to make it easier to identify and add them to exception lists in one place
-func (sn *Node) FillInWithDefaultMessages(messgs []*SigningMessage) []*SigningMessage {
-	children := sn.Children()
-
-	allmessgs := make([]*SigningMessage, len(messgs))
-	copy(allmessgs, messgs)
-
-	for c := range children {
-		found := false
-		for _, m := range messgs {
-			if m.From == c {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			allmessgs = append(allmessgs, &SigningMessage{Type: Default, From: c})
-		}
+	// log.Println(sn.Name(), "In challenge before response")
+	sn.initResponseCrypto(chm.Round)
+	if len(sn.Children(view)) == 0 {
+		sn.Respond(view, chm.Round, nil)
 	}
-
-	return allmessgs
+	// log.Println(sn.Name(), "Done handling challenge message")
+	return nil
 }
 
 func (sn *Node) initResponseCrypto(Round int) {
@@ -369,29 +384,34 @@ func (sn *Node) initResponseCrypto(Round int) {
 	round.r_hat = round.r
 }
 
-func (sn *Node) Respond(Round int) error {
+func (sn *Node) Respond(view, Round int, sm *SigningMessage) error {
+	log.Println(sn.Name(), "couting response on view, round", view, Round, "Nchildren", sn.Children(view))
+	// update max seen round
+	sn.roundmu.Lock()
+	sn.LastSeenRound = max(sn.LastSeenRound, Round)
+	sn.roundmu.Unlock()
+
 	round := sn.Rounds[Round]
-	sn.LastSeenRound = max(Round, sn.LastSeenRound)
 	if round == nil || round.Log.v == nil {
 		// If I was not announced of this round, or I failed to commit
 		return nil
 	}
 
-	sn.LastSeenRound = max(Round, sn.LastSeenRound)
-	sn.initResponseCrypto(Round)
-
-	// wait on responses from children
-	sn.UpdateTimeout()
-	messgs := sn.waitOn(sn.RmCh[Round], sn.Timeout(), "responses")
+	if sm != nil {
+		round.Responses = append(round.Responses, sm)
+	}
+	if len(round.Responses) != len(sn.Children(view)) {
+		return nil
+	}
 
 	// initialize exception handling
 	exceptionV_hat := sn.suite.Point().Null()
 	exceptionX_hat := sn.suite.Point().Null()
 	round.ExceptionList = make([]abstract.Point, 0)
 	nullPoint := sn.suite.Point().Null()
-	allmessgs := sn.FillInWithDefaultMessages(messgs)
+	allmessgs := sn.FillInWithDefaultMessages(view, round.Responses)
 
-	children := sn.Children()
+	children := sn.Children(view)
 	for _, sm := range allmessgs {
 		from := sm.From
 		switch sm.Type {
@@ -422,14 +442,14 @@ func (sn *Node) Respond(Round int) error {
 
 		case Error:
 			if sm.Err == nil {
-				panic("Error message with no error")
+				log.Errorln("Error message with no error")
 				continue
 			}
 
 			// Report up non-networking error, probably signature failure
-			log.Println(sn.Name(), "Error in respose for child", from, sm)
+			log.Errorln(sn.Name(), "Error in respose for child", from, sm)
 			err := errors.New(sm.Err.Err)
-			sn.PutUpError(err)
+			sn.PutUpError(view, err)
 			return err
 		}
 	}
@@ -438,24 +458,27 @@ func (sn *Node) Respond(Round int) error {
 	sn.sub(round.X_hat, exceptionX_hat)
 	round.exceptionV_hat = exceptionV_hat
 
-	return sn.actOnResponses(Round, exceptionV_hat, exceptionX_hat)
+	return sn.actOnResponses(view, Round, exceptionV_hat, exceptionX_hat)
 }
 
-func (sn *Node) actOnResponses(Round int, exceptionV_hat abstract.Point, exceptionX_hat abstract.Point) error {
+func (sn *Node) actOnResponses(view, Round int, exceptionV_hat abstract.Point, exceptionX_hat abstract.Point) error {
+	log.Println(sn.Name(), "got all responses for view, round", view, Round)
 	round := sn.Rounds[Round]
-	err := sn.VerifyResponses(Round)
+	err := sn.VerifyResponses(view, Round)
 
+	isroot := sn.IsRoot(view)
 	// if error put it up if parent exists
-	if err != nil && !sn.IsRoot() {
-		sn.PutUpError(err)
+	if err != nil && !isroot {
+		sn.PutUpError(view, err)
 		return err
 	}
 
 	// if no error send up own response
-	if err == nil && !sn.IsRoot() {
-		// if round.Log.v == nil && sn.ShouldIFail("response") {
-		// 	return nil
-		// }
+	if err == nil && !isroot {
+		if round.Log.v == nil && sn.ShouldIFail("response") {
+			log.Println(sn.Name(), "failing on response")
+			return nil
+		}
 
 		// create and putup own response message
 		rm := &ResponseMessage{
@@ -464,21 +487,69 @@ func (sn *Node) actOnResponses(Round int, exceptionV_hat abstract.Point, excepti
 			ExceptionV_hat: exceptionV_hat,
 			ExceptionX_hat: exceptionX_hat,
 			Round:          Round}
-		return sn.PutUp(&SigningMessage{
-			Type: Response,
-			Rm:   rm})
+
+		// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+		ctx := context.TODO()
+		log.Println(sn.Name(), "put up response to", sn.Parent(view))
+		err = sn.PutUp(ctx, view, &SigningMessage{
+			Type:         Response,
+			View:         view,
+			LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
+			Rm:           rm})
+	}
+
+	if sn.TimeForViewChange() {
+		log.Println("acting on responses: trying viewchanges")
+		err := sn.TryViewChange(view + 1)
+		if err != nil {
+			log.Errorln(err)
+		}
 	}
 
 	// root reports round is done
-	if sn.IsRoot() {
+	if isroot {
 		sn.done <- Round
 	}
+
 	return err
 }
 
+func (sn *Node) TryViewChange(view int) error {
+	log.Println(sn.Name(), "TRY VIEW CHANGE on", view, "with last view", sn.ViewNo)
+	// should ideally be compare and swap
+	sn.viewmu.Lock()
+	if view <= sn.ViewNo {
+		sn.viewmu.Unlock()
+		return errors.New("trying to view change on previous/ current view")
+	}
+	if sn.ChangingView {
+		sn.viewmu.Unlock()
+		return ChangingViewError
+	}
+	sn.ChangingView = true
+	sn.viewmu.Unlock()
+
+	// take action if new view root
+	if sn.Name() == sn.RootFor(view) {
+		log.Println(sn.Name(), "INITIATING VIEW CHANGE FOR VIEW:", view)
+		go func() {
+			err := sn.StartVotingRound(
+				&Vote{
+					View: view,
+					Type: ViewChangeVT,
+					Vcv: &ViewChangeVote{
+						View: view,
+						Root: sn.Name()}})
+			if err != nil {
+				log.Errorln(sn.Name(), "TRY VIEW CHANGE FAILED: ", err)
+			}
+		}()
+	}
+	return nil
+}
+
 // Called *only* by root node after receiving all commits
-func (sn *Node) FinalizeCommits(Round int) error {
-	//Round := sn.Round // *only* in root
+func (sn *Node) FinalizeCommits(view int, Round int) error {
 	round := sn.Rounds[Round]
 
 	// challenge = Hash(Merkle Tree Root/ Announcement Message, sn.Log.V_hat)
@@ -489,16 +560,17 @@ func (sn *Node) FinalizeCommits(Round int) error {
 	}
 
 	proof := make([]hashid.HashId, 0)
-	err := sn.Challenge(&ChallengeMessage{
+	err := sn.Challenge(view, &ChallengeMessage{
 		C:      round.c,
 		MTRoot: round.MTRoot,
 		Proof:  proof,
-		Round:  Round})
+		Round:  Round,
+		Vote:   round.Vote})
 	return err
 }
 
 // Called by every node after receiving aggregate responses from descendants
-func (sn *Node) VerifyResponses(Round int) error {
+func (sn *Node) VerifyResponses(view, Round int) error {
 	round := sn.Rounds[Round]
 
 	// Check that: base**r_hat * X_hat**c == V_hat
@@ -512,7 +584,8 @@ func (sn *Node) VerifyResponses(Round int) error {
 	T.Add(T, round.exceptionV_hat)
 
 	var c2 abstract.Secret
-	if sn.IsRoot() {
+	isroot := sn.IsRoot(view)
+	if isroot {
 		// round challenge must be recomputed given potential
 		// exception list
 		if sn.Type == PubKey {
@@ -526,25 +599,45 @@ func (sn *Node) VerifyResponses(Round int) error {
 
 	// intermediary nodes check partial responses aginst their partial keys
 	// the root node is also able to check against the challenge it emitted
-	if !T.Equal(round.Log.V_hat) || (sn.IsRoot() && !round.c.Equal(c2)) {
+	if !T.Equal(round.Log.V_hat) || (isroot && !round.c.Equal(c2)) {
 		// if coco.DEBUG == true {
 		panic(sn.Name() + "reports ElGamal Collective Signature failed for Round" + strconv.Itoa(Round))
 		// }
-		return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
+		// return errors.New("Veryfing ElGamal Collective Signature failed in " + sn.Name() + "for round " + strconv.Itoa(Round))
 	}
 
-	if sn.IsRoot() {
-		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round)
+	if isroot {
+		log.Println(sn.Name(), "reports ElGamal Collective Signature succeeded for round", Round, "view", view)
+		nel := len(round.ExceptionList)
+		nhl := len(sn.HostListOn(view))
+		p := strconv.FormatFloat(float64(nel)/float64(nhl), 'f', 6, 64)
+		log.Infoln(sn.Name(), "reports", nel, "out of", nhl, "percentage", p, "failed in round", Round)
 		// log.Println(round.MTRoot)
 	}
 	return nil
 }
 
-func (sn *Node) PutUpError(err error) {
+func (sn *Node) TimeForViewChange() bool {
+	sn.roundmu.Lock()
+	defer sn.roundmu.Unlock()
+
+	// if this round is last one for this view
+	if sn.LastSeenRound%sn.RoundsPerView == 0 {
+		// log.Println(sn.Name(), "TIME FOR VIEWCHANGE:", lsr, rpv)
+		return true
+	}
+	return false
+}
+
+func (sn *Node) PutUpError(view int, err error) {
 	// log.Println(sn.Name(), "put up response with err", err)
-	sn.PutUp(&SigningMessage{
-		Type: Error,
-		Err:  &ErrorMessage{Err: err.Error()}})
+	// ctx, _ := context.WithTimeout(context.Background(), 2000*time.Millisecond)
+	ctx := context.TODO()
+	sn.PutUp(ctx, view, &SigningMessage{
+		Type:         Error,
+		View:         view,
+		LastSeenVote: int(atomic.LoadInt64(&sn.LastSeenVote)),
+		Err:          &ErrorMessage{Err: err.Error()}})
 }
 
 // Returns a secret that depends on on a message and a point

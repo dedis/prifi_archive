@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"runtime"
+	"strconv"
 	"time"
 )
 
@@ -49,6 +50,7 @@ type ClientMsgStats struct {
 	Type        string    `json:"type"`
 	Buckets     []float64 `json:"buck,omitempty"`
 	RoundsAfter []float64 `json:"roundsAfter,omitempty"`
+	Times       []float64 `json:"times,omitempty"`
 }
 
 type RunStats struct {
@@ -65,7 +67,8 @@ type RunStats struct {
 	SysTime  float64
 	UserTime float64
 
-	Rate float64
+	Rate  float64
+	Times []float64
 }
 
 func (s RunStats) CSVHeader() []byte {
@@ -89,6 +92,16 @@ func (s RunStats) CSV() []byte {
 	return buf.Bytes()
 }
 
+func (s RunStats) TimesCSV() []byte {
+	times := bytes.Buffer{}
+	times.WriteString("client_times\n")
+	for _, t := range s.Times {
+		times.WriteString(strconv.FormatFloat(t, 'f', 15, 64))
+		times.WriteRune('\n')
+	}
+	return times.Bytes()
+}
+
 func RunStatsAvg(rs []RunStats) RunStats {
 	if len(rs) == 0 {
 		return RunStats{}
@@ -97,6 +110,7 @@ func RunStatsAvg(rs []RunStats) RunStats {
 	r.NHosts = rs[0].NHosts
 	r.Depth = rs[0].Depth
 	r.BF = rs[0].BF
+	r.Times = make([]float64, len(rs[0].Times))
 
 	for _, a := range rs {
 		r.MinTime += a.MinTime
@@ -106,6 +120,7 @@ func RunStatsAvg(rs []RunStats) RunStats {
 		r.SysTime += a.SysTime
 		r.UserTime += a.UserTime
 		r.Rate += a.Rate
+		r.Times = append(r.Times, a.Times...)
 	}
 	l := float64(len(rs))
 	r.MinTime /= l
