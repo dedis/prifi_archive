@@ -51,12 +51,12 @@ func TestNeff(t *testing.T) {
 	wg.Wait()
 }
 
-func TestBiffle(t *testing.T) {
-	inf, messages := setup()
-	inf.Shuffle = shuf.Biffle{inf}
-	inf.Split = shuf.Butterfly{inf}
-	var wg sync.WaitGroup
-	wg.Add(inf.NumClients)
-	ChanShuffle(inf, messages, &wg)
-	wg.Wait()
-}
+// func TestBiffle(t *testing.T) {
+// 	inf, messages := setup()
+// 	inf.Shuffle = shuf.Biffle{inf}
+// 	inf.Split = shuf.Butterfly{inf}
+// 	var wg sync.WaitGroup
+// 	wg.Add(inf.NumClients)
+// 	ChanShuffle(inf, messages, &wg)
+// 	wg.Wait()
+// }

@@ -159,6 +159,7 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 	groupKey := inf.GroupKeys[inf.NodeGroup[i][level]][level]
 	encryptKey := inf.EncryptKeys[inf.NodeGroup[i][level]][level]
 	half := len(m.Y) / 2
+	rnd := inf.Suite.Cipher(abstract.RandomKey)
 	switch {
 
 	// Is it a collection round?
@@ -232,8 +233,8 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 		m.SplitProof.Y = m.Y
 		inf.Split.Split(m)
 		newY := make([]abstract.Point, len(m.Y))
-		leftPrf, lerr := inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], newY[:half], i, encryptKey[0])
-		rightPrf, rerr := inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], newY[half:], i, encryptKey[1])
+		leftPrf, lerr := inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], newY[:half], i, encryptKey[0], rnd)
+		rightPrf, rerr := inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], newY[half:], i, encryptKey[1], rnd)
 		if check(i, m.Round, lerr) || check(i, m.Round, rerr) {
 			return nil
 		}
@@ -263,8 +264,8 @@ func (inf *Info) HandleRound(i int, m *Msg, cache *Cache) *Msg {
 			return nil
 		}
 		newY := make([]abstract.Point, len(m.Y))
-		leftPrf, lerr := inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], newY[:half], i, encryptKey[0])
-		rightPrf, rerr := inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], newY[half:], i, encryptKey[1])
+		leftPrf, lerr := inf.Decrypt(m.X[:half], m.Y[:half], m.NewX[:half], newY[:half], i, encryptKey[0], rnd)
+		rightPrf, rerr := inf.Decrypt(m.X[half:], m.Y[half:], m.NewX[half:], newY[half:], i, encryptKey[1], rnd)
 		if check(i, m.Round, lerr) || check(i, m.Round, rerr) {
 			return nil
 		}

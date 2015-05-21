@@ -3,7 +3,6 @@ package shuf
 import (
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/crypto/proof"
-	"github.com/dedis/crypto/shuffle"
 )
 
 // Encrypt a message with the given public key
@@ -22,9 +21,8 @@ func (inf *Info) Encrypt(msgs []abstract.Point, h abstract.Point) (x, y []abstra
 
 // Decrypt a list of pairs with associated proof, potentially adding new encryption
 func (inf *Info) Decrypt(x, y, newX, newY []abstract.Point, node int,
-	encryptFor abstract.Point) (DecProof, error) {
+	encryptFor abstract.Point, rnd abstract.Cipher) (DecProof, error) {
 
-	rnd := inf.Suite.Cipher(abstract.RandomKey)
 	negKey := inf.Suite.Secret().Neg(inf.PrivKey(node))
 	proofs := make([][]byte, len(x))
 	sec := map[string]abstract.Secret{"-h": negKey}
@@ -41,10 +39,11 @@ func (inf *Info) Decrypt(x, y, newX, newY []abstract.Point, node int,
 		pub["X"] = x[i]
 		r := inf.Suite.Secret().Pick(rnd)
 		sec["r"] = r
-		newY[i] = inf.Suite.Point().Add(inf.Suite.Point().Mul(x[i], negKey), y[i])
-		newY[i] = inf.Suite.Point().Add(newY[i], inf.Suite.Point().Mul(encryptFor, r))
+		newY[i] = inf.Suite.Point().Mul(x[i], negKey)
+		newY[i] = newY[i].Add(newY[i], y[i])
+		newY[i] = newY[i].Add(newY[i], inf.Suite.Point().Mul(encryptFor, r))
 		pub["Y'-Y"] = inf.Suite.Point().Sub(newY[i], y[i])
-		newX[i] = inf.Suite.Point().Add(newX[i], inf.Suite.Point().Mul(nil, r))
+		newX[i] = newX[i].Add(newX[i], inf.Suite.Point().Mul(nil, r))
 		prover := p.Prover(inf.Suite, sec, pub, nil)
 		proof, proofErr := proof.HashProve(inf.Suite, "Decrypt", rnd, prover)
 		proofs[i] = proof
