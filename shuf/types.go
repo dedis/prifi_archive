@@ -56,7 +56,7 @@ type SplitProof struct {
 // Proof of decryption and re-encryption
 type DecProof struct {
 	Y     []abstract.Point // old Y
-	Proof []byte           // proof that new Y comes from old Y
+	Proof [][]byte         // proofs that new Y comes from old Y
 
 }
 
