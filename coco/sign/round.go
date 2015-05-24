@@ -16,6 +16,9 @@ type Round struct {
 	r_hat abstract.Secret // aggregate of responses
 	X_hat abstract.Point  // aggregate of public keys
 
+	Commits   []*SigningMessage
+	Responses []*SigningMessage
+
 	// own big merkle subtree
 	MTRoot     hashid.HashId   // mt root for subtree, passed upwards
 	Leaves     []hashid.HashId // leaves used to build the merkle subtre
@@ -41,11 +44,50 @@ type Round struct {
 
 	BackLink hashid.HashId
 	AccRound []byte
+
+	Vote *Vote
+	// VoteRequest  *VoteRequest  // Vote Request vote on in the round
+	// CountedVotes *CountedVotes // CountedVotes contains a subtree's votes
 }
 
 func NewRound(suite abstract.Suite) *Round {
 	round := &Round{}
+	round.Commits = make([]*SigningMessage, 0)
+	round.Responses = make([]*SigningMessage, 0)
 	round.ExceptionList = make([]abstract.Point, 0)
 	round.Log.Suite = suite
 	return round
+}
+
+type RoundType int
+
+const (
+	EmptyRT RoundType = iota
+	ViewChangeRT
+	AddRT
+	RemoveRT
+	ShutdownRT
+	NoOpRT
+	SigningRT
+)
+
+func (rt RoundType) String() string {
+	switch rt {
+	case EmptyRT:
+		return "empty"
+	case SigningRT:
+		return "signing"
+	case ViewChangeRT:
+		return "viewchange"
+	case AddRT:
+		return "add"
+	case RemoveRT:
+		return "remove"
+	case ShutdownRT:
+		return "shutdown"
+	case NoOpRT:
+		return "noop"
+	default:
+		return ""
+	}
 }

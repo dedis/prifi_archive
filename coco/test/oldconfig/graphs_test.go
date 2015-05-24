@@ -26,7 +26,7 @@ func TestTreeFromRandomGraph(t *testing.T) {
 	hc.SNodes[0].LogTest = []byte("Hello World")
 	//fmt.Println(hc.SNodes[0].NChildren())
 	//fmt.Println(hc.SNodes[0].Peers())
-	hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest})
+	hc.SNodes[0].Announce(0, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest})
 }
 
 func Benchmark1000Nodes(b *testing.B) {
@@ -34,6 +34,6 @@ func Benchmark1000Nodes(b *testing.B) {
 	hc.SNodes[0].LogTest = []byte("Hello World")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		hc.SNodes[0].Announce(&sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
+		hc.SNodes[0].Announce(0, &sign.AnnouncementMessage{LogTest: hc.SNodes[0].LogTest, Round: i})
 	}
 }

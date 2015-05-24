@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -81,7 +82,7 @@ func traverseTree(p *sign.Node,
 	if err := f(p, hc); err != nil {
 		return err
 	}
-	for _, cn := range p.Children() {
+	for _, cn := range p.Children(0) {
 		c := hc.Hosts[cn.Name()]
 		err := traverseTree(c, hc, f)
 		if err != nil {
@@ -139,7 +140,7 @@ func writeHC(b *bytes.Buffer, hc *HostConfig, p *sign.Node) error {
 	// recursively format children
 	fmt.Fprint(b, "\"children\":[")
 	i := 0
-	for _, n := range p.Children() {
+	for _, n := range p.Children(0) {
 		if i != 0 {
 			b.WriteString(", ")
 		}
@@ -241,11 +242,14 @@ func ConstructTree(
 	if generate {
 		if prikey != nil {
 			// if we have been given a private key load that
-			hc.SNodes = append(hc.SNodes, sign.NewKeyedNode(h, suite, prikey))
+			aux := sign.NewKeyedNode(h, suite, prikey)
+			aux.GenSetPool()
+			hc.SNodes = append(hc.SNodes, aux)
 			h.SetPubKey(pubkey)
 		} else {
 			// otherwise generate a random new one
 			sn := sign.NewNode(h, suite, rand)
+			sn.GenSetPool()
 			hc.SNodes = append(hc.SNodes, sn)
 			h.SetPubKey(sn.PubKey)
 		}
@@ -260,7 +264,7 @@ func ConstructTree(
 	}
 	// if the parent of this call is empty then this must be the root node
 	if parent != "" && generate {
-		h.AddParent(parent)
+		h.AddParent(0, parent)
 	}
 	// log.Println("name: ", n.Name)
 	// log.Println("prikey: ", prikey)
@@ -275,7 +279,7 @@ func ConstructTree(
 		}
 
 		if generate {
-			h.AddChildren(cname)
+			h.AddChildren(0, cname)
 		}
 
 		// recursively construct the children
@@ -368,7 +372,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		connT = TcpC
 	}
 
-	dir := coconet.NewGoDirectory()
+	dir := hc.Dir
 	hosts := make(map[string]coconet.Host)
 	nameToAddr := make(map[string]string)
 
@@ -378,7 +382,6 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 				nameToAddr[h] = h
 				// it doesn't make sense to only make 1 go host
 				if opts.Faulty == true {
-					hosts[h] = &coconet.FaultyHost{}
 					gohost := coconet.NewGoHost(h, dir)
 					hosts[h] = coconet.NewFaultyHost(gohost)
 				} else {
@@ -424,8 +427,6 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 				// only create the tcp hosts requested
 				if opts.Host == "" || opts.Host == addr {
 					if opts.Faulty == true {
-						fmt.Println("new faulty", addr)
-						hosts[addr] = &coconet.FaultyHost{}
 						tcpHost := coconet.NewTCPHost(addr)
 						hosts[addr] = coconet.NewFaultyHost(tcpHost)
 					} else {
@@ -448,6 +449,7 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 		hc.Dir = nil
 	}
 
+	log.Println("IN LOAD JSON")
 	// add a hostlist to each of the signing nodes
 	var hostList []string
 	for h := range hosts {
@@ -455,19 +457,23 @@ func LoadJSON(file []byte, optsSlice ...ConfigOptions) (*HostConfig, error) {
 	}
 	for _, sn := range hc.SNodes {
 		sn.HostList = make([]string, len(hostList))
-		copy(sn.HostList, hostList)
+		sortable := sort.StringSlice(hostList)
+		sortable.Sort()
+		copy(sn.HostList, sortable)
+		// set host list on view 0
+		log.Println("in config hostlist", sn.HostList)
+		sn.SetHostList(0, sn.HostList)
 	}
 
 	return hc, err
 }
 
 // run the given hostnames
-func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
+func (hc *HostConfig) Run(stamper bool, signType sign.Type, hostnameSlice ...string) error {
 	hostnames := make(map[string]*sign.Node)
 	if hostnameSlice == nil {
 		hostnames = hc.Hosts
 	} else {
-
 		for _, h := range hostnameSlice {
 			sn, ok := hc.Hosts[h]
 			if !ok {
@@ -476,6 +482,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 			hostnames[h] = sn
 		}
 	}
+	// set all hosts to be listening
 	for _, sn := range hostnames {
 		sn.Type = signType
 		sn.Host.Listen()
@@ -488,10 +495,10 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 		maxTime := time.Duration(2000)
 		for i := 0; i < 2000; i++ {
 			// log.Println("attempting to connect to parent")
-			// connect with the parent
-			err = sn.Connect()
+			// the host should connect with the parent
+			err = sn.Connect(0)
 			if err == nil {
-				//log.Infoln("hostconfig: connected to parent:")
+				// log.Infoln("hostconfig: connected to parent:")
 				break
 			}
 
@@ -501,7 +508,7 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 				startTime = maxTime
 			}
 		}
-		// log.Println("Succssfully connected to parent")
+		log.Println("Succssfully connected to parent")
 		if err != nil {
 			log.Fatal("failed to connect to parent")
 			return errors.New("failed to connect")
@@ -512,12 +519,10 @@ func (hc *HostConfig) Run(signType sign.Type, hostnameSlice ...string) error {
 	// wait for a little bit for connections to establish fully
 	// get rid of waits they hide true bugs
 	// time.Sleep(1000 * time.Millisecond)
-	for _, sn := range hostnames {
-		go func(sn *sign.Node) {
-			// start listening for messages from within the tree
-			// i.e. signing messages
-			sn.Listen()
-		}(sn)
+	if !stamper {
+		for _, sn := range hostnames {
+			go sn.Listen()
+		}
 	}
 	return nil
 }

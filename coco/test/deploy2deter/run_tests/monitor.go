@@ -15,7 +15,7 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// Monitor: monitors log aggregates results into RunStats
+// Monitor monitors log aggregates results into RunStats
 func Monitor(bf int) RunStats {
 	log.Println("MONITORING")
 	defer fmt.Println("DONE MONITORING")
@@ -48,8 +48,8 @@ retry:
 	if err != nil {
 		log.Fatal("unable to convert depth to be a number:", depth)
 	}
-	client_done := false
-	root_done := false
+	clientDone := false
+	rootDone := false
 	var rs RunStats
 	rs.NHosts = nh
 	rs.Depth = d
@@ -71,11 +71,11 @@ retry:
 		}
 		if bytes.Contains(data, []byte("EOF")) || bytes.Contains(data, []byte("terminating")) {
 			log.Printf(
-				"EOF/terminating Detected: need forkexec to report and clients: %b %b",
-				root_done, client_done)
+				"EOF/terminating Detected: need forkexec to report and clients: rootDone(%t) clientDone(%t)",
+				rootDone, clientDone)
 		}
 		if bytes.Contains(data, []byte("root_round")) {
-			if client_done || root_done {
+			if clientDone || rootDone {
 				// ignore after we have received our first EOF
 				continue
 			}
@@ -104,7 +104,7 @@ retry:
 			k++
 			rs.StdDev = math.Sqrt(S / (k - 1))
 		} else if bytes.Contains(data, []byte("forkexec")) {
-			if root_done {
+			if rootDone {
 				continue
 			}
 			var ss SysStats
@@ -115,12 +115,12 @@ retry:
 			rs.SysTime = ss.SysTime
 			rs.UserTime = ss.UserTime
 			log.Println("FORKEXEC:", ss)
-			if client_done {
+			if clientDone {
 				break
 			}
-			root_done = true
+			rootDone = true
 		} else if bytes.Contains(data, []byte("client_msg_stats")) {
-			if client_done {
+			if clientDone {
 				continue
 			}
 			var cms ClientMsgStats
@@ -141,10 +141,11 @@ retry:
 			observed := avg / 1000 // set avg to messages per milliseconds
 			observed = 1 / observed
 			rs.Rate = observed
-			if root_done {
+			rs.Times = cms.Times
+			if rootDone {
 				break
 			}
-			client_done = true
+			clientDone = true
 		}
 	}
 	return rs

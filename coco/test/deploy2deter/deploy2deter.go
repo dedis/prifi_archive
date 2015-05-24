@@ -40,9 +40,13 @@ var nmsgs int
 var debug bool
 var rate int
 var failures int
+var rFail int
+var fFail int
 var kill bool
 var rounds int
 var nmachs int
+var testConnect bool
+var app string
 var suite string
 
 func init() {
@@ -52,9 +56,13 @@ func init() {
 	flag.IntVar(&rate, "rate", -1, "number of milliseconds between messages: if rate > 0 then used")
 	flag.BoolVar(&debug, "debug", false, "run in debugging mode")
 	flag.IntVar(&failures, "failures", 0, "percent showing per node probability of failure")
+	flag.IntVar(&rFail, "rfail", 0, "number of consecutive rounds each root runs before it fails")
+	flag.IntVar(&fFail, "ffail", 0, "number of consecutive rounds each follower runs before it fails")
 	flag.IntVar(&rounds, "rounds", 100, "number of rounds to run for")
 	flag.BoolVar(&kill, "kill", false, "kill all running processes (but don't start anything)")
 	flag.IntVar(&nmachs, "nmachs", 32, "number of machines to use")
+	flag.BoolVar(&testConnect, "test_connect", false, "test connecting and disconnecting")
+	flag.StringVar(&app, "app", "stamp", "app to run")
 	flag.StringVar(&suite, "suite", "nist256", "abstract suite to use [nist256, nist512, ed25519]")
 }
 
@@ -89,7 +97,7 @@ func main() {
 		}(p)
 	}
 	// killssh processes on users
-	cliutils.SshRunStdout("tamas", "users.isi.deterlab.net", "killall ssh scp deter 2>/dev/null 1>/dev/null")
+	cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net", "killall ssh scp deter 2>/dev/null 1>/dev/null")
 
 	// parse the hosts.txt file to create a separate list (and file)
 	// of physical nodes and virtual nodes. Such that each host on line i, in phys.txt
@@ -176,9 +184,16 @@ func main() {
 			log.Fatal("error unable to rsync file into remote directory:", err)
 		}
 	}
-	err = cliutils.Rsync("tamas", "users.isi.deterlab.net", "remote", "")
+	err = cliutils.Rsync("dvisher", "users.isi.deterlab.net", "remote", "")
 	if err != nil {
 		log.Fatal(err)
+	}
+	killssh := exec.Command("pkill", "-f", "ssh -t -t")
+	killssh.Stdout = os.Stdout
+	killssh.Stderr = os.Stderr
+	err = killssh.Run()
+	if err != nil {
+		log.Print(err)
 	}
 
 	// setup port forwarding for viewing log server
@@ -189,10 +204,10 @@ func main() {
 		"ssh",
 		"-t",
 		"-t",
-		"tamas@users.isi.deterlab.net",
+		"dvisher@users.isi.deterlab.net",
 		"-L",
 		"8080:"+masterLogger+":10000")
-	cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		log.Fatal("failed to setup portforwarding for logging server")
 	}
@@ -200,7 +215,7 @@ func main() {
 	// run the deter lab boss nodes process
 	// it will be responsible for forwarding the files and running the individual
 	// timestamping servers
-	log.Fatal(cliutils.SshRunStdout("tamas", "users.isi.deterlab.net",
+	log.Fatal(cliutils.SshRunStdout("dvisher", "users.isi.deterlab.net",
 		"GOMAXPROCS=8 remote/deter -nmsgs="+strconv.Itoa(nmsgs)+
 			" -hpn="+strconv.Itoa(hpn)+
 			" -bf="+strconv.Itoa(bf)+
@@ -208,6 +223,10 @@ func main() {
 			" -rounds="+strconv.Itoa(rounds)+
 			" -debug="+strconv.FormatBool(debug)+
 			" -failures="+strconv.Itoa(failures)+
+			" -rfail="+strconv.Itoa(rFail)+
+			" -ffail="+strconv.Itoa(fFail)+
+			" -test_connect="+strconv.FormatBool(testConnect)+
+			" -app="+app+
 			" -suite="+suite+
 			" -kill="+strconv.FormatBool(kill)))
 }

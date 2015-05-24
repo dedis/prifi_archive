@@ -9,12 +9,14 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/context"
 
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coco"
 	"github.com/dedis/prifi/coco/coconet"
 	"github.com/dedis/prifi/coco/hashid"
 	"github.com/dedis/prifi/coco/test/logutils"
@@ -28,14 +30,22 @@ const (
 	// Basic Signature removes all Merkle Trees
 	// Collective public keys are still created and can be used
 	PubKey
+	// Basic Signature on aggregated votes
+	Voter
 )
+
+var _ Signer = &Node{}
 
 type Node struct {
 	coconet.Host
 
 	// Signing Node will Fail at FailureRate probability
-	FailureRate int
-	Rand        *rand.Rand
+	FailureRate         int
+	FailAsRootEvery     int
+	FailAsFollowerEvery int
+
+	randmu sync.Mutex
+	Rand   *rand.Rand
 
 	Type   Type
 	Height int
@@ -49,32 +59,127 @@ type Node struct {
 	nRounds       int
 	Rounds        map[int]*Round
 	Round         int // *only* used by Root( by annoucer)
+	RoundTypes    []RoundType
+	roundmu       sync.Mutex
 	LastSeenRound int // largest round number I have seen
+	RoundsAsRoot  int // latest continuous streak of rounds with sn root
 
-	CommitFunc coco.CommitFunc
-	DoneFunc   coco.DoneFunc
+	AnnounceLock sync.Mutex
+
+	CommitFunc CommitFunc
+	DoneFunc   DoneFunc
 
 	// NOTE: reuse of channels via round-number % Max-Rounds-In-Mermory can be used
-	roundLock sync.Mutex
-	ComCh     map[int]chan *SigningMessage // a channel for each round's commits
-	RmCh      map[int]chan *SigningMessage // a channel for each round's responses
-	LogTest   []byte                       // for testing purposes
-	peerKeys  map[string]abstract.Point    // map of all peer public keys
+	roundLock sync.RWMutex
+	LogTest   []byte                    // for testing purposes
+	peerKeys  map[string]abstract.Point // map of all peer public keys
 
 	closed      chan error // error sent when connection closed
-	done        chan int   // round number sent when round done
-	commitsDone chan int   // round number sent when announce/commit phase done
+	isclosed    bool
+	done        chan int // round number sent when round done
+	commitsDone chan int // round number sent when announce/commit phase done
+
+	RoundsPerView int
+	// "root" or "regular" are sent on this channel to
+	// notify the maker of the sn what role sn plays in the new view
+	viewChangeCh chan string
+	ChangingView bool // TRUE if node is currently engaged in changing the view
+	viewmu       sync.Mutex
+	ViewNo       int
+
+	timeout  time.Duration
+	timeLock sync.RWMutex
+
+	hbLock    sync.Mutex
+	heartbeat *time.Timer
+
+	// ActionsLock sync.Mutex
+	// Actions     []*VoteRequest
+
+	VoteLog         *VoteLog // log of all confirmed votes, useful for replay
+	LastSeenVote    int64    // max of all Highest Votes we've seen, and our last commited vote
+	LastAppliedVote int64    // last vote we have committed to our log
+
+	Actions map[int][]*Vote
+}
+
+// Start listening for messages coming from parent(up)
+func (sn *Node) Listen() error {
+	if sn.Pool() == nil {
+		sn.GenSetPool()
+	}
+	err := sn.get()
+	return err
+}
+
+// func (sn *Node) CheckRoundTypes(rts []RoundType) error {
+// 	if len(rts) != len(sn.RoundTypes)
+// 	for i := range sn.RoundTypes {
+//
+//
+// 	}
+// }
+//
+func (sn *Node) printRoundTypes() {
+	sn.roundmu.Lock()
+	defer sn.roundmu.Unlock()
+	for i, rt := range sn.RoundTypes {
+		if i > sn.LastSeenRound {
+			break
+		}
+		log.Println("Round", i, "type", rt.String())
+	}
+}
+
+func (sn *Node) Close() {
+	// sn.printRoundTypes()
+	sn.hbLock.Lock()
+	if sn.heartbeat != nil {
+		sn.heartbeat.Stop()
+		sn.heartbeat = nil
+		log.Println("after close", sn.Name(), "has heartbeat=", sn.heartbeat)
+	}
+	if !sn.isclosed {
+		close(sn.closed)
+		log.Printf("signing node: closing: %s", sn.Name())
+		sn.Host.Close()
+	}
+	sn.isclosed = true
+	sn.hbLock.Unlock()
+}
+
+func (sn *Node) ViewChangeCh() chan string {
+	return sn.viewChangeCh
+}
+
+func (sn *Node) Hostlist() []string {
+	return sn.HostList
+}
+
+// Returns name of node who should be the root for the next view
+// round robin is used on the array of host names to determine the next root
+func (sn *Node) RootFor(view int) string {
+	// log.Println(sn.Name(), "ROOT FOR", view)
+	var hl []string
+	if view == 0 {
+		hl = sn.HostListOn(view)
+	} else {
+		// we might not have the host list for current view
+		// safer to use the previous view's hostlist, always
+		hl = sn.HostListOn(view - 1)
+	}
+	return hl[view%len(hl)]
 }
 
 func (sn *Node) SetFailureRate(v int) {
 	sn.FailureRate = v
 }
 
-func (sn *Node) RegisterAnnounceFunc(cf coco.CommitFunc) {
+func (sn *Node) RegisterAnnounceFunc(cf CommitFunc) {
 	sn.CommitFunc = cf
 }
 
-func (sn *Node) RegisterDoneFunc(df coco.DoneFunc) {
+func (sn *Node) RegisterDoneFunc(df DoneFunc) {
 	sn.DoneFunc = df
 }
 
@@ -107,65 +212,119 @@ func (sn *Node) logTotalTime(totalTime time.Duration) {
 
 var MAX_WILLING_TO_WAIT time.Duration = 50 * time.Second
 
-func (sn *Node) StartSigningRound() error {
-	// send an announcement message to all other TSServers
-	sn.nRounds++
-	log.Infoln("root starting signing round for round: ", sn.nRounds)
+var ChangingViewError error = errors.New("In the process of changing view")
+
+func (sn *Node) StartAnnouncement(am *AnnouncementMessage) error {
+	sn.AnnounceLock.Lock()
+	defer sn.AnnounceLock.Unlock()
+
+	log.Infoln("root", sn.Name(), "starting announcement round for round: ", sn.nRounds, "on view", sn.ViewNo)
 
 	first := time.Now()
 	total := time.Now()
 	var firstRoundTime time.Duration
 	var totalTime time.Duration
+
+	ctx, cancel := context.WithTimeout(context.Background(), MAX_WILLING_TO_WAIT)
+	var cancelederr error
 	go func() {
-		err := sn.Announce(&AnnouncementMessage{LogTest: []byte("New Round"), Round: sn.nRounds})
+		var err error
+		if am.Vote != nil {
+			err = sn.Propose(am.Vote.View, am, "")
+		} else {
+			err = sn.Announce(sn.ViewNo, am)
+		}
+
 		if err != nil {
-			log.Println("Signature fails if at least one node says it failed")
 			log.Errorln(err)
+			cancelederr = err
+			cancel()
 		}
 	}()
 
 	// 1st Phase succeeded or connection error
 	select {
-	case rn := <-sn.commitsDone:
-		// check for correctness
-		if rn != sn.nRounds {
-			log.Fatal("1st Phase round number mix up")
-			return errors.New("1st Phase round number mix up")
-		}
-
+	case _ = <-sn.commitsDone:
 		// log time it took for first round to complete
 		firstRoundTime = time.Since(first)
 		sn.logFirstPhase(firstRoundTime)
 		break
-
-	case err := <-sn.closed:
-		return err
-	case <-time.After(MAX_WILLING_TO_WAIT):
-		log.Fatal("Really bad. Round did not finish commit phase and did not report network errors." + strconv.Itoa(sn.nRounds))
+	case <-sn.closed:
+		return errors.New("closed")
+	case <-ctx.Done():
+		log.Errorln(ctx.Err())
+		if ctx.Err() == context.Canceled {
+			return cancelederr
+		}
 		return errors.New("Really bad. Round did not finish commit phase and did not report network errors.")
 	}
 
 	// 2nd Phase succeeded or connection error
 	select {
-	case rn := <-sn.done:
-		// check for correctness
-		if rn != sn.nRounds {
-			log.Fatal("2nd Phase round number mix up")
-			return errors.New("2nd Phase round number mix up")
-		}
-
+	case _ = <-sn.done:
 		// log time it took for second round to complete
 		totalTime = time.Since(total)
 		sn.logSecondPhase(totalTime - firstRoundTime)
 		sn.logTotalTime(totalTime)
 		return nil
-	case err := <-sn.closed:
-		return err
-	case <-time.After(MAX_WILLING_TO_WAIT):
-		log.Fatal("Really bad. Round did not finish respond phase and did not report network errors.")
-		return errors.New("Really bad. Round did not finish respond phase and did not report network errors.")
+	case <-sn.closed:
+		return errors.New("closed")
+	case <-ctx.Done():
+		log.Errorln(ctx.Err())
+		if ctx.Err() == context.Canceled {
+			return cancelederr
+		}
+		return errors.New("Really bad. Round did not finish response phase and did not report network errors.")
+	}
+}
+
+func (sn *Node) StartVotingRound(v *Vote) error {
+	log.Println(sn.Name(), "start voting round")
+	sn.nRounds = sn.LastSeenRound
+
+	// during view changes, only accept view change related votes
+	if sn.ChangingView && v.Vcv == nil {
+		log.Println(sn.Name(), "start signing round: changingViewError")
+		return ChangingViewError
 	}
 
+	sn.nRounds++
+	v.Round = sn.nRounds
+	v.Index = int(atomic.LoadInt64(&sn.LastSeenVote)) + 1
+	v.Count = &Count{}
+	v.Confirmed = false
+	// only default fill-in view numbers when not prefilled
+	if v.View == 0 {
+		v.View = sn.ViewNo
+	}
+	if v.Av != nil && v.Av.View == 0 {
+		v.Av.View = sn.ViewNo + 1
+	}
+	if v.Rv != nil && v.Rv.View == 0 {
+		v.Rv.View = sn.ViewNo + 1
+	}
+	if v.Vcv != nil && v.Vcv.View == 0 {
+		v.Vcv.View = sn.ViewNo + 1
+	}
+	return sn.StartAnnouncement(
+		&AnnouncementMessage{LogTest: []byte("vote round"), Round: sn.nRounds, Vote: v})
+}
+
+func (sn *Node) StartSigningRound() error {
+	sn.nRounds = sn.LastSeenRound
+
+	// report view is being change, and sleep before retrying
+	sn.viewmu.Lock()
+	if sn.ChangingView {
+		log.Println(sn.Name(), "start signing round: changingViewError")
+		sn.viewmu.Unlock()
+		return ChangingViewError
+	}
+	sn.viewmu.Unlock()
+
+	sn.nRounds++
+	return sn.StartAnnouncement(
+		&AnnouncementMessage{LogTest: []byte("sign round"), Round: sn.nRounds})
 }
 
 func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node {
@@ -175,13 +334,12 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
 	sn.peerKeys = make(map[string]abstract.Point)
-	sn.ComCh = make(map[int]chan *SigningMessage, 0)
-	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closed = make(chan error, 2)
+	sn.closed = make(chan error, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
+	sn.viewChangeCh = make(chan string, 0)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -189,6 +347,9 @@ func NewNode(hn coconet.Host, suite abstract.Suite, random cipher.Stream) *Node 
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
+	sn.VoteLog = NewVoteLog()
+	sn.Actions = make(map[int][]*Vote)
+	sn.RoundsPerView = 100
 	return sn
 }
 
@@ -198,13 +359,12 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	sn.PubKey = suite.Point().Mul(nil, sn.PrivKey)
 
 	sn.peerKeys = make(map[string]abstract.Point)
-	sn.ComCh = make(map[int]chan *SigningMessage, 0)
-	sn.RmCh = make(map[int]chan *SigningMessage, 0)
 	sn.Rounds = make(map[int]*Round)
 
-	sn.closed = make(chan error, 2)
+	sn.closed = make(chan error, 20)
 	sn.done = make(chan int, 10)
 	sn.commitsDone = make(chan int, 10)
+	sn.viewChangeCh = make(chan string, 0)
 
 	sn.FailureRate = 0
 	h := fnv.New32a()
@@ -212,6 +372,9 @@ func NewKeyedNode(hn coconet.Host, suite abstract.Suite, PrivKey abstract.Secret
 	seed := h.Sum32()
 	sn.Rand = rand.New(rand.NewSource(int64(seed)))
 	sn.Host.SetSuite(suite)
+	sn.VoteLog = NewVoteLog()
+	sn.Actions = make(map[int][]*Vote)
+	sn.RoundsPerView = 100
 	return sn
 }
 
@@ -249,14 +412,61 @@ func (sn *Node) Done() chan int {
 }
 
 func (sn *Node) LastRound() int {
-	return sn.LastSeenRound
+	sn.roundmu.Lock()
+	lsr := sn.LastSeenRound
+	sn.roundmu.Unlock()
+	return lsr
+}
+
+func (sn *Node) SetLastSeenRound(round int) {
+	sn.LastSeenRound = round
 }
 
 func (sn *Node) CommitedFor(round *Round) bool {
+	sn.roundLock.RLock()
+	defer sn.roundLock.RUnlock()
+
 	if round.Log.v != nil {
 		return true
 	}
 	return false
+}
+
+// Cast on vote for Vote
+func (sn *Node) AddVotes(Round int, v *Vote) {
+	if v == nil {
+		return
+	}
+
+	round := sn.Rounds[Round]
+	cv := round.Vote.Count
+	vresp := &VoteResponse{Name: sn.Name()}
+
+	// accept what admin requested with x% probability
+	// TODO: replace with non-probabilistic approach, maybe callback
+	forProbability := 100
+	sn.randmu.Lock()
+	if p := sn.Rand.Int() % 100; p < forProbability {
+		cv.For += 1
+		vresp.Accepted = true
+	} else {
+		cv.Against += 1
+	}
+	sn.randmu.Unlock()
+
+	// log.Infoln(sn.Name(), "added votes. for:", cv.For, "against:", cv.Against)
+
+	// Generate signature on Vote with OwnVote *counted* in
+	b, err := v.MarshalBinary()
+	if err != nil {
+		log.Fatal("Marshal Binary on Counted Votes failed")
+	}
+	rand := sn.suite.Cipher([]byte(sn.Name() + strconv.Itoa(Round)))
+	vresp.Sig = ElGamalSign(sn.suite, rand, b, sn.PrivKey)
+
+	// Add VoteResponse to Votes
+	v.Count.Responses = append(v.Count.Responses, vresp)
+	round.Vote = v
 }
 
 func intToByteSlice(Round int) []byte {
@@ -294,6 +504,10 @@ func (sn *Node) SetBackLink(Round int) {
 	if prevRound >= FIRST_ROUND {
 		// My Backlink = Hash(prevRound, sn.Rounds[prevRound].BackLink, sn.Rounds[prevRound].MTRoot)
 		h := sn.suite.Hash()
+		if sn.Rounds[prevRound] == nil {
+			log.Errorln(sn.Name(), "not setting back link")
+			return
+		}
 		h.Write(intToByteSlice(prevRound))
 		h.Write(sn.Rounds[prevRound].BackLink)
 		h.Write(sn.Rounds[prevRound].MTRoot)
@@ -301,43 +515,25 @@ func (sn *Node) SetBackLink(Round int) {
 	}
 }
 
-func (sn *Node) setPool() {
+func (sn *Node) GenSetPool() {
 	var p sync.Pool
 	p.New = NewSigningMessage
-	sn.SetPool(p)
+	sn.SetPool(&p)
 }
 
-// accommodate nils
-func (sn *Node) add(a abstract.Point, b abstract.Point) {
-	if a == nil {
-		a = sn.suite.Point().Null()
-	}
-	if b != nil {
-		a.Add(a, b)
-	}
-
+func (sn *Node) SetTimeout(t time.Duration) {
+	sn.timeLock.Lock()
+	sn.timeout = t
+	sn.timeLock.Unlock()
 }
 
-// accommodate nils
-func (sn *Node) sub(a abstract.Point, b abstract.Point) {
-	if a == nil {
-		a = sn.suite.Point().Null()
-	}
-	if b != nil {
-		a.Sub(a, b)
-	}
-
+func (sn *Node) Timeout() time.Duration {
+	sn.timeLock.RLock()
+	t := sn.timeout
+	sn.timeLock.RUnlock()
+	return t
 }
 
-func (sn *Node) subExceptions(a abstract.Point, keys []abstract.Point) {
-	for _, k := range keys {
-		sn.sub(a, k)
-	}
-}
-
-func max(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
+func (sn *Node) DefaultTimeout() time.Duration {
+	return 5000 * time.Millisecond
 }

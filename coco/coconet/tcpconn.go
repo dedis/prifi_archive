@@ -3,30 +3,38 @@ package coconet
 import (
 	"encoding/gob"
 	"errors"
-	"io"
+	"math/rand"
 	"net"
 	"sync"
-	"syscall"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 
 	"github.com/dedis/crypto/abstract"
 )
 
-// TcpConn is a prototype TCP connection with gob encoding.
+var Latency = 100
+
+// TCPConn is an implementation of the Conn interface for TCP network connections.
 type TCPConn struct {
-	sync.RWMutex
+	// encLock guards the encoder and decoder and underlying conn.
+	encLock sync.Mutex
+	name    string
+	conn    net.Conn
+	enc     *gob.Encoder
+	dec     *gob.Decoder
 
-	lock sync.Mutex
-	name string
-	conn net.Conn
-	enc  *gob.Encoder
-	dec  *gob.Decoder
-
-	mupk   sync.Mutex
+	// pkLock guards the public key
+	pkLock sync.Mutex
 	pubkey abstract.Point
+
+	closed bool
 }
 
+// NewTCPConnFromNet wraps a net.Conn creating a new TCPConn using conn as the
+// underlying connection.
+// After creating a TCPConn in this fashion, it might be necessary to call SetName,
+// in order to give it an understandable name.
 func NewTCPConnFromNet(conn net.Conn) *TCPConn {
 	return &TCPConn{
 		name: conn.RemoteAddr().String(),
@@ -36,106 +44,145 @@ func NewTCPConnFromNet(conn net.Conn) *TCPConn {
 
 }
 
+// NewTCPConn takes a hostname and creates TCPConn.
+// Before calling Get or Put Connect must first be called to establish the connection.
 func NewTCPConn(hostname string) *TCPConn {
 	tp := &TCPConn{}
 	tp.name = hostname
 	return tp
 }
 
+func (tc *TCPConn) Closed() bool {
+	tc.encLock.Lock()
+	closed := tc.closed
+	tc.encLock.Unlock()
+	return closed
+}
+
+// Connect connects to the endpoint specified.
 func (tc *TCPConn) Connect() error {
-	// log.Println("tcpconn establishing new connection:", tc.name)
-	// establish the connection
 	conn, err := net.Dial("tcp", tc.name)
 	if err != nil {
 		return err
 	}
+	tc.encLock.Lock()
 	tc.conn = conn
-	// gob encoders call MarshalBinary and UnmarshalBinary
-	// TODO replace gob with minimal Put, Get interface
-	// gob nicely handles reading from the connection
-	// otherwise we would have to deal with making the tcp
-	// read and write blocking rather than non-blocking.
 	tc.enc = gob.NewEncoder(conn)
 	tc.dec = gob.NewDecoder(conn)
+	tc.encLock.Unlock()
 	return nil
 }
 
-func (tc *TCPConn) SetName(n string) {
-	tc.name = n
+// SetName sets the name of the connection.
+func (tc *TCPConn) SetName(name string) {
+	tc.name = name
 }
 
+// Name returns the name of the connection.
 func (tc *TCPConn) Name() string {
 	return tc.name
 }
 
-func (c *TCPConn) SetPubKey(pk abstract.Point) {
-	c.mupk.Lock()
-	c.pubkey = pk
-	c.mupk.Unlock()
+// SetPubKey sets the public key.
+func (tc *TCPConn) SetPubKey(pk abstract.Point) {
+	tc.pkLock.Lock()
+	tc.pubkey = pk
+	tc.pkLock.Unlock()
 }
 
-func (c *TCPConn) PubKey() abstract.Point {
-	c.mupk.Lock()
-	pl := c.pubkey
-	c.mupk.Unlock()
+// PubKey returns the public key of this peer.
+func (tc *TCPConn) PubKey() abstract.Point {
+	tc.pkLock.Lock()
+	pl := tc.pubkey
+	tc.pkLock.Unlock()
 	return pl
 }
 
-var ConnectionNotEstablished error = errors.New("connection not established")
+// ErrNotEstablished indicates that the connection has not been successfully established
+// through a call to Connect yet. It does not indicate whether the failure was permanent or
+// temporary.
+var ErrNotEstablished = errors.New("connection not established")
 
-// blocks until the put is availible
+type temporary interface {
+	Temporary() bool
+}
+
+// IsTemporary returns true if it is a temporary error.
+func IsTemporary(err error) bool {
+	t, ok := err.(temporary)
+	return ok && t.Temporary()
+}
+
+// Put puts data to the connection.
+// Returns io.EOF on an irrecoverable error.
+// Returns actual error if it is Temporary.
 func (tc *TCPConn) Put(bm BinaryMarshaler) error {
-	for tc.enc == nil {
-		log.Println("Conn not established")
-		return ConnectionNotEstablished
+	if tc.Closed() {
+		log.Errorln("tcpconn: put: connection closed")
+		return ErrClosed
 	}
+	tc.encLock.Lock()
+	if tc.enc == nil {
+		tc.encLock.Unlock()
+		return ErrNotEstablished
+	}
+	enc := tc.enc
+	tc.encLock.Unlock()
 
-	err := tc.enc.Encode(bm)
+	err := enc.Encode(bm)
 	if err != nil {
-		oe, ok := err.(*net.OpError)
-		if ok && oe.Err == syscall.EPIPE {
-			return io.EOF
+		if IsTemporary(err) {
+			return err
 		}
-		if err == io.ErrClosedPipe {
-			return io.EOF
-		}
+		tc.Close()
+		return ErrClosed
 	}
 	return err
 }
 
-// blocks until we get something
+// Get gets data from the connection.
+// Returns io.EOF on an irrecoveralbe error.
+// Returns given error if it is Temporary.
 func (tc *TCPConn) Get(bum BinaryUnmarshaler) error {
-	tc.lock.Lock()
-	defer tc.lock.Unlock()
-
-	for tc.dec == nil {
-		// panic("no decoder yet")
-		return ConnectionNotEstablished
+	if tc.Closed() {
+		log.Errorln("tcpconn: get: connection closed")
+		return ErrClosed
 	}
+	tc.encLock.Lock()
+	for tc.dec == nil {
+		tc.encLock.Unlock()
+		return ErrNotEstablished
+	}
+	dec := tc.dec
+	tc.encLock.Unlock()
 
-	err := tc.dec.Decode(bum)
+	if Latency != 0 {
+		time.Sleep(time.Duration(rand.Intn(Latency)) * time.Millisecond)
+	}
+	err := dec.Decode(bum)
 	if err != nil {
-		oe, ok := err.(*net.OpError)
-		if ok && oe.Err == syscall.EPIPE {
-			return io.EOF
+		if IsTemporary(err) {
+			return err
 		}
-
-		if err == io.ErrClosedPipe {
-			err = io.EOF
-		}
-		log.Errorln("failed to decode:", err)
+		// if it is an irrecoverable error
+		// close the channel and return that it has been closed
+		tc.Close()
+		return ErrClosed
 	}
 	return err
 }
 
+// Close closes the connection.
 func (tc *TCPConn) Close() {
-	// log.Errorln("Closing Connection")
+	log.Errorln("tcpconn: closing connection")
+	tc.encLock.Lock()
+	defer tc.encLock.Unlock()
 	if tc.conn != nil {
+		// ignore error becuase only other possibility was an invalid
+		// connection. but we don't care if we close a connection twice.
 		tc.conn.Close()
 	}
-
-	tc.lock.Lock()
-	defer tc.lock.Unlock()
+	tc.closed = true
 	tc.conn = nil
 	tc.enc = nil
 	tc.dec = nil

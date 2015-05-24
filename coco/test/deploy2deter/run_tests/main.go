@@ -35,16 +35,21 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 )
 
 type T struct {
-	nmachs   int
-	hpn      int
-	bf       int
-	rate     int
-	rounds   int
-	failures int
+	nmachs      int
+	hpn         int
+	bf          int
+	rate        int
+	rounds      int
+	failures    int
+	rFail       int
+	fFail       int
+	testConnect bool
+	app         string
 }
 
 var DefaultMachs int = 32
@@ -68,7 +73,11 @@ func RunTest(t T) (RunStats, error) {
 	rate := fmt.Sprintf("-rate=%d", t.rate)
 	rounds := fmt.Sprintf("-rounds=%d", t.rounds)
 	failures := fmt.Sprintf("-failures=%d", t.failures)
-	cmd := exec.Command("./deploy2deter", nmachs, hpn, nmsgs, bf, rate, rounds, debug, failures)
+	rFail := fmt.Sprintf("-rfail=%d", t.rFail)
+	fFail := fmt.Sprintf("-ffail=%d", t.fFail)
+	tcon := fmt.Sprintf("-test_connect=%t", t.testConnect)
+	app := fmt.Sprintf("-app=%s", t.app)
+	cmd := exec.Command("./deploy2deter", nmachs, hpn, nmsgs, bf, rate, rounds, debug, failures, rFail, fFail, tcon, app)
 	log.Println("RUNNING TEST:", cmd.Args)
 	log.Println("FAILURES PERCENT:", t.failures)
 	cmd.Stdout = os.Stdout
@@ -99,8 +108,6 @@ func RunTest(t T) (RunStats, error) {
 	case <-time.After(10 * time.Minute):
 		return rs, errors.New("timed out")
 	}
-
-	return rs, nil
 }
 
 // RunTests runs the given tests and puts the output into the
@@ -129,12 +136,7 @@ func RunTests(name string, ts []T) {
 		var runs []RunStats
 		for r := 0; r < nTimes; r++ {
 			run, err := RunTest(t)
-			if err == nil {
-				runs = append(runs, run)
-				if stopOnSuccess {
-					break
-				}
-			} else {
+			if err != nil {
 				log.Println("error running test:", err)
 			}
 
@@ -144,6 +146,13 @@ func RunTests(name string, ts []T) {
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			cmd.Run()
+			if err == nil {
+				runs = append(runs, run)
+				if stopOnSuccess {
+					break
+				}
+			}
+
 		}
 
 		if len(runs) == 0 {
@@ -160,56 +169,81 @@ func RunTests(name string, ts []T) {
 		if err != nil {
 			log.Fatal("error syncing data to test file:", err)
 		}
+
+		cl, err := os.OpenFile(
+			TestFile("client_latency_"+name+"_"+strconv.Itoa(i)),
+			os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0660)
+		if err != nil {
+			log.Fatal("error opening test file:", err)
+		}
+		_, err = cl.Write(rs[i].TimesCSV())
+		if err != nil {
+			log.Fatal("error writing client latencies to file:", err)
+		}
+		err = cl.Sync()
+		if err != nil {
+			log.Fatal("error syncing data to latency file:", err)
+		}
+		cl.Close()
+
 	}
 }
 
 // high and low specify how many milliseconds between messages
 func RateLoadTest(hpn, bf int) []T {
 	return []T{
-		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0}, // never send a message
-		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0}, // one per round
-		{DefaultMachs, hpn, bf, 500, DefaultRounds, 0},  // 10 per round
-		{DefaultMachs, hpn, bf, 50, DefaultRounds, 0},   // 100 per round
-		{DefaultMachs, hpn, bf, 30, DefaultRounds, 0},   // 1000 per round
+		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0, false, "stamp"}, // never send a message
+		{DefaultMachs, hpn, bf, 5000, DefaultRounds, 0, 0, 0, false, "stamp"}, // one per round
+		{DefaultMachs, hpn, bf, 500, DefaultRounds, 0, 0, 0, false, "stamp"},  // 10 per round
+		{DefaultMachs, hpn, bf, 50, DefaultRounds, 0, 0, 0, false, "stamp"},   // 100 per round
+		{DefaultMachs, hpn, bf, 30, DefaultRounds, 0, 0, 0, false, "stamp"},   // 1000 per round
 	}
 }
 
 func DepthTest(hpn, low, high, step int) []T {
 	ts := make([]T, 0)
 	for bf := low; bf <= high; bf += step {
-		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0})
+		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0, false, "stamp"})
 	}
 	return ts
 }
 
 func DepthTestFixed(hpn int) []T {
 	return []T{
-		{DefaultMachs, hpn, 1, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 2, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 4, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 8, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 16, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 32, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 64, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 128, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 256, 30, DefaultRounds, 0},
-		{DefaultMachs, hpn, 512, 30, DefaultRounds, 0},
+		{DefaultMachs, hpn, 1, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 2, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 4, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 8, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 16, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 32, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 64, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 128, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 256, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
+		{DefaultMachs, hpn, 512, 30, DefaultRounds, 0, 0, 0, false, "stamp"},
 	}
 }
 
 func ScaleTest(bf, low, high, mult int) []T {
 	ts := make([]T, 0)
 	for hpn := low; hpn <= high; hpn *= mult {
-		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0})
+		ts = append(ts, T{DefaultMachs, hpn, bf, 10, DefaultRounds, 0, 0, 0, false, "stamp"})
 	}
 	return ts
 }
 
-// hpn=1, bf=2, rate=5000, failures=20
+// nmachs=32, hpn=128, bf=16, rate=500, failures=20, root failures, failures
 var FailureTests = []T{
-	{DefaultMachs, 1, 2, 5000, 5, 10},
-	{DefaultMachs, 10, 2, 5000, 5, 5},
-	{DefaultMachs, 1, 2, 5000, 5, 0},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 0, 5, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 0, 10, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 5, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 5, 0, 10, true, "stamp"},
+}
+
+var VotingTest = []T{
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, true, "stamp"},
+	{DefaultMachs, 64, 16, 30, 50, 0, 0, 0, false, "stamp"},
 }
 
 func FullTests() []T {
@@ -224,13 +258,35 @@ func FullTests() []T {
 		for _, hpn := range hpns {
 			for _, bf := range bfs {
 				for _, rate := range rates {
-					tests = append(tests, T{nmach, hpn, bf, rate, DefaultRounds, failures})
+					tests = append(tests, T{nmach, hpn, bf, rate, DefaultRounds, failures, 0, 0, false, "stamp"})
 				}
 			}
 		}
 	}
 
 	return tests
+}
+
+var HostsTest = []T{
+	{DefaultMachs, 1, 2, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 2, 3, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 4, 3, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 8, 8, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 16, 16, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 32, 16, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 64, 16, 30, 20, 0, 0, 0, false, "stamp"},
+	{DefaultMachs, 128, 16, 30, 50, 0, 0, 0, false, "stamp"},
+}
+
+var VTest = []T{
+	{DefaultMachs, 1, 3, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 2, 4, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 4, 6, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 8, 8, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 16, 16, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 32, 16, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 64, 16, 10000000, 20, 0, 0, 0, false, "vote"},
+	{DefaultMachs, 128, 16, 10000000, 20, 0, 0, 0, false, "vote"},
 }
 
 func main() {
@@ -244,23 +300,33 @@ func main() {
 	if err != nil {
 		log.Fatalln("error building deploy2deter:", err)
 	}
-	// test the testing framework
+	log.Println("KILLING REMAINING PROCESSES")
+	cmd := exec.Command("./deploy2deter", "-kill=true")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
 
+	// test the testing framework
+	RunTests("vote_test_no_signing.csv", VTest)
 	// DefaultRounds = 5
 	// t := FailureTests
 	// RunTests("failure_test.csv", t)
-
-	t := ScaleTest(10, 1, 100, 2)
-	RunTests("scale_test.csv", t)
+	// RunTests("vote_test", VotingTest)
+	// RunTests("failure_test", FailureTests)
+	// RunTests("host_test", HostsTest)
+	// t := FailureTests
+	// RunTests("failure_test", t)
+	// t = ScaleTest(10, 1, 100, 2)
+	// RunTests("scale_test.csv", t)
 	// how does the branching factor effect speed
-	t = DepthTestFixed(100)
-	RunTests("depth_test.csv", t)
+	// t = DepthTestFixed(100)
+	// RunTests("depth_test.csv", t)
 
 	// load test the client
-	t = RateLoadTest(40, 10)
-	RunTests("load_rate_test_bf10.csv", t)
-	t = RateLoadTest(40, 50)
-	RunTests("load_rate_test_bf50.csv", t)
+	// t = RateLoadTest(40, 10)
+	// RunTests("load_rate_test_bf10.csv", t)
+	// t = RateLoadTest(40, 50)
+	// RunTests("load_rate_test_bf50.csv", t)
 
 }
 
@@ -272,7 +338,7 @@ func MkTestDir() {
 }
 
 func TestFile(name string) string {
-	return "test_data/" + name
+	return "test_data/" + name + ".csv"
 }
 
 func SetDebug(b bool) {
