@@ -7,9 +7,6 @@ import (
 	"io"
 )
 
-// I hate error handling in Go
-// This is why the Error monad exists
-// @RobPike: Learn Haskell
 func errs(l ...error) error {
 	for _, e := range l {
 		if e != nil {
@@ -22,6 +19,41 @@ func errs(l ...error) error {
 func myWrite(w io.Writer, b []byte) error {
 	_, e := w.Write(b)
 	return e
+}
+
+func readProof(r io.Reader) ([][]byte, error) {
+	var innerLen, outerLen int32
+	errs(binary.Read(r, binary.BigEndian, &outerLen),
+		binary.Read(r, binary.BigEndian, &innerLen))
+	result := make([][]byte, outerLen)
+	for i := range result {
+		result[i] = make([]byte, innerLen)
+		_, err := r.Read(result[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+func writeProof(w io.Writer, p [][]byte) error {
+	e := binary.Write(w, binary.BigEndian, int32(len(p)))
+	if e != nil {
+		return e
+	}
+	if len(p) > 0 {
+		e = binary.Write(w, binary.BigEndian, int32(len(p[0])))
+		if e != nil {
+			return nil
+		}
+	}
+	for _, bs := range p {
+		e = myWrite(w, bs)
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 func writePoints(w io.Writer, X []abstract.Point) error {
@@ -47,16 +79,9 @@ func writeShufProofs(w io.Writer, ps []shuf.ShufProof) error {
 		e1 := errs(
 			writePoints(w, p.X),
 			writePoints(w, p.Y),
-			binary.Write(w, binary.BigEndian, int32(len(p.Proof))),
-			binary.Write(w, binary.BigEndian, int32(len(p.Proof[0]))))
+			writeProof(w, p.Proof))
 		if e1 != nil {
 			return e1
-		}
-		for j := range p.Proof {
-			e2 := myWrite(w, p.Proof[j])
-			if e2 != nil {
-				return e2
-			}
 		}
 	}
 	return nil
@@ -81,8 +106,7 @@ func writeDecProofs(w io.Writer, ps []shuf.DecProof) error {
 	for _, p := range ps {
 		e2 := errs(
 			writePoints(w, p.Y),
-			binary.Write(w, binary.BigEndian, int32(len(p.Proof))),
-			myWrite(w, p.Proof))
+			writeProof(w, p.Proof))
 		if e2 != nil {
 			return e2
 		}
@@ -132,9 +156,8 @@ func (n Node) readMsg(r io.Reader, m *shuf.Msg) error {
 	return err
 }
 
-// How about now?
 func (n Node) readShufProofs(reader io.Reader) ([]shuf.ShufProof, error) {
-	var numProofs, proofLen, innerProofLen int32
+	var numProofs int32
 	err := binary.Read(reader, binary.BigEndian, &numProofs)
 	if numProofs < 1 || err != nil {
 		return nil, err
@@ -149,21 +172,9 @@ func (n Node) readShufProofs(reader io.Reader) ([]shuf.ShufProof, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = binary.Read(reader, binary.BigEndian, &proofLen)
+		Proofs[i].Proof, err = readProof(reader)
 		if err != nil {
 			return nil, err
-		}
-		err = binary.Read(reader, binary.BigEndian, &innerProofLen)
-		if err != nil {
-			return nil, err
-		}
-		Proofs[i].Proof = make([][]byte, proofLen)
-		for j := range Proofs[i].Proof {
-			Proofs[i].Proof[j] = make([]byte, innerProofLen)
-			_, err = reader.Read(Proofs[i].Proof[j])
-			if err != nil {
-				return nil, err
-			}
 		}
 	}
 	return Proofs, nil
@@ -188,7 +199,7 @@ func (n Node) readSplitProof(reader io.Reader) (*shuf.SplitProof, error) {
 }
 
 func (n Node) readDecProofs(reader io.Reader) ([]shuf.DecProof, error) {
-	var numProofs, proofLen int32
+	var numProofs int32
 	err := binary.Read(reader, binary.BigEndian, &numProofs)
 	if numProofs < 1 {
 		return nil, err
@@ -199,12 +210,7 @@ func (n Node) readDecProofs(reader io.Reader) ([]shuf.DecProof, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = binary.Read(reader, binary.BigEndian, &proofLen)
-		if err != nil {
-			return nil, err
-		}
-		proofs[i].Proof = make([]byte, proofLen)
-		_, err = reader.Read(proofs[i].Proof)
+		proofs[i].Proof, err = readProof(reader)
 		if err != nil {
 			return nil, err
 		}

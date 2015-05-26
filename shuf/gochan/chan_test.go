@@ -29,10 +29,10 @@ func setup() (*shuf.Info, []abstract.Point) {
 		NumNodes:     4,
 		NumClients:   16,
 		NumRounds:    8,
-		ResendTime:   time.Millisecond * time.Duration(333),
+		ResendTime:   time.Millisecond * time.Duration(100),
 		MsgsPerGroup: 8,
 		MaxResends:   3,
-		Timeout:      time.Second * time.Duration(3),
+		Timeout:      time.Second * time.Duration(7),
 	}, 2)
 	messages := make([]abstract.Point, 16)
 	for i := range messages {
@@ -41,15 +41,15 @@ func setup() (*shuf.Info, []abstract.Point) {
 	return inf, messages
 }
 
-func TestNeff(t *testing.T) {
-	inf, messages := setup()
-	inf.Shuffle = shuf.Neff{inf}
-	inf.Split = shuf.Butterfly{inf}
-	var wg sync.WaitGroup
-	wg.Add(inf.NumClients)
-	ChanShuffle(inf, messages, &wg)
-	wg.Wait()
-}
+// func TestNeff(t *testing.T) {
+// 	inf, messages := setup()
+// 	inf.Shuffle = shuf.Neff{inf}
+// 	inf.Split = shuf.Butterfly{inf}
+// 	var wg sync.WaitGroup
+// 	wg.Add(inf.NumClients)
+// 	ChanShuffle(inf, messages, &wg)
+// 	wg.Wait()
+// }
 
 func TestBiffle(t *testing.T) {
 	inf, messages := setup()
