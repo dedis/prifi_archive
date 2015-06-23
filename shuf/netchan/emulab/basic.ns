@@ -1,0 +1,18 @@
+set ns [new Simulator]
+source tb_compat.tcl
+
+set nodeA [$ns node]
+set nodeB [$ns node]
+set nodeC [$ns node]
+set lan0 [$ns make-lan "$nodeC $nodeB $nodeA " 100Mb 0ms]
+tb-set-node-os $nodeA UBUNTU14-64-STD
+tb-set-node-os $nodeB UBUNTU14-64-STD
+tb-set-node-os $nodeC UBUNTU14-64-STD
+tb-set-sync-server $nodeA
+tb-set-node-startcmd $nodeA "/proj/Dissent/shuffle/mainserver.sh 3 1 2 2"
+tb-set-node-startcmd $nodeB "/proj/Dissent/shuffle/client.sh 0"
+tb-set-node-startcmd $nodeC "/proj/Dissent/shuffle/client.sh 1"
+$ns rtproto Static
+$ns run
+
+

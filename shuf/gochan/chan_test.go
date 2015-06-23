@@ -41,15 +41,15 @@ func setup() (*shuf.Info, []abstract.Point) {
 	return inf, messages
 }
 
-// func TestNeff(t *testing.T) {
-// 	inf, messages := setup()
-// 	inf.Shuffle = shuf.Neff{inf}
-// 	inf.Split = shuf.Butterfly{inf}
-// 	var wg sync.WaitGroup
-// 	wg.Add(inf.NumClients)
-// 	ChanShuffle(inf, messages, &wg)
-// 	wg.Wait()
-// }
+func TestNeff(t *testing.T) {
+	inf, messages := setup()
+	inf.Shuffle = shuf.Neff{inf}
+	inf.Split = shuf.Butterfly{inf}
+	var wg sync.WaitGroup
+	wg.Add(inf.NumClients)
+	ChanShuffle(inf, messages, &wg)
+	wg.Wait()
+}
 
 func TestBiffle(t *testing.T) {
 	inf, messages := setup()
