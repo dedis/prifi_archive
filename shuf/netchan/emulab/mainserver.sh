@@ -25,6 +25,6 @@ sudo apt --assume-yes install golang
 ./server 0 config nodes clients pubkeys 0.priv &
 SERVER=$!
 emulab-sync -n init
-emulab-sync -i $1 -n finish
+emulab-sync -a -i $1 -n finish
 emulab-sync -n finish
 kill $SERVER
