@@ -9,9 +9,7 @@ tb-set-node-os $nodeA UBUNTU14-64-STD
 tb-set-node-os $nodeB UBUNTU14-64-STD
 tb-set-node-os $nodeC UBUNTU14-64-STD
 tb-set-sync-server $nodeA
-tb-set-node-startcmd $nodeA "/proj/Dissent/shuffle/mainserver.sh 3 1 2 2"
-tb-set-node-startcmd $nodeB "/proj/Dissent/shuffle/client.sh 0"
-tb-set-node-startcmd $nodeC "/proj/Dissent/shuffle/client.sh 1"
+tb-set-tarfiles /usr/local http://golang.org/dl/go1.4.2.linux-386.tar.gz
 $ns rtproto Static
 $ns run
 
