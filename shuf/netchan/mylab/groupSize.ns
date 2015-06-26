@@ -1,21 +1,20 @@
 set ns [new Simulator]
 source tb_compat.tcl
 set lanstr ""
-for {set x 0} {$x<12} {incr x} {
+for {set x 0} {$x<48} {incr x} {
   set node($x) [$ns node]
   append lanstr "$node($x) "
   tb-set-node-os $node($x) UBUNTU14-64-STD
   if {$x == 0} {
     tb-set-sync-server $node($x)
-    tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/wrapperG.sh /etc/hosts 0 2 8 1 4 8 mainserver.sh"
-  } elseif {$x < 4} {
-    tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/wrapperG.sh /etc/hosts $x 2 8 1 4 8 server.sh"
+    tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/remote.sh 0 mainserver.sh"
+  } elseif {$x < 16} {
+    tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/remote.sh $x server.sh"
   } else {
-    tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/wrapperG.sh /etc/hosts [expr $x - 4] 2 8 1 4 8 client.sh"
+    tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/remote.sh [expr $x - 16] client.sh"
   }
 }
 set big-lan [$ns make-lan "$lanstr" 100Mb 0ms]
-tb-set-tarfiles /usr/local http://golang.org/dl/go1.4.2.linux-386.tar.gz
 $ns rtproto Static
 $ns run
 

@@ -1,11 +1,19 @@
 #!/bin/sh
-
-(for x in `seq 12`; do echo localhost; done) > /tmp/fakehosts
-./wrapperG.sh /tmp/fakehosts 0 2 8 1 4 8 mainserver.sh &
-for x in `seq 11`; do
-  if [ $x -lt 4 ]
-  then ./wrapperG.sh /tmp/fakehosts $x 2 8 1 4 8 server.sh &
-  else ./wrapperG.sh /tmp/fakehosts `expr $x - 4` 2 8 1 4 8 client.sh &
+trap 'jobs -p | xargs kill' EXIT
+rm -f /tmp/hosts
+for x in `seq 48`; do
+  echo 'localhost:'`expr 8999 + $x` >> /tmp/hosts
+done
+./wrapperG.sh 0 2 32 4 16 32 mainserver.sh &
+for x in `seq 47`; do
+  if [ $x -lt 16 ]
+  then ./wrapperG.sh $x 2 32 4 16 32 server.sh &
+  else ./wrapperG.sh `expr $x - 16` 2 32 4 16 32 client.sh &
   fi
 done
 wait
+
+while pgrep -P "$$" > /dev/null; do
+  wait
+done
+echo flushdb | redis-cli
