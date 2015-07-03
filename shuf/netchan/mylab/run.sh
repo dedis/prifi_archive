@@ -55,9 +55,10 @@ while [ $mpg -le $maxSize ]; do
       for c in 0 1; do
         export clientId=`echo "$nodeId+$c*$servers" |bc`
         startClient 2>&1 | tee -a ~/logs/client$clientId.log | awk '
+         BEGIN {CORRUPTED=0}
          /real/ {TIME = $2}
          /corrupted/ {CORRUPTED += 1}
-         END {print '$clientId' ",", '$mpg' ",", '$a' ",", TIME, CORRUPTED}' >> ~/stats/client$clientId.csv &
+         END {print '$clientId' ",", '$mpg' ",", '$a' ",", TIME ",", CORRUPTED}' >> ~/stats/client$clientId.csv &
       done
       echo NODE $nodeId on `sed -n \`expr $nodeId + 1\`p $nodesFile` >> ~/logs/server$nodeId.log 
       ./server $nodeId /tmp/config-$nodeId $nodesFile $clientsFile pubkeys $nodeId.priv >> ~/logs/server$nodeId.log 2>&1 &
