@@ -1,16 +1,15 @@
 set ns [new Simulator]
 source tb_compat.tcl
-
-set nodeA [$ns node]
-set nodeB [$ns node]
-set nodeC [$ns node]
-set lan0 [$ns make-lan "$nodeC $nodeB $nodeA " 100Mb 0ms]
-tb-set-node-os $nodeA UBUNTU14-64-STD
-tb-set-node-os $nodeB UBUNTU14-64-STD
-tb-set-node-os $nodeC UBUNTU14-64-STD
-tb-set-sync-server $nodeA
-tb-set-tarfiles /usr/local http://golang.org/dl/go1.4.2.linux-386.tar.gz
+set lanstr ""
+for {set x 0} {$x<3} {incr x} {
+  set node($x) [$ns node]
+  append lanstr "$node($x) "
+  tb-set-node-os $node($x) UBUNTU14-64-STD
+  if {$x == 0} {
+    tb-set-sync-server $node($x)
+  }
+}
+set big-lan [$ns make-lan "$lanstr" 100Mb 0ms]
 $ns rtproto Static
 $ns run
-
 

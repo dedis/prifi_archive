@@ -9,17 +9,24 @@ CONFIG FILES
 All testing commands require a JSON configuration file with the following
 fields:
 
-	NumNodes     int
-	NumClients   int
-	NumRounds    int
-  ResendTime   milliseconds
-  Timeout      seconds
-  MsgsPerGroup int
-  Seed         int
+	NumNodes      int
+	NumClients    int
+	NumRounds     int
+  ResendTime    milliseconds
+  Timeout       seconds
+  MsgsPerGroup  int
+  Seed          int
+  MaxResends    int
+  ActiveClients int
 
-NumRounds refers to the total number of  steps performed by all shuffle
-groups, plus the number of transfers between shuffle groups. MsgsPerGroup
-refers to the number of client pairs shuffled by each shuffle-group.
+NumRounds refers to the total number of  steps performed by all shuffle groups,
+plus the number of transfers between shuffle groups. MsgsPerGroup refers to the
+number of client pairs shuffled by each shuffle-group. ActiveClients gives the
+number of clients sending messages (instead of the null message). Other fields
+should be self explanatory. In addition, the following fields are optional:
+
+Shuffle  [Biffle   | Neff]
+Split    [Conflict | Butterfly]
 
 
 CHANNEL SHUFFLE
@@ -27,9 +34,9 @@ CHANNEL SHUFFLE
 
 The files in the gochan subdirectory allow the shuffle techniques above to be
 run on a single machine, using Go's lightweight channels. Tests may be invoked
-by running gochan [configFile]. To run the tests on multiple OS threads, set
-the GOMAXPROCS environment varaible to the number of OS threads you want to
-use.
+by running 'gochan [configFile]'. To run the tests on multiple OS threads, set the
+GOMAXPROCS environment varaible to the number of OS threads you want to use.
+Channel shuffles can also be run through the usual 'go test' command. 
 
 
 NETWORK SHUFFLE
@@ -42,19 +49,29 @@ client [id] [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [message]
 server [id] [configFile] [nodeURIs] [clientURIs] [nodePubKeys] [privKey]
 genkey [pubkeyFile] [privkeyFile]
 
-At a higher level, we provide scripts, which require login access to all nodes
-and clients without a password.
-
-netDist.sh [configFile] [clientURIs] [nodeURIs]
-netTest.sh [configFile] [clientURIs] [nodeURIs]
-
 nodeURIs and clientURIs are newline separated files of URIs participating in
 the shuffle.
 
 nodePubKeys is a directory of public keys: if nodePubKeys was 'pubKeys' and
 there was one node, that node's public key would be found in 'pubKeys/1.pub'.
-
 privKey is a file containing the given node's private key. 
+
+A set of shell scripts in the netchan/mylab directory allow these commands to be
+run on Emulab.  Just rsync the directory with /proj/Dissent/shuffle. The config
+file groupSize.ns defines a network topology to test how total communication
+time changes with respect to group size.  The config file conflict.ns runs the
+same tests, but using a conflict shuffle.  The config file numConflicts.ns tests
+the number of conflicts as the number of active clients changes.
+
+To view the results of a test, cd to ~/logs. Grep for panic to see if the test
+succeeded. If no errors are found, cd to ~/stats. Run 'cat * > input', then run
+the file mylab/process.py. You will be put into an interactive Python session.
+Four tables will be in scope: means, mins, and maxs, which contain the mean, min
+and max runtimes for each independent variable.
+
+The scripts can also be run locally. Start an instance of redis-server, add the
+current directory (mylab) to your path, and run local.sh. It will launch a
+different process for each Emulab node
 
 
 PROTOCOL

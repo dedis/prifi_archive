@@ -34,11 +34,15 @@ func (inf *Info) HandleClient(i int, m *Msg) int {
 		return 0
 	}
 	for _, val := range m.Y {
-		d, e := val.Data()
-		if e != nil {
-			fmt.Printf("Client %v: Data got corrupted\n", i)
+		if val.Equal(inf.Suite.Point().Null()) {
+			fmt.Printf("Client %v: <null>\n", i)
 		} else {
-			fmt.Printf("Client %v: %v\n", i, string(d))
+			d, e := val.Data()
+			if e != nil {
+				fmt.Printf("Client %v: Data got corrupted\n", i)
+			} else {
+				fmt.Printf("Client %v: %v\n", i, string(d))
+			}
 		}
 	}
 	return len(m.Y)

@@ -1,19 +1,17 @@
 #!/bin/sh
 trap 'jobs -p | xargs kill' EXIT
+
+redis-cli flushdb
 rm -f /tmp/hosts
+rm -rf ~/logs
+rm -rf ~/stats
+rm -f *.priv
+rm -rf pubkeys
+
 for x in `seq 48`; do
   echo 'localhost:'`expr 8999 + $x` >> /tmp/hosts
 done
-./wrapperG.sh 0 2 32 4 16 32 mainserver.sh &
-for x in `seq 47`; do
-  if [ $x -lt 16 ]
-  then ./wrapperG.sh $x 2 32 4 16 32 server.sh &
-  else ./wrapperG.sh `expr $x - 16` 2 32 4 16 32 client.sh &
-  fi
+for x in `seq 0 15`; do
+  env nodeId=$x mpg=2 shuffle=Butterfly split=Neff maxSize=32 times=1 servers=16 clients=32 minClients=1 maxClients=4 ./run.sh &
 done
 wait
-
-while pgrep -P "$$" > /dev/null; do
-  wait
-done
-echo flushdb | redis-cli

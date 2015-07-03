@@ -5,7 +5,7 @@
 ,"ResendTime": 333
 ,"MsgsPerGroup": 2
 ,"Seed": 2
-,"Timeout": 5
+,"Timeout": 100
 ,"MaxResends": 3
 ,"ActiveClients": 2
 }
