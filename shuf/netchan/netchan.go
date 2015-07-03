@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 )
@@ -45,6 +46,10 @@ type CFile struct {
 
 // Handle an incoming connection on the server
 func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, clients []string) {
+	var mstats runtime.MemStats
+	runtime.ReadMemStats(&mstats)
+	fmt.Printf("ALLOC: %d,%d,%d,%d\n", mstats.HeapSys, mstats.HeapAlloc, mstats.HeapIdle, mstats.HeapReleased)
+
 	defer conn.Close()
 	s := <-shared
 	defer func() { shared <- s }()
