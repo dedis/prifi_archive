@@ -2,7 +2,6 @@ package netchan
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
 	"log"
@@ -174,7 +173,7 @@ func (n Node) StartClient(nodes []string, msgPoint abstract.Point, port string) 
 		os.Exit(0)
 	case <-time.After(n.Inf.Timeout):
 		ln.Close()
-		fmt.Printf("Client %d timed out\n", n.C)
+		log.Printf("Client %d timed out\n", n.C)
 		os.Exit(1)
 	}
 }

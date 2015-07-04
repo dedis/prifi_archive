@@ -1,6 +1,9 @@
 #!/bin/sh
 trap 'jobs -p | xargs kill' EXIT
 
+go build ~/go/src/github.com/dedis/prifi/shuf/netchan/client/client.go
+go build ~/go/src/github.com/dedis/prifi/shuf/netchan/server/server.go
+go build ~/go/src/github.com/dedis/prifi/shuf/netchan/genkey/genkey.go
 redis-cli flushdb
 rm -f /tmp/hosts
 rm -rf ~/logs

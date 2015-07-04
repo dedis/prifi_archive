@@ -2,10 +2,10 @@ package netchan
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
 	"io"
+	"log"
 )
 
 func errs(l ...error) error {
@@ -58,7 +58,9 @@ func writeProof(w io.Writer, p [][]byte) error {
 }
 
 func writePoints(w io.Writer, X []abstract.Point) error {
-	err1 := binary.Write(w, binary.BigEndian, int32(len(X)))
+	l := int32(len(X))
+	log.Printf("Writing %d pairs", l)
+	err1 := binary.Write(w, binary.BigEndian, l)
 	if err1 != nil {
 		return err1
 	}
@@ -223,7 +225,7 @@ func (n Node) readPoints(reader io.Reader) ([]abstract.Point, error) {
 	var numPairs int32
 	err := binary.Read(reader, binary.BigEndian, &numPairs)
 	if numPairs > 0 && err == nil {
-		fmt.Printf("Requested space for %d pairs\n", numPairs)
+		log.Printf("Requested space for %d pairs", numPairs)
 		X := make([]abstract.Point, numPairs)
 		for i := range X {
 			X[i] = n.Inf.Suite.Point()

@@ -8,7 +8,7 @@ for {set x 0} {$x<16} {incr x} {
   if {$x == 0} {
     tb-set-sync-server $node($x)
   }
-  tb-set-node-startcmd $node($x) "cd /proj/Dissent/shuffle; ./remote.sh $x"
+  tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/remote.sh $x"
 }
 set big-lan [$ns make-lan "$lanstr" 100Mb 0ms]
 $ns rtproto Static
