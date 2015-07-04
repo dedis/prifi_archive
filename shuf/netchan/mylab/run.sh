@@ -11,7 +11,7 @@ fi
 
 startClient () {
   emulab-sync -n init$mpg$t$a
-  echo CLIENT $clientId on `sed -n \`expr $clientId + 1\`p $clientsFile`
+  echo CLIENT $clientId on `sed -n \`expr $clientId + 1\`p $clientsFile` mpg=$mpg a=$a t=$t
   time -p ./client $clientId /tmp/config-$nodeId $nodesFile $clientsFile pubkeys
   emulab-sync -n finish$mpg$t$a
 }
@@ -60,7 +60,7 @@ while [ $mpg -le $maxSize ]; do
          /corrupted/ {CORRUPTED += 1}
          END {print '$clientId' ",", '$mpg' ",", '$a' ",", TIME ",", CORRUPTED}' >> ~/stats/client$clientId.csv &
       done
-      echo NODE $nodeId on `sed -n \`expr $nodeId + 1\`p $nodesFile` >> ~/logs/server$nodeId.log 
+      echo NODE $nodeId on `sed -n \`expr $nodeId + 1\`p $nodesFile` mpg=$mpg a=$a t=$t >> ~/logs/server$nodeId.log 
       ./server $nodeId /tmp/config-$nodeId $nodesFile $clientsFile pubkeys $nodeId.priv >> ~/logs/server$nodeId.log 2>&1 &
       SERVER=$!
       echo 'server up' >> ~/logs/server$nodeId.log 

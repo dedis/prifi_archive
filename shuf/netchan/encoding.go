@@ -2,6 +2,7 @@ package netchan
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
 	"io"
@@ -222,6 +223,7 @@ func (n Node) readPoints(reader io.Reader) ([]abstract.Point, error) {
 	var numPairs int32
 	err := binary.Read(reader, binary.BigEndian, &numPairs)
 	if numPairs > 0 && err == nil {
+		fmt.Printf("Requested space for %d pairs\n", numPairs)
 		X := make([]abstract.Point, numPairs)
 		for i := range X {
 			X[i] = n.Inf.Suite.Point()
