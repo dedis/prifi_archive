@@ -5,15 +5,15 @@ export nodesFile=/tmp/nodesFile$nodeId
 export clientsFile=/tmp/clientsFile$nodeId
 
 if [ $nodeId -eq 0 ]
-then export esync="emulab-sync -i "`echo $clients+$servers-1 | bc`
-else export esync="emulab-sync"
+then export esync="$syncprog -i "`echo $clients+$servers-1 | bc`
+else export esync=$syncprog
 fi
 
 startClient () {
-  emulab-sync -n init$mpg$t$a
+  $syncprog -n init$mpg$t$a
   echo CLIENT $clientId on `sed -n \`expr $clientId + 1\`p $clientsFile` mpg=$mpg a=$a t=$t
   time -p ./client $clientId /tmp/config-$nodeId $nodesFile $clientsFile pubkeys
-  emulab-sync -n finish$mpg$t$a
+  $syncprog -n finish$mpg$t$a
 }
 
 # calculate rounds
@@ -29,17 +29,22 @@ scale = 0
 head -n $servers /tmp/hosts > $nodesFile
 tail -n $clients /tmp/hosts > $clientsFile
 
+mkdir -p ~/logs
+mkdir -p ~/stats
+
 # synchronize servers and keys
 mkdir -p pubkeys
-./genkey pubkeys/$nodeId.pub $nodeId.priv
+echo GENERATING KEY $nodeId >> ~/logs/server$nodeId.log 
+./genkey pubkeys/$nodeId.pub $nodeId.priv 2>&1 >> ~/logs/server$nodeId.log 
+echo Exited with status $! >> ~/logs/server$nodeId.log
+echo DONE GENERATING KEY $nodeId >> ~/logs/server$nodeId.log
+cat $nodeId.priv 2>> ~/logs/server$nodeId.log >/dev/null
 if [ $nodeId -eq 0 ]
-then emulab-sync -i `echo $servers-1 | bc` -n install
-else emulab-sync -n install
+then $syncprog -i `echo $servers-1 | bc` -n install
+else $syncprog -n install
 fi
 
 # run it
-mkdir -p ~/logs
-mkdir -p ~/stats
 while [ $mpg -le $maxSize ]; do
   for a in `seq $minClients $maxClients`; do
     export a
@@ -61,6 +66,7 @@ while [ $mpg -le $maxSize ]; do
          END {print '$clientId' ",", '$mpg' ",", '$a' ",", TIME ",", CORRUPTED}' >> ~/stats/client$clientId.csv &
       done
       echo NODE $nodeId on `sed -n \`expr $nodeId + 1\`p $nodesFile` mpg=$mpg a=$a t=$t >> ~/logs/server$nodeId.log 
+      echo STARTING SERVER >> ~/logs/server$nodeId.log 
       ./server $nodeId /tmp/config-$nodeId $nodesFile $clientsFile pubkeys $nodeId.priv >> ~/logs/server$nodeId.log 2>&1 &
       SERVER=$!
       echo 'server up' >> ~/logs/server$nodeId.log 
@@ -68,6 +74,7 @@ while [ $mpg -le $maxSize ]; do
       $esync -n finish$mpg$t$a
       kill $SERVER
       wait
+      echo SERVER IS DEAD >> ~/logs/server$nodeId.log 
     done
   done
   mpg=`echo $mpg*2 | bc`
