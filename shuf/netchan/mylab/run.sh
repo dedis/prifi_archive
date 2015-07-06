@@ -12,7 +12,7 @@ fi
 startClient () {
   $syncprog -n init$mpg$t$a
   echo CLIENT $clientId on `sed -n \`expr $clientId + 1\`p $clientsFile` mpg=$mpg a=$a t=$t
-  time -p ./client $clientId /tmp/config-$nodeId $nodesFile $clientsFile /tmp/pubkeys
+  time -p ./client $clientId /tmp/config-$nodeId $nodesFile $clientsFile ~/pubkeys
   $syncprog -n finish$mpg$t$a
 }
 
@@ -32,22 +32,6 @@ me=`sed -n \`expr $nodeId + 1\`'p' $nodesFile | cut -d: -f1`
 
 mkdir -p ~/logs
 mkdir -p ~/stats
-
-# generate key
-mkdir -p /tmp/pubkeys
-./genkey /tmp/pubkeys/$nodeId.pub /tmp/$nodeId.priv 2>&1 >> ~/logs/server$nodeId.log 
-echo Key generated with status $? >> ~/logs/server$nodeId.log
-cat /tmp/$nodeId.priv 2>> ~/logs/server$nodeId.log >/dev/null
-
-# sync the key
-for n in `cat $nodesFile | cut -d: -f1 | sort | uniq | fgrep -v $me`; do
-  scp /tmp/pubkeys/$nodeId.pub $n:/tmp/pubkeys/$nodeId.pub
-done
-
-if [ $nodeId -eq 0 ]
-then $syncprog -i `echo $servers-1 | bc` -n install
-else $syncprog -n install
-fi
 
 # run it
 while [ $mpg -le $maxSize ]; do
@@ -72,7 +56,7 @@ while [ $mpg -le $maxSize ]; do
       done
       echo NODE $nodeId on `sed -n \`expr $nodeId + 1\`p $nodesFile` mpg=$mpg a=$a t=$t >> ~/logs/server$nodeId.log 
       echo STARTING SERVER >> ~/logs/server$nodeId.log 
-      ./server $nodeId /tmp/config-$nodeId $nodesFile $clientsFile /tmp/pubkeys /tmp/$nodeId.priv >> ~/logs/server$nodeId.log 2>&1 &
+      ./server $nodeId /tmp/config-$nodeId $nodesFile $clientsFile ~/pubkeys ~/privkeys/$nodeId.priv >> ~/logs/server$nodeId.log 2>&1 &
       SERVER=$!
       echo 'server up' >> ~/logs/server$nodeId.log 
       $esync -n init$mpg$t$a
