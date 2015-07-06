@@ -49,20 +49,24 @@ func (n Node) handleNodeConnection(conn net.Conn, shared chan Shared, nodes, cli
 	defer func() { shared <- s }()
 	round := n.Inf.Active[n.C][s.RIdx]
 	var msgRound int32
-	binary.Read(conn, binary.BigEndian, &msgRound)
+	err := binary.Read(conn, binary.BigEndian, &msgRound)
+	if err != nil {
+		log.Printf("Error: node %d round %d: %s", n.C, round, err.Error())
+		return
+	}
 	log.Printf("Node %d: got message with round %d on round %d\n", n.C, msgRound, round)
 	if msgRound != round {
 		return
 	}
-	_, e := conn.Write([]byte{1})
-	if e != nil {
-		log.Printf("Node %d: cannot ack; %s\n", n.C, e.Error())
+	_, err = conn.Write([]byte{1})
+	if err != nil {
+		log.Printf("Error: node %d: cannot ack; %s\n", n.C, err.Error())
 		return
 	}
 	var m shuf.Msg
-	err := n.readMsg(conn, &m)
+	err = n.readMsg(conn, &m)
 	if err != nil {
-		log.Printf("Node %d: invalid message; %s\n", n.C, err.Error())
+		log.Printf("Error: node %d: invalid message; %s\n", n.C, err.Error())
 		return
 	}
 	m.Round = round
@@ -104,10 +108,13 @@ func (n Node) handleClientConnection(conn net.Conn, seen chan int, die chan bool
 func (n Node) sendClientMsg(m *shuf.Msg, uri string) {
 	conn, err := net.Dial("tcp", uri)
 	if err != nil {
-		log.Printf("%s\n", err.Error())
+		log.Printf("Error: %s\n", err.Error())
 	} else {
 		defer conn.Close()
 		err = writeMsg(conn, m)
+		if err != nil {
+			log.Printf("Error: %s\n", err.Error())
+		}
 	}
 }
 
@@ -116,17 +123,29 @@ func (n Node) sendMsg(m *shuf.Msg, uri string) {
 	for i := 0; i < n.Inf.MaxResends+1; i++ {
 		conn, err := net.Dial("tcp", uri)
 		if err != nil {
-			log.Printf("Node %d: %s\n", n.C, err.Error())
+			log.Printf("Error: node %d: %s\n", n.C, err.Error())
 			time.Sleep(n.Inf.ResendTime)
 			continue
 		}
 
 		// Check if the round number of ok
-		binary.Write(conn, binary.BigEndian, int32(m.Round))
-		conn.SetReadDeadline(time.Now().Add(n.Inf.ResendTime))
+		err = binary.Write(conn, binary.BigEndian, int32(m.Round))
+		if err != nil {
+			conn.Close()
+			log.Printf("Write round error: node %d: %s\n", n.C, err.Error())
+			time.Sleep(n.Inf.ResendTime)
+			continue
+		}
+		err = conn.SetReadDeadline(time.Now().Add(n.Inf.ResendTime))
+		if err != nil {
+			conn.Close()
+			log.Printf("Set deadline error: node %d: %s\n", n.C, err.Error())
+			time.Sleep(n.Inf.ResendTime)
+			continue
+		}
 		okBuf := make([]byte, 1)
 		_, err = conn.Read(okBuf)
-		if err != nil {
+		if err != nil { // Not ready for message
 			conn.Close()
 			time.Sleep(n.Inf.ResendTime)
 			continue
@@ -134,7 +153,9 @@ func (n Node) sendMsg(m *shuf.Msg, uri string) {
 		err = writeMsg(conn, m)
 		conn.Close()
 		if err != nil {
-			log.Printf("Node %d: couldn't write message; %s\n", n.C, err.Error())
+			log.Printf("Write msg error: node %d; %s\n", n.C, err.Error())
+			time.Sleep(n.Inf.ResendTime)
+			continue
 		}
 		return
 	}

@@ -24,8 +24,12 @@ func myWrite(w io.Writer, b []byte) error {
 
 func readProof(r io.Reader) ([][]byte, error) {
 	var innerLen, outerLen int32
-	errs(binary.Read(r, binary.BigEndian, &outerLen),
+	e := errs(binary.Read(r, binary.BigEndian, &outerLen),
 		binary.Read(r, binary.BigEndian, &innerLen))
+	if e != nil {
+		return nil, e
+	}
+	log.Printf("Requested %d proofs of size %d", outerLen, innerLen)
 	result := make([][]byte, outerLen)
 	for i := range result {
 		result[i] = make([]byte, innerLen)
@@ -38,14 +42,18 @@ func readProof(r io.Reader) ([][]byte, error) {
 }
 
 func writeProof(w io.Writer, p [][]byte) error {
-	e := binary.Write(w, binary.BigEndian, int32(len(p)))
+	var innerlen, outerlen int32
+	outerlen = int32(len(p))
+	e := binary.Write(w, binary.BigEndian, outerlen)
 	if e != nil {
 		return e
 	}
 	if len(p) > 0 {
-		e = binary.Write(w, binary.BigEndian, int32(len(p[0])))
+		innerlen = int32(len(p[0]))
+		log.Printf("Writing %d proofs of size %d", outerlen, innerlen)
+		e = binary.Write(w, binary.BigEndian, innerlen)
 		if e != nil {
-			return nil
+			return e
 		}
 	}
 	for _, bs := range p {
@@ -128,7 +136,6 @@ func writeSplitProof(w io.Writer, p *shuf.SplitProof) error {
 		writePoints(w, p.Y))
 }
 
-// Do you see why error handling in Go sucks yet?
 func (n Node) readMsg(r io.Reader, m *shuf.Msg) error {
 	var err error
 	m.X, err = n.readPoints(r)
