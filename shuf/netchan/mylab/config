@@ -2,10 +2,10 @@
 "NumNodes": 1
 ,"NumClients": 2
 ,"NumRounds": 8
-,"ResendTime": 333
+,"ResendTime": 533
 ,"MsgsPerGroup": 2
 ,"Seed": 2
-,"Timeout": 100
+,"Timeout": 200
 ,"MaxResends": 3
 ,"ActiveClients": 2
 }

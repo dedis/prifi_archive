@@ -24,13 +24,16 @@ func myWrite(w io.Writer, b []byte) error {
 
 func readProof(r io.Reader) ([][]byte, error) {
 	var innerLen, outerLen int32
-	e := errs(binary.Read(r, binary.BigEndian, &outerLen),
-		binary.Read(r, binary.BigEndian, &innerLen))
-	if e != nil {
+	e := binary.Read(r, binary.BigEndian, &outerLen)
+	if e != nil || outerLen == 0 {
 		return nil, e
 	}
 	log.Printf("Requested %d proofs of size %d", outerLen, innerLen)
 	result := make([][]byte, outerLen)
+	e = binary.Read(r, binary.BigEndian, &innerLen)
+	if e != nil {
+		return nil, e
+	}
 	for i := range result {
 		result[i] = make([]byte, innerLen)
 		_, err := r.Read(result[i])
@@ -39,6 +42,14 @@ func readProof(r io.Reader) ([][]byte, error) {
 		}
 	}
 	return result, nil
+}
+
+func ensureEqual(l int32, p [][]byte) {
+	for _, x := range p {
+		if int32(len(x)) != l {
+			panic("Unequal lengths")
+		}
+	}
 }
 
 func writeProof(w io.Writer, p [][]byte) error {
@@ -50,6 +61,7 @@ func writeProof(w io.Writer, p [][]byte) error {
 	}
 	if len(p) > 0 {
 		innerlen = int32(len(p[0]))
+		ensureEqual(innerlen, p)
 		log.Printf("Writing %d proofs of size %d", outerlen, innerlen)
 		e = binary.Write(w, binary.BigEndian, innerlen)
 		if e != nil {
@@ -193,11 +205,8 @@ func (n Node) readShufProofs(reader io.Reader) ([]shuf.ShufProof, error) {
 func (n Node) readSplitProof(reader io.Reader) (*shuf.SplitProof, error) {
 	nilBuf := make([]byte, 1)
 	_, err := reader.Read(nilBuf)
-	if err != nil {
+	if err != nil || nilBuf[0] == 0 {
 		return nil, err
-	}
-	if nilBuf[0] == 0 {
-		return nil, nil
 	}
 	splitProof := new(shuf.SplitProof)
 	splitProof.X, err = n.readPoints(reader)
@@ -211,7 +220,7 @@ func (n Node) readSplitProof(reader io.Reader) (*shuf.SplitProof, error) {
 func (n Node) readDecProofs(reader io.Reader) ([]shuf.DecProof, error) {
 	var numProofs int32
 	err := binary.Read(reader, binary.BigEndian, &numProofs)
-	if numProofs < 1 {
+	if numProofs < 1 || err != nil {
 		return nil, err
 	}
 	proofs := make([]shuf.DecProof, numProofs)
