@@ -36,7 +36,7 @@ func readProof(r io.Reader) ([][]byte, error) {
 	}
 	for i := range result {
 		result[i] = make([]byte, innerLen)
-		_, err := r.Read(result[i])
+		_, err := io.ReadFull(r, result[i])
 		if err != nil {
 			return nil, err
 		}
@@ -204,7 +204,7 @@ func (n Node) readShufProofs(reader io.Reader) ([]shuf.ShufProof, error) {
 
 func (n Node) readSplitProof(reader io.Reader) (*shuf.SplitProof, error) {
 	nilBuf := make([]byte, 1)
-	_, err := reader.Read(nilBuf)
+	_, err := io.ReadFull(reader, nilBuf)
 	if err != nil || nilBuf[0] == 0 {
 		return nil, err
 	}

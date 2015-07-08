@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"github.com/dedis/crypto/abstract"
 	"github.com/dedis/prifi/shuf"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -144,7 +145,7 @@ func (n Node) sendMsg(m *shuf.Msg, uri string) {
 			continue
 		}
 		okBuf := make([]byte, 1)
-		_, err = conn.Read(okBuf)
+		_, err = io.ReadFull(conn, okBuf)
 		if err != nil { // Not ready for message
 			conn.Close()
 			time.Sleep(n.Inf.ResendTime)
