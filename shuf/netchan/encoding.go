@@ -28,7 +28,6 @@ func readProof(r io.Reader) ([][]byte, error) {
 	if e != nil || outerLen == 0 {
 		return nil, e
 	}
-	log.Printf("Requested %d proofs of size %d", outerLen, innerLen)
 	result := make([][]byte, outerLen)
 	e = binary.Read(r, binary.BigEndian, &innerLen)
 	if e != nil {
@@ -62,7 +61,6 @@ func writeProof(w io.Writer, p [][]byte) error {
 	if len(p) > 0 {
 		innerlen = int32(len(p[0]))
 		ensureEqual(innerlen, p)
-		log.Printf("Writing %d proofs of size %d", outerlen, innerlen)
 		e = binary.Write(w, binary.BigEndian, innerlen)
 		if e != nil {
 			return e
@@ -79,7 +77,6 @@ func writeProof(w io.Writer, p [][]byte) error {
 
 func writePoints(w io.Writer, X []abstract.Point) error {
 	l := int32(len(X))
-	log.Printf("Writing %d pairs", l)
 	err1 := binary.Write(w, binary.BigEndian, l)
 	if err1 != nil {
 		return err1

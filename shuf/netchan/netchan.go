@@ -124,7 +124,7 @@ func (n Node) sendMsg(m *shuf.Msg, uri string) {
 	for i := 0; i < n.Inf.MaxResends+1; i++ {
 		conn, err := net.Dial("tcp", uri)
 		if err != nil {
-			log.Printf("Error: node %d: %s\n", n.C, err.Error())
+			log.Printf("Couldn't reach node %d: %s\n", n.C, err.Error())
 			time.Sleep(n.Inf.ResendTime)
 			continue
 		}
@@ -154,12 +154,13 @@ func (n Node) sendMsg(m *shuf.Msg, uri string) {
 		err = writeMsg(conn, m)
 		conn.Close()
 		if err != nil {
-			log.Printf("Write msg error: node %d; %s\n", n.C, err.Error())
+			log.Printf("Write msg error: node %d; %s", n.C, err.Error())
 			time.Sleep(n.Inf.ResendTime)
 			continue
 		}
 		return
 	}
+	log.Printf("Error: timed out sending message to %s", n.C)
 }
 
 func (n Node) StartClient(nodes []string, msgPoint abstract.Point, port string) {
@@ -195,7 +196,7 @@ func (n Node) StartClient(nodes []string, msgPoint abstract.Point, port string) 
 		os.Exit(0)
 	case <-time.After(n.Inf.Timeout):
 		ln.Close()
-		log.Printf("Client %d timed out\n", n.C)
+		log.Printf("Error: client %d timed out\n", n.C)
 		os.Exit(1)
 	}
 }
