@@ -18,6 +18,6 @@ for x in `seq 0 15`; do
   ./genkey ~/pubkeys/$x.pub ~/privkeys/$x.priv
 done
 for x in `seq 0 15`; do
-  env syncprog=./syncit.py nodeId=$x mpg=2 shuffle=Butterfly split=Neff maxSize=32 times=1 servers=16 clients=32 minClients=32 maxClients=32 ./run.sh &
+  env syncprog=./syncit.py nodeId=$x mpg=2 shuffle=Neff split=Conflict maxSize=32 times=1 servers=16 clients=32 minClients=1 maxClients=8 ./run.sh &
 done
 wait

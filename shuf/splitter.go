@@ -53,14 +53,9 @@ func (c Conflict) Split(m *Msg) {
 	half := len(m.X) / 2
 	for i := range m.X {
 		bit := int(random.Byte(rnd) & 1)
-		if bit == 0 {
-			X[i] = c.Inf.Suite.Point().Add(X[i], m.X[i])
-			Y[i] = c.Inf.Suite.Point().Add(Y[i], m.Y[i])
-		} else {
-			p := (i + half) % len(m.X)
-			X[i] = c.Inf.Suite.Point().Add(X[i], m.X[p])
-			Y[i] = c.Inf.Suite.Point().Add(Y[i], m.Y[p])
-		}
+		p := (i + half*bit) % len(m.X)
+		X[i] = c.Inf.Suite.Point().Add(X[i], m.X[p])
+		Y[i] = c.Inf.Suite.Point().Add(Y[i], m.Y[p])
 	}
 	m.X = X
 	m.Y = Y
@@ -68,21 +63,21 @@ func (c Conflict) Split(m *Msg) {
 
 func (c Conflict) VerifySplit(p *SplitProof, X, leftY, rightY []abstract.Point) error {
 	half := len(X) / 2
-	for i, x := range p.X {
-		otherX := p.X[(i+half)%len(X)]
-		if !(X[i] == x || X[i] == otherX || X[i] == c.Inf.Suite.Point().Add(x, otherX)) {
+	for i, x := range p.X[:half] {
+		otherX := p.X[i+half]
+		if !(X[i].Equal(x) || X[i].Equal(otherX) || X[i].Equal(c.Inf.Suite.Point().Add(x, otherX))) {
 			return errors.New("Invalid conflict split")
 		}
 	}
 	for i, y := range p.Y[:half] {
 		otherY := p.Y[i+half]
-		if !(leftY[i] == y || leftY[i] == otherY || leftY[i] == c.Inf.Suite.Point().Add(y, otherY)) {
+		if !(leftY[i].Equal(y) || leftY[i].Equal(otherY) || leftY[i].Equal(c.Inf.Suite.Point().Add(y, otherY))) {
 			return errors.New("Invalid conflict split")
 		}
 	}
 	for i, y := range p.Y[half:] {
 		otherY := p.Y[i]
-		if !(rightY[i] == y || rightY[i] == otherY || rightY[i] == c.Inf.Suite.Point().Add(y, otherY)) {
+		if !(rightY[i].Equal(y) || rightY[i].Equal(otherY) || rightY[i].Equal(c.Inf.Suite.Point().Add(y, otherY))) {
 			return errors.New("Invalid conflict split")
 		}
 	}

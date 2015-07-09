@@ -33,8 +33,8 @@ go build ~/go/src/github.com/dedis/prifi/shuf/netchan/server/server.go
 go build ~/go/src/github.com/dedis/prifi/shuf/netchan/genkey/genkey.go
 sed -n '/#/d; /node-[0-9]/p' /etc/hosts | awk '{print \$1, substr(\$4, 6)}' | sort -n -k2 > /tmp/hostnames
 cat /tmp/hostnames /tmp/hostnames /tmp/hostnames | awk '{print \$1 ":" NR + 8999}' > /tmp/hosts
-env syncprog=emulab-sync nodeId=\$1 mpg=2 maxSize=$clients times=4 shuffle=Butterfly \
-  split=Neff servers=$servers clients=$clients minClients=$clients maxClients=$clients ./run.sh
+env syncprog=emulab-sync nodeId=\$1 mpg=2 maxSize=$clients times=4 shuffle=Biffle \
+  split=Conflict servers=$servers clients=$clients minClients=1 maxClients=8 ./run.sh
 HERE
 chmod +x /tmp/remote.sh
 rsync -av /tmp/remote.sh ankles@users.isi.deterlab.net:~/go/src/github.com/dedis/prifi/shuf/netchan/mylab/

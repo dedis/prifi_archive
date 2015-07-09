@@ -58,6 +58,7 @@ while [ $mpg -le $maxSize ]; do
       echo STARTING SERVER >> ~/logs/server$nodeId.log 
       ./server $nodeId /tmp/config-$nodeId $nodesFile $clientsFile ~/pubkeys ~/privkeys/$nodeId.priv >> ~/logs/server$nodeId.log 2>&1 &
       SERVER=$!
+      sleep 1
       echo 'server up' >> ~/logs/server$nodeId.log 
       $esync -n init$mpg$t$a
       $esync -n finish$mpg$t$a

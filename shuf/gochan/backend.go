@@ -23,8 +23,10 @@ func sendTo(inf *shuf.Info, c chan wrapper, m *shuf.Msg) {
 		case <-w.ack:
 			return
 		case <-time.After(inf.ResendTime):
+			fmt.Printf("Resending round %d\n", m.Round)
 		}
 	}
+	fmt.Printf("Couldn't send message for round %d\n", m.Round)
 }
 
 func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
@@ -49,11 +51,11 @@ func ChanShuffle(inf *shuf.Info, msgs []abstract.Point, wg *sync.WaitGroup) {
 			for ridx := 0; ridx < len(inf.Active[i]); {
 				round := inf.Active[i][ridx]
 				w := <-messages[i]
-				log.Printf("Node %d: got message with round %d on round %d\n", i, w.m.Round, round)
-				w.ack <- true
+				log.Printf("Node %d: got message with round %d on round %d, size %d\n", i, w.m.Round, round, len(w.m.Y))
 				if w.m.Round != round {
 					continue
 				}
+				w.ack <- true
 				m := inf.HandleRound(i, w.m, cache)
 				to := inf.Routes[i][round]
 
