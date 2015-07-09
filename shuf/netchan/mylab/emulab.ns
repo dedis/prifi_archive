@@ -1,0 +1,16 @@
+set ns [new Simulator]
+source tb_compat.tcl
+set lanstr ""
+for {set x 0} {$x<16} {incr x} {
+  set node($x) [$ns node]
+  append lanstr "$node($x) "
+  tb-set-node-os $node($x) UBUNTU14-64-STD
+  if {$x == 0} {
+    tb-set-sync-server $node($x)
+  }
+  tb-set-node-startcmd $node($x) "/proj/Dissent/shuffle/remote.sh $x"
+}
+set big-lan [$ns make-lan "$lanstr" 100Mb 0ms]
+$ns rtproto Static
+$ns run
+
