@@ -1,5 +1,7 @@
 Dissent - Dining-Cryptographers, Shuffled-Send Network
 
+July 2018: renamed to prifi_archive, the new version is available at https://github.com/dedis/prifi
+
 Overview
 ===============================================================================
 This library will eventually provide a framework for constructing provably
