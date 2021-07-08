@@ -2,7 +2,7 @@ package connMan
 
 import (
 	"github.com/dedis/crypto/abstract"
-	"github.com/dedis/prifi/coconet"
+	"github.com/dedis/prifi/coco/coconet"
 )
 
 /* This class serves as the connection manager for the GoConn connection
